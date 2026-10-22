@@ -227,7 +227,7 @@ function SpeedometerGauge({
 
       {/* Nút GO kiểu Speedtest.org khi rảnh rỗi hoặc Bộ đọc số lớn khi đang chạy */}
       <div className="absolute inset-x-0 bottom-4 text-center">
-        {!running && phase === 'idle' ? (
+        {!running && (phase === 'idle' || phase === 'done') ? (
           <button
             onClick={onStart}
             className="group relative inline-flex items-center justify-center rounded-full transition-transform active:scale-95"
@@ -236,7 +236,9 @@ function SpeedometerGauge({
             <span className="absolute -inset-3 rounded-full bg-zen-blue/20 animate-ping opacity-75" />
             <span className="absolute -inset-1 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 opacity-60 blur" />
             <div className="relative flex size-20 items-center justify-center rounded-full border-2 border-cyan-400 bg-ink-950/90 text-white shadow-2xl transition group-hover:scale-105 group-hover:border-white">
-              <span className="text-xl font-black tracking-widest text-cyan-300 group-hover:text-white">GO</span>
+              <span className="text-base font-black tracking-wider text-cyan-300 group-hover:text-white">
+                {phase === 'done' ? 'ĐO LẠI' : 'GO'}
+              </span>
             </div>
           </button>
         ) : (
@@ -376,28 +378,51 @@ export default function Speedtest() {
     };
   }, []);
 
-  // Cập nhật targetSpeed dựa theo phase để KHÔNG BAO GIỜ bị nhảy về 0
+  const prevPhaseRef = useRef<SpeedState['phase']>('idle');
+
+  // Cập nhật targetSpeed dựa theo phase:
+  // Khi đo tải xuống (download) xong -> kim đồng hồ rơi dứt khoát về 0 -> vọt lên lại để đo tải lên (upload)
   useEffect(() => {
     if (!state) return;
 
+    const currentPhase = state.phase;
+    const prevPhase = prevPhaseRef.current;
+    prevPhaseRef.current = currentPhase;
+
+    // Khi chuyển giao đoạn từ Download sang Upload:
+    // Đồng hồ hạ dứt khoát về 0 và reset sóng đồ thị để chuẩn bị lượt đo tải lên
+    if (prevPhase === 'download' && currentPhase === 'upload') {
+      targetSpeedRef.current = 0;
+      currentSpeedRef.current = 0;
+      lastValidSpeedRef.current = 0;
+      setSmoothSpeed(0);
+      setWaveSamples([]);
+      return;
+    }
+
+    // Khi kết thúc toàn bộ bài đo (done) hoặc dừng chạy:
+    // Kim đồng hồ rơi êm đềm về 0, các ô kết quả giữ nguyên số liệu vừa đo
+    if (!state.running || currentPhase === 'done') {
+      targetSpeedRef.current = 0;
+      lastValidSpeedRef.current = 0;
+      return;
+    }
+
     if (state.running) {
-      if (state.phase === 'download' || state.phase === 'upload') {
+      if (currentPhase === 'download' || currentPhase === 'upload') {
         const live = state.liveSpeed;
         if (live > 0) {
           targetSpeedRef.current = live;
           lastValidSpeedRef.current = live;
         } else if (lastValidSpeedRef.current > 0) {
-          // Nếu backend tạm ngắt quãng gói tin, không nhảy về 0 mà giữ tốc độ đang có
           targetSpeedRef.current = lastValidSpeedRef.current;
         }
-      }
-    } else {
-      // Khi đã hoàn tất bài đo: giữ nguyên giá trị tải xuống lần đo vừa xong
-      if (state.last?.download) {
-        targetSpeedRef.current = state.last.download;
+      } else {
+        // Giai đoạn meta hoặc ping: kim ở mức thấp
+        targetSpeedRef.current = 0;
       }
     }
-  }, [state?.running, state?.phase, state?.liveSpeed, state?.last]);
+  }, [state?.running, state?.phase, state?.liveSpeed]);
 
   // Vòng lặp hoạt họa requestAnimationFrame 60fps
   useEffect(() => {
@@ -411,17 +436,16 @@ export default function Speedtest() {
       let target = targetSpeedRef.current;
 
       // Khi vừa bấm "Bắt đầu đo" (giai đoạn meta/ping):
-      // Nhích kim đồng hồ tăng dần nhẹ (revving up) tạo cảm giác động cơ bắt đầu chạy
+      // Nhích kim đồng hồ tăng dần nhẹ (revving up) tạo cảm giác động cơ khởi động
       if (state?.running) {
         if (state.phase === 'meta' || state.phase === 'ping') {
           const progress = state.progress || 0.1;
-          // Tăng dần nhẹ nhàng từ 5 Mbps lên 25 Mbps
-          target = (progress * 20_000_000 + 5_000_000);
+          target = progress * 15_000_000 + 3_000_000;
         }
       }
 
-      // Nội suy lerp mượt mà
-      const smoothingFactor = state?.running ? 8.5 : 5.0;
+      // Nội suy lerp mượt mà (khi target = 0 thì rơi nhanh hơn để chuyển pha dứt khoát)
+      const smoothingFactor = target === 0 ? 12.0 : (state?.running ? 8.5 : 5.0);
       const diff = target - currentSpeedRef.current;
       currentSpeedRef.current += diff * Math.min(1, dt * smoothingFactor);
 

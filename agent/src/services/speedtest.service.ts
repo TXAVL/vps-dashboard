@@ -99,6 +99,8 @@ export class SpeedtestService {
       });
 
       this.state.phase = 'upload';
+      this.state.liveSpeed = 0;
+      this.state.progress = 0;
       this.state.upload = await this.measure(UPLOAD_MS, async (count, signal) => {
         await fetch(`${BASE}/__up`, { method: 'POST', body: UPLOAD_CHUNK, signal, headers: { 'Content-Type': 'application/octet-stream' } }).then((r) => r.arrayBuffer());
         count(UPLOAD_CHUNK.byteLength);
@@ -114,7 +116,7 @@ export class SpeedtestService {
         client: { ip: meta.clientIp ?? '', isp: meta.asOrganization ?? '' },
       };
       writeJson(HISTORY_FILE, [result, ...this.history()].slice(0, 20));
-      this.state = { ...this.state, running: false, phase: 'done', progress: 1, liveSpeed: this.state.download ?? 0, last: result };
+      this.state = { ...this.state, running: false, phase: 'done', progress: 1, liveSpeed: 0, last: result };
     } catch (err) {
       this.state = { ...this.state, running: false, phase: 'error', error: `Speedtest lỗi: ${(err as Error).message}` };
     }

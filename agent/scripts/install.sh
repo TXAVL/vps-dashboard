@@ -137,8 +137,9 @@ else
   exit 1
 fi
 
-step "Cài lệnh tắt: zenpanel"
+step "Cài lệnh tắt: zenpanel và zpanel"
 install -m 755 "$APP_DIR/agent/scripts/zenpanel.sh" /usr/local/bin/zenpanel
+ln -sf /usr/local/bin/zenpanel /usr/local/bin/zpanel
 
 step "Chờ ZenPanel khởi động và Cloudflare cấp domain"
 for _ in $(seq 1 60); do
