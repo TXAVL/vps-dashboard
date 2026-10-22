@@ -348,7 +348,11 @@ export class AiGatewayService {
     const started = Date.now();
     const res = await fetch(`${cred.baseUrl}/embeddings`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cred.key}` },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cred.key}`,
+        ...(provider === 'gemini' ? { 'x-goog-api-key': cred.key } : {}),
+      },
       body: JSON.stringify({ ...body, model }),
       signal: AbortSignal.timeout(120_000),
     });
@@ -454,6 +458,7 @@ export class AiGatewayService {
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${key}`,
+              ...(provider === 'gemini' ? { 'x-goog-api-key': key } : {}),
               'HTTP-Referer': 'https://github.com/TXAVL/vps-dashboard',
               'X-Title': 'ZenPanel AI Gateway',
             },

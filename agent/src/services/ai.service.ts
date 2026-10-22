@@ -39,8 +39,12 @@ export const AI_PROVIDERS: ProviderDef[] = [
     label: 'Google Gemini',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
     keyUrl: 'https://aistudio.google.com/apikey',
-    keyHint: 'AIza...',
-    test: (key) => fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`, { signal: timeout() }),
+    keyHint: 'AQ... hoặc AIza...',
+    test: (key) =>
+      fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`, {
+        headers: { 'x-goog-api-key': key, Authorization: `Bearer ${key}` },
+        signal: timeout(),
+      }),
   },
   {
     id: 'openrouter',
@@ -118,6 +122,7 @@ async function fetchModels(id: AiProviderId, key: string): Promise<AiModel[]> {
     case 'gemini': {
       const data = await get<{ models: { name: string; displayName: string; description?: string; inputTokenLimit?: number; supportedGenerationMethods?: string[] }[] }>(
         `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(key)}`,
+        { 'x-goog-api-key': key, Authorization: `Bearer ${key}` },
       );
       return data.models
         .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
