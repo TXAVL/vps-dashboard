@@ -40,9 +40,9 @@ import {
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Select, Spinner, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
 import { del, get, getToken, post, put } from '../lib/api';
-import { formatRelative } from '../lib/format';
+import { formatRelative, txaformat } from '../lib/format';
 import { useApi } from '../lib/hooks';
-import { usePanel } from '../lib/panel';
+import { useNow, usePanel } from '../lib/panel';
 import type { AiAccountKey, AiProvider } from '../lib/types';
 
 interface AiModel {
@@ -2098,18 +2098,35 @@ function ActivityTab() {
 
 // ------------------------------------------------------------------ Quản lý Cấp phát API Keys (Developer Keys)
 
-function getExpiryInfo(expiresAt: string | null): { label: string; tone: 'green' | 'amber' | 'red' | 'blue'; isExpired: boolean } {
-  if (!expiresAt) return { label: 'Vĩnh viễn', tone: 'blue', isExpired: false };
+function getExpiryInfo(expiresAt: string | null, now = Date.now()): { label: string; fullCountdown: string; tone: 'green' | 'amber' | 'red' | 'blue'; isExpired: boolean } {
+  if (!expiresAt) {
+    return {
+      label: 'Vĩnh viễn',
+      fullCountdown: 'Khóa API vĩnh viễn (không bao giờ hết hạn)',
+      tone: 'blue',
+      isExpired: false,
+    };
+  }
   const target = new Date(expiresAt).getTime();
-  const diff = target - Date.now();
-  if (diff <= 0) {
-    return { label: `Đã hết hạn (${new Date(expiresAt).toLocaleDateString('vi-VN')})`, tone: 'red', isExpired: true };
+  const diffSec = Math.floor((target - now) / 1000);
+  const isExpired = diffSec <= 0;
+  const absSec = Math.abs(diffSec);
+  const d = Math.floor(absSec / 86400);
+  const h = Math.floor((absSec % 86400) / 3600);
+  const m = Math.floor((absSec % 3600) / 60);
+  const s = absSec % 60;
+
+  const fullCountdown = isExpired
+    ? `API Key đã hết hạn cách đây: ${d} ngày ${txaformat.pad2(h)} giờ ${txaformat.pad2(m)} phút ${txaformat.pad2(s)} giây (Thời điểm: ${txaformat.datetime(expiresAt)})`
+    : `Thời gian sử dụng còn lại: ${d} ngày ${txaformat.pad2(h)} giờ ${txaformat.pad2(m)} phút ${txaformat.pad2(s)} giây (Hết hạn lúc: ${txaformat.datetime(expiresAt)})`;
+
+  if (isExpired) {
+    return { label: `Hết hạn (${txaformat.datetime(expiresAt, false)})`, fullCountdown, tone: 'red', isExpired: true };
   }
-  const days = Math.ceil(diff / 86_400_000);
-  if (days <= 3) {
-    return { label: `Còn ${days} ngày (${new Date(expiresAt).toLocaleDateString('vi-VN')})`, tone: 'amber', isExpired: false };
+  if (d <= 3) {
+    return { label: `Còn ${d} ngày ${txaformat.pad2(h)}h (${txaformat.datetime(expiresAt, false)})`, fullCountdown, tone: 'amber', isExpired: false };
   }
-  return { label: `Còn ${days} ngày (${new Date(expiresAt).toLocaleDateString('vi-VN')})`, tone: 'green', isExpired: false };
+  return { label: `Còn ${d} ngày (${txaformat.datetime(expiresAt, false)})`, fullCountdown, tone: 'green', isExpired: false };
 }
 
 function ApiKeysTab({
@@ -2117,16 +2134,20 @@ function ApiKeysTab({
   reloadKeys,
   createModalOpen,
   setCreateModalOpen,
+  defaultKey = '',
 }: {
   keys: GatewayApiKeyView[];
   reloadKeys: () => void;
   createModalOpen: boolean;
   setCreateModalOpen: (open: boolean) => void;
+  defaultKey?: string;
 }) {
   const { toast, confirm } = useFeedback();
   const { tunnel } = usePanel();
+  const now = useNow(1000); // Cập nhật realtime từng giây
   const [createdSecret, setCreatedSecret] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
+  const [copiedCurl, setCopiedCurl] = useState(false);
 
   // Form state tạo key
   const [name, setName] = useState('');
@@ -2220,7 +2241,33 @@ function ApiKeysTab({
     });
   };
 
-  const activeKeysCount = keys.filter((k) => k.enabled && !getExpiryInfo(k.expiresAt).isExpired).length;
+  const sampleContent = 'Xin chào ZenPanel AI Gateway! Hãy kiểm tra hệ thống và cho tôi 1 lời khuyên tối ưu máy chủ VPS ngắn gọn.';
+  const effectiveKey = defaultKey || '<API_KEY_CỦA_BẠN>';
+  const curlCommand = `curl ${base}/chat/completions \\
+  -H "Authorization: Bearer ${effectiveKey}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "auto",
+    "messages": [{"role": "user", "content": "${sampleContent}"}]
+  }'`;
+
+  const handleCopyCurl = async () => {
+    try {
+      await navigator.clipboard.writeText(curlCommand);
+    } catch {
+      const area = document.createElement('textarea');
+      area.value = curlCommand;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    }
+    setCopiedCurl(true);
+    toast('Đã sao chép cURL (đã tự điền Default API Key và câu lệnh mẫu)!', 'success');
+    setTimeout(() => setCopiedCurl(false), 2500);
+  };
+
+  const activeKeysCount = keys.filter((k) => k.enabled && !getExpiryInfo(k.expiresAt, now).isExpired).length;
 
   return (
     <div className="space-y-4">
@@ -2298,7 +2345,7 @@ function ApiKeysTab({
               </thead>
               <tbody className="divide-y divide-slate-800">
                 {keys.map((k) => {
-                  const expiry = getExpiryInfo(k.expiresAt);
+                  const expiry = getExpiryInfo(k.expiresAt, now);
                   return (
                     <tr key={k.id} className="hover:bg-slate-900/40 transition">
                       <td className={cn(td, 'font-semibold text-white')}>
@@ -2315,9 +2362,11 @@ function ApiKeysTab({
                         </div>
                       </td>
                       <td className={td}>
-                        <Badge tone={expiry.tone} className="text-[11px] font-medium">
-                          {expiry.label}
-                        </Badge>
+                        <div data-tip={expiry.fullCountdown} className="inline-block cursor-default">
+                          <Badge tone={expiry.tone} className="text-[11px] font-medium transition hover:scale-105">
+                            {expiry.label}
+                          </Badge>
+                        </div>
                       </td>
                       <td className={cn(td, 'text-slate-400')}>
                         {k.lastUsedAt ? formatRelative(k.lastUsedAt) : 'Chưa sử dụng'}
@@ -2401,16 +2450,33 @@ function ApiKeysTab({
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-black/60 p-3 space-y-2">
-            <div className="font-bold text-white">Cách gọi API chuẩn OpenAI:</div>
-            <pre className="mono overflow-x-auto text-emerald-300 text-[11px] leading-relaxed">
-{`curl ${base}/chat/completions \\
-  -H "Authorization: Bearer <API_KEY_CỦA_BẠN>" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "model": "auto",
-    "messages": [{"role": "user", "content": "Xin chào AI Agent!"}]
-  }'`}
+          <div className="rounded-xl border border-slate-800 bg-black/60 p-3 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+              <div className="font-bold text-white flex items-center gap-2">
+                <span>Cách gọi API chuẩn OpenAI:</span>
+                {defaultKey ? (
+                  <Badge tone="green" className="text-[10px]">
+                    Sẵn sàng Default Key
+                  </Badge>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyCurl}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer',
+                  copiedCurl
+                    ? 'bg-emerald-600 text-white shadow-emerald-900/50 scale-105'
+                    : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/40 hover:scale-105'
+                )}
+                data-tip="Sao chép câu lệnh cURL (tự động điền sẵn Default API Key & câu lệnh mẫu có thể chạy ngay)"
+              >
+                {copiedCurl ? <Check className="size-3.5 animate-bounce" /> : <Copy className="size-3.5" />}
+                <span>{copiedCurl ? 'Đã sao chép cURL!' : 'Sao chép mã nhanh'}</span>
+              </button>
+            </div>
+            <pre className="mono overflow-x-auto text-emerald-300 text-[11px] leading-relaxed p-2.5 rounded-lg bg-black/40 border border-slate-800/80">
+              {curlCommand}
             </pre>
             <p className="text-[11px] text-slate-400">
               * Thay <code className="text-indigo-300">auto</code> bằng bất kỳ model nào: <code className="text-white">gemini/gemini-2.5-flash</code>, <code className="text-white">anthropic/claude-3-7-sonnet</code>, <code className="text-white">openai/gpt-4o</code> hoặc Sub-Agent <code className="text-purple-300">agent/tên_agent</code>.
@@ -2951,6 +3017,7 @@ export default function AiGateway() {
           reloadKeys={keysApi.reload}
           createModalOpen={createKeyModalOpen}
           setCreateModalOpen={setCreateKeyModalOpen}
+          defaultKey={gateway.apiKey}
         />
       )}
       {tab === 'company' && <CompanyTab models={allModels.data ?? []} providers={providers.data} />}

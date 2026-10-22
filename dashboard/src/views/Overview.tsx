@@ -71,7 +71,7 @@ function Legend({ items }: { items: [string, string][] }) {
 /** Đếm ngược tới ngày hết hạn VPS (ngày do admin nhập vì nhà cung cấp không công khai cho hệ điều hành) */
 function ExpiryCard() {
   const { prefs } = usePanel();
-  const now = useNow();
+  const now = useNow(1000); // Cập nhật realtime từng giây
   if (!prefs.vpsExpiry) {
     return (
       <Card title="Hạn sử dụng VPS" icon={CalendarClock}>
@@ -84,17 +84,57 @@ function ExpiryCard() {
       </Card>
     );
   }
+
   const end = new Date(`${prefs.vpsExpiry}T23:59:59`).getTime();
   const left = Math.floor((end - now) / 1000);
-  const days = Math.floor(left / 86400);
-  const tone = left < 0 ? 'red' : days <= prefs.expiryWarnDays ? 'amber' : 'green';
+  const isExpired = left < 0;
+  const absSec = Math.abs(left);
+  const days = Math.floor(absSec / 86400);
+  const hours = Math.floor((absSec % 86400) / 3600);
+  const minutes = Math.floor((absSec % 3600) / 60);
+  const seconds = absSec % 60;
+  const tone = isExpired ? 'red' : days <= prefs.expiryWarnDays ? 'amber' : 'green';
+
+  // Bộ đếm ngược đầy đủ có txaformat hiển thị khi hover
+  const fullCountdown = isExpired
+    ? `VPS đã hết hạn cách đây: ${days} ngày ${txaformat.pad2(hours)} giờ ${txaformat.pad2(minutes)} phút ${txaformat.pad2(seconds)} giây (Thời điểm: ${txaformat.datetime(end)})`
+    : `Thời gian sử dụng còn lại: ${days} ngày ${txaformat.pad2(hours)} giờ ${txaformat.pad2(minutes)} phút ${txaformat.pad2(seconds)} giây (Hết hạn lúc: ${txaformat.datetime(end)})`;
+
   return (
-    <Card title="Hạn sử dụng VPS" icon={CalendarClock} actions={<Badge tone={tone}>{left < 0 ? 'Đã hết hạn' : `${days} ngày`}</Badge>}>
-      <div className={cn('text-center text-2xl font-extrabold sm:text-3xl', tone === 'red' ? 'text-zen-red' : tone === 'amber' ? 'text-zen-amber' : 'text-white')}>
-        {left < 0 ? `Quá hạn ${formatDuration(-left)}` : formatDuration(left)}
+    <Card
+      title="Hạn sử dụng VPS"
+      icon={CalendarClock}
+      actions={
+        <div data-tip={fullCountdown} className="inline-block cursor-default">
+          <Badge tone={tone} className="transition hover:scale-105">
+            {isExpired ? 'Đã hết hạn' : `${days} ngày (${txaformat.pad2(hours)}h${txaformat.pad2(minutes)}p)`}
+          </Badge>
+        </div>
+      }
+    >
+      <div
+        className={cn(
+          'text-center font-extrabold transition cursor-default select-none group',
+          tone === 'red' ? 'text-zen-red' : tone === 'amber' ? 'text-zen-amber' : 'text-white'
+        )}
+        data-tip={fullCountdown}
+      >
+        <div className="mono text-2xl sm:text-3xl tracking-tight">
+          {isExpired ? (
+            `Quá hạn ${days} ngày`
+          ) : (
+            <>
+              {days > 0 && <span className="font-bold">{days}d </span>}
+              <span>{txaformat.pad2(hours)}:{txaformat.pad2(minutes)}:{txaformat.pad2(seconds)}</span>
+            </>
+          )}
+        </div>
+        <div className="mt-1 text-[11px] font-medium text-slate-400 group-hover:text-cyan-300 transition">
+          {isExpired ? `Đã hết hạn: ${txaformat.datetime(end)}` : `Hạn chót: ${txaformat.datetime(end)}`}
+        </div>
       </div>
       <dl className="mt-3 divide-y divide-slate-700/40 text-sm">
-        <Row label="Ngày hết hạn">{formatDate(`${prefs.vpsExpiry}T00:00:00`, false)}</Row>
+        <Row label="Ngày hết hạn">{txaformat.datetime(end, false)}</Row>
         {prefs.vpsProvider && <Row label="Nhà cung cấp">{prefs.vpsProvider}</Row>}
         {prefs.vpsPrice && <Row label="Chi phí">{prefs.vpsPrice}</Row>}
       </dl>

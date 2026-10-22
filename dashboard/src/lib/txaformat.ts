@@ -112,8 +112,8 @@ export class txaformat {
   }
 
   /** Format ngày giờ hoàn chỉnh */
-  static datetime(isoOrDate: string | Date | null | undefined, withTime = true): string {
-    if (!isoOrDate) return '—';
+  static datetime(isoOrDate: number | string | Date | null | undefined, withTime = true): string {
+    if (isoOrDate === null || isoOrDate === undefined || isoOrDate === '') return '—';
     const d = new Date(isoOrDate);
     if (Number.isNaN(d.getTime())) return String(isoOrDate);
     return d.toLocaleString('vi-VN', withTime ? { dateStyle: 'short', timeStyle: 'medium' } : { dateStyle: 'medium' });

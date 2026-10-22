@@ -13,6 +13,14 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-23',
     highlights: [
       {
+        title: '⚡ Sao Chép cURL AI Nhanh & Đếm Ngược Hạn Dùng Realtime Với txaformat',
+        items: [
+          'Nút sao chép mã nhanh trong AI Gateway: Tự động điền Default API Key và câu lệnh kiểm tra mẫu hữu ích, kèm hiệu ứng phản hồi sống động (chuyển đổi icon Copy -> Check xanh, hiệu ứng nảy nhẹ và thông báo toast).',
+          'Đếm ngược hạn dùng Realtime: Hạn sử dụng VPS và hạn sử dụng API Key trong AI Gateway được cập nhật từng giây theo thời gian thực.',
+          'Bộ đếm chi tiết chuẩn txaformat khi hover: Di chuột vào badge hạn sử dụng sẽ hiển thị tooltip đếm ngược đầy đủ số ngày, giờ, phút, giây kèm ngày giờ hết hạn chuẩn xác.',
+        ],
+      },
+      {
         title: '🔒 Bảo Vệ Khóa Gateway Mặc Định & Chuẩn Hóa Trải Nghiệm Giao Diện',
         items: [
           'Bảo vệ Default Gateway Key: Khóa API mặc định của AI Gateway được bảo vệ tuyệt đối, nút xóa được làm mờ và vô hiệu hóa. Khi di chuột vào nút xóa sẽ có thông báo giải thích rõ ràng lý do không thể xóa để giữ kết nối ổn định cho toàn hệ thống.',
