@@ -18,11 +18,13 @@ import { dockerRoutes } from './routes/docker.routes.js';
 import { fileDownloadRoute, fileRoutes } from './routes/files.routes.js';
 import { panelRoutes } from './routes/panel.routes.js';
 import { procRoutes } from './routes/procs.routes.js';
-import { aiGatewayRoutes, aiPanelRoutes } from './routes/ai.routes.js';
+import { aiGatewayRoutes, aiPanelRoutes, GATEWAY_PREFIXES } from './routes/ai.routes.js';
+import { httpRoutes } from './routes/http.routes.js';
 import { siteRoutes } from './routes/sites.routes.js';
 import { systemRoutes } from './routes/system.routes.js';
 import { AiService } from './services/ai.service.js';
 import { AiGatewayService } from './services/aigateway.service.js';
+import { HttpClientService } from './services/httpclient.service.js';
 import { AppStoreService } from './services/appstore.service.js';
 import { AppTunnelService } from './services/apptunnel.service.js';
 import { CloudflareService } from './services/cloudflare.service.js';
@@ -53,6 +55,7 @@ async function main() {
   const docker = new DockerService(adapter);
   const ai = new AiService();
   const gateway = new AiGatewayService(ai);
+  const http = new HttpClientService();
   const appTunnels = new AppTunnelService(adapter);
   const apps = new AppStoreService(docker, ai, appTunnels);
   const stacks = new StackService(docker);
@@ -85,7 +88,7 @@ async function main() {
   await app.register(authRoutes);
   await app.register(fileDownloadRoute);
   // AI Gateway chuẩn OpenAI, xác thực bằng API key riêng của gateway
-  await app.register(async (scope) => aiGatewayRoutes(scope, { gateway }));
+  for (const prefix of GATEWAY_PREFIXES) await app.register(async (scope) => aiGatewayRoutes(scope, { gateway }), { prefix });
 
   // Mọi API còn lại bắt buộc đăng nhập
   await app.register(async (secured) => {
@@ -95,6 +98,7 @@ async function main() {
     await dockerRoutes(secured, ctx, { docker, apps, databases, stacks, hub });
     await procRoutes(secured, { procs });
     await aiPanelRoutes(secured, { ai, gateway });
+    await httpRoutes(secured, { http });
     await siteRoutes(secured, ctx, { sites, cloudflare });
     await panelRoutes(secured, ctx, { updates, tasks, ai, speedtest });
   });
@@ -111,7 +115,7 @@ async function main() {
     });
     // SPA: mọi đường dẫn không phải API trả về index.html
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith('/api/') || req.url.startsWith('/ws/') || req.url.startsWith('/ai/')) return reply.code(404).send({ error: 'Not found' });
+      if (req.url.startsWith('/api/') || req.url.startsWith('/ws/') || req.url.startsWith('/ai/') || req.url.startsWith('/zen/')) return reply.code(404).send({ error: 'Not found' });
       return reply.sendFile('index.html');
     });
   } else {

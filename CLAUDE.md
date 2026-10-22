@@ -98,7 +98,8 @@ vps-dashboard/ (ZenPanel)
 │   │   │   ├── apptunnel.service.ts # Link public riêng cho từng app (Cloudflare Quick Tunnel)
 │   │   │   ├── appstore.guides.ts # Hướng dẫn sau khi cài từng app
 │   │   │   ├── ai.service.ts      # API key AI + danh sách model + model mặc định từng nhà cung cấp
-│   │   │   ├── aigateway.service.ts # AI Gateway /ai/v1 chuẩn OpenAI: định tuyến, fallback, nhật ký
+│   │   │   ├── aigateway.service.ts # AI Gateway /zen/v1 (+ /ai/v1) chuẩn OpenAI, key tzp_, danh tính TXAZENPANEL cố định
+│   │   │   ├── httpclient.service.ts # API Tester kiểu Postman (gửi request từ VPS, collections, môi trường)
 │   │   │   ├── stack.service.ts   # Docker Compose stacks
 │   │   │   ├── speedtest.service.ts # Speedtest thật tới speed.cloudflare.com
 │   │   │   ├── procman.service.ts # Ứng dụng chạy nền thay PM2 (auto-restart, log, CPU/RAM, nhập từ PM2)

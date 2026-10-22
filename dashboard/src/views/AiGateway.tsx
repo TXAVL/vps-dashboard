@@ -574,7 +574,7 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
   const { tunnel } = usePanel();
   const logs = useApi<GatewayLog[]>('/api/ai/gateway/logs', 15000);
   const [lang, setLang] = useState<'curl' | 'python' | 'node' | 'n8n'>('curl');
-  const base = `${tunnel?.status === 'online' && tunnel.url ? tunnel.url : window.location.origin}/ai/v1`;
+  const base = `${tunnel?.status === 'online' && tunnel.url ? tunnel.url : window.location.origin}/zen/v1`;
   const model = gateway.defaultModel ?? 'auto';
   const day = (logs.data ?? []).filter((l) => Date.now() - new Date(l.at).getTime() < 86_400_000);
   const ok = day.filter((l) => l.status >= 200 && l.status < 300).length;
@@ -654,6 +654,29 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
             </p>
           </div>
         </Card>
+        <div className="space-y-4">
+        <Card title="Endpoint" icon={ListOrdered} actions={<Link to="/api-tester" className="text-xs font-semibold text-blue-300 hover:underline">Thử trong API Tester →</Link>}>
+          <div className="space-y-1.5">
+            {[
+              ['GET', '/health', 'Kiểm tra gateway (không cần key)'],
+              ['GET', '/models', 'Danh sách model'],
+              ['GET', '/models/{id}', 'Chi tiết 1 model'],
+              ['GET', '/providers', 'Nhà cung cấp đã kết nối'],
+              ['GET', '/key', 'Thông tin API key & sử dụng 24h'],
+              ['GET', '/usage?hours=24', 'Thống kê theo model'],
+              ['POST', '/chat/completions', 'Chat (hỗ trợ stream)'],
+              ['POST', '/completions', 'Prompt → text'],
+              ['POST', '/embeddings', 'Vector embedding'],
+            ].map(([method, path, desc]) => (
+              <div key={path} className="flex items-center gap-2 text-xs">
+                <span className={cn('mono w-10 shrink-0 font-bold', method === 'GET' ? 'text-emerald-400' : 'text-amber-400')}>{method}</span>
+                <span className="mono min-w-0 flex-1 truncate text-slate-200">{path}</span>
+                <span className="hidden truncate text-slate-500 sm:inline">{desc}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-slate-500">Đường dẫn cũ /ai/v1 vẫn dùng được.</p>
+        </Card>
         <Card title="Model dùng nhiều (24h)" icon={Activity}>
           {top.length === 0 ? (
             <p className="text-sm text-slate-500">Chưa có request nào trong 24 giờ.</p>
@@ -673,6 +696,7 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
             </div>
           )}
         </Card>
+        </div>
       </div>
     </div>
   );

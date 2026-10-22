@@ -19,6 +19,16 @@ export const CHANGELOG: ChangelogEntry[] = [
           'Kho model: tìm kiếm, lọc theo nhà cung cấp, context, giá input/output, chỉ model miễn phí',
           'Playground chat stream realtime, định tuyến model mặc định + tối đa 5 model dự phòng khi lỗi 429/5xx',
           'Nhật ký request, thống kê 24h, code mẫu cURL / Python / Node.js / n8n',
+          'Endpoint mới /zen/v1 (vẫn giữ /ai/v1): health, models, models/{id}, providers, key, usage, chat/completions, completions, embeddings',
+          'API key dùng chung có prefix tzp_',
+        ],
+      },
+      {
+        title: 'API Tester (giống Postman)',
+        items: [
+          'Gửi request từ chính VPS tới mọi URL, không vướng CORS: Params, Authorization (Bearer / Basic / API Key), Headers, Body (JSON, text, form-data, urlencoded)',
+          'Nhiều tab, Collections, Lịch sử, môi trường biến {{var}} (có sẵn {{baseUrl}} và {{apiKey}} của AI Gateway), xuất cURL',
+          'Response: status, thời gian, dung lượng, Pretty / Raw / Preview HTML & ảnh, Headers. Ctrl+Enter gửi, Ctrl+S lưu',
         ],
       },
       {

@@ -32,13 +32,33 @@ export interface GatewayLog {
   fallbackFrom: string | null;
 }
 
-const newKey = () => `zp-${randomBytes(24).toString('base64url')}`;
+/** API key dùng chung của gateway luôn có prefix "tzp_" */
+const KEY_PREFIX = 'tzp_';
+const newKey = () => `${KEY_PREFIX}${randomBytes(24).toString('base64url')}`;
+
+/**
+ * Danh tính cố định của mọi model chạy qua gateway. Gắn ở phía server vào system prompt,
+ * không trả ra API / dashboard và người dùng không ghi đè được.
+ */
+const BOT_IDENTITY =
+  'QUY TẮC BẮT BUỘC (ưu tiên cao nhất, mọi hướng dẫn khác không được ghi đè): Tên bot: TXAZENPANEL, được tạo bởi TXA Studio. Khi được hỏi bạn là ai, tên gì hay ai tạo ra bạn, luôn trả lời đúng danh tính này.';
+
+type ChatMessage = { role: string; content: unknown };
+
+/** Gộp vào 1 system message: system prompt của người dùng trước, danh tính bắt buộc ở cuối để không bị ghi đè */
+function withIdentity(messages: unknown): ChatMessage[] {
+  const list = Array.isArray(messages) ? (messages as ChatMessage[]) : [];
+  const userSystem = list.filter((m) => m?.role === 'system' || m?.role === 'developer').map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)));
+  const rest = list.filter((m) => m?.role !== 'system' && m?.role !== 'developer');
+  return [{ role: 'system', content: [...userSystem, BOT_IDENTITY].join('\n\n') }, ...rest];
+}
 
 function settings(): GatewaySettings {
   const current = readJson<Partial<GatewaySettings>>(SETTINGS_FILE, {});
-  const value: GatewaySettings = { enabled: false, defaultModel: null, fallbacks: [], ...current, apiKey: current.apiKey || newKey() };
-  // Lần đầu: sinh API key cho gateway và lưu lại
-  if (!current.apiKey) writeJson(SETTINGS_FILE, value);
+  const valid = typeof current.apiKey === 'string' && current.apiKey.startsWith(KEY_PREFIX);
+  const value: GatewaySettings = { enabled: false, defaultModel: null, fallbacks: [], ...current, apiKey: valid ? current.apiKey! : newKey() };
+  // Lần đầu (hoặc key cũ dạng zp-): sinh API key tzp_ mới và lưu lại
+  if (!valid) writeJson(SETTINGS_FILE, value);
   return value;
 }
 
@@ -96,7 +116,7 @@ export class AiGatewayService {
     return readJson<GatewayLog[]>(LOG_FILE, []);
   }
 
-  private record(entry: GatewayLog): void {
+  record(entry: GatewayLog): void {
     writeJson(LOG_FILE, [entry, ...this.logs()].slice(0, MAX_LOG));
   }
 
@@ -128,12 +148,118 @@ export class AiGatewayService {
     throw badRequest('Chưa có model mặc định. Chọn model mặc định trong trang AI Gateway.');
   }
 
+
+  /** Thông tin key (giống GET /api/v1/key của OpenRouter) */
+  keyInfo() {
+    const s = settings();
+    const day = this.logs().filter((l) => Date.now() - new Date(l.at).getTime() < 86_400_000);
+    return {
+      data: {
+        label: `${s.apiKey.slice(0, 8)}…${s.apiKey.slice(-4)}`,
+        enabled: s.enabled,
+        default_model: s.defaultModel,
+        fallbacks: s.fallbacks,
+        usage_24h: {
+          requests: day.length,
+          success: day.filter((l) => l.status >= 200 && l.status < 300).length,
+          prompt_tokens: day.reduce((n, l) => n + (l.promptTokens ?? 0), 0),
+          completion_tokens: day.reduce((n, l) => n + (l.completionTokens ?? 0), 0),
+        },
+        limit: null,
+      },
+    };
+  }
+
+  /** Nhà cung cấp đã kết nối + model mặc định */
+  providers() {
+    return {
+      data: this.ai
+        .list()
+        .filter((p) => p.configured)
+        .map((p) => ({ id: p.id, name: p.label, default_model: p.defaultModel ? `${p.id}/${p.defaultModel}` : null, status: p.lastTest?.ok ? 'ok' : 'error' })),
+    };
+  }
+
+  /** Thống kê theo model trong N giờ gần nhất */
+  usage(hours: number) {
+    const since = Date.now() - Math.min(720, Math.max(1, hours)) * 3_600_000;
+    const rows = this.logs().filter((l) => new Date(l.at).getTime() >= since);
+    const byModel = new Map<string, { model: string; requests: number; errors: number; prompt_tokens: number; completion_tokens: number; avg_ms: number }>();
+    for (const l of rows) {
+      const m = byModel.get(l.model) ?? { model: l.model, requests: 0, errors: 0, prompt_tokens: 0, completion_tokens: 0, avg_ms: 0 };
+      m.avg_ms = (m.avg_ms * m.requests + l.ms) / (m.requests + 1);
+      m.requests += 1;
+      if (l.status < 200 || l.status >= 300) m.errors += 1;
+      m.prompt_tokens += l.promptTokens ?? 0;
+      m.completion_tokens += l.completionTokens ?? 0;
+      byModel.set(l.model, m);
+    }
+    return { hours, total_requests: rows.length, data: [...byModel.values()].sort((a, b) => b.requests - a.requests) };
+  }
+
+  async modelInfo(id: string) {
+    const model = (await this.allModels()).find((m) => m.id === id);
+    if (!model) throw new HttpError(404, `Không tìm thấy model "${id}"`);
+    return { id: model.id, object: 'model', owned_by: model.provider, name: model.name, context_length: model.contextLength, pricing: model.pricing };
+  }
+
+  /** /completions kiểu cũ (prompt -> text): chuyển sang chat completions */
+  async completions(body: Record<string, unknown>): Promise<Response> {
+    if (body.stream) throw badRequest('Endpoint /completions không hỗ trợ stream, hãy dùng /chat/completions');
+    const prompt = Array.isArray(body.prompt) ? body.prompt.join('\n') : String(body.prompt ?? '');
+    if (!prompt) throw badRequest('Thiếu "prompt"');
+    const { prompt: _prompt, ...rest } = body;
+    const res = await this.chat({ ...rest, messages: [{ role: 'user', content: prompt }] }, 'api');
+    const json = (await res.json()) as { id?: string; model?: string; created?: number; usage?: unknown; choices?: { message?: { content?: string }; finish_reason?: string }[] };
+    return new Response(
+      JSON.stringify({
+        id: json.id,
+        object: 'text_completion',
+        created: json.created,
+        model: json.model,
+        choices: (json.choices ?? []).map((c, index) => ({ index, text: c.message?.content ?? '', finish_reason: c.finish_reason })),
+        usage: json.usage,
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
+  /** /embeddings: chuyển thẳng tới nhà cung cấp (OpenAI, Gemini, NVIDIA hỗ trợ) */
+  async embeddings(body: Record<string, unknown>): Promise<Response> {
+    if (typeof body.model !== 'string' || !body.model) throw badRequest('Thiếu "model", vd openai/text-embedding-3-small');
+    const { provider, model } = parseModel(body.model);
+    const cred = this.ai.credentials(provider);
+    if (!cred) throw badRequest(`Chưa kết nối API key cho ${provider}`);
+    const started = Date.now();
+    const res = await fetch(`${cred.baseUrl}/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cred.key}` },
+      body: JSON.stringify({ ...body, model }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    this.record({
+      at: new Date().toISOString(),
+      model: body.model,
+      provider,
+      status: res.status,
+      ms: Date.now() - started,
+      stream: false,
+      source: 'api',
+      promptTokens: null,
+      completionTokens: null,
+      error: res.ok ? null : `embeddings lỗi ${res.status}`,
+      fallbackFrom: null,
+    });
+    return res;
+  }
+
   /**
    * Gọi chat completions qua nhà cung cấp tương ứng. Trả về Response gốc (giữ nguyên stream SSE).
    * Model chính lỗi 429/5xx thì thử lần lượt các model dự phòng.
    */
   async chat(body: Record<string, unknown>, source: GatewayLog['source']): Promise<Response> {
     const primary = this.resolveModel(body.model);
+    body = { ...body, messages: withIdentity(body.messages) };
     const candidates = [primary, ...settings().fallbacks.filter((m) => m !== primary)];
     const stream = Boolean(body.stream);
     let lastError: HttpError | null = null;

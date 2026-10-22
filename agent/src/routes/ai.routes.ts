@@ -33,7 +33,10 @@ export async function aiPanelRoutes(app: FastifyInstance, deps: { ai: AiService;
   app.post('/api/ai/chat', async (req, reply) => pipe(reply, await gateway.chat((req.body ?? {}) as Record<string, unknown>, 'playground')));
 }
 
-/** Endpoint công khai chuẩn OpenAI: http(s)://<panel>/ai/v1 */
+/** Prefix chính của AI Gateway; /ai/v1 giữ lại để app đã cấu hình bản cũ vẫn chạy */
+export const GATEWAY_PREFIXES = ['/zen/v1', '/ai/v1'];
+
+/** Endpoint công khai chuẩn OpenAI: http(s)://<panel>/zen/v1 */
 export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiGatewayService }): Promise<void> {
   const { gateway } = deps;
 
@@ -43,19 +46,30 @@ export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiG
     return reply.code(status).send({ error: { message: err.message, type: status === 401 ? 'authentication_error' : 'zenpanel_gateway_error', code: status } });
   });
 
-  app.addHook('preHandler', async (req) => {
-    if (!gateway.getSettings().enabled) throw new HttpError(503, 'AI Gateway đang tắt. Bật trong ZenPanel → AI Gateway.');
-    if (!gateway.verifyKey(req.headers.authorization ?? (req.headers['x-api-key'] as string | undefined))) {
-      throw new HttpError(401, 'API key của ZenPanel AI Gateway không đúng');
-    }
+  // /health công khai để kiểm tra gateway sống, mọi endpoint khác cần API key tzp_
+  app.get('/health', async () => ({ status: gateway.getSettings().enabled ? 'ok' : 'disabled', name: 'TXAZENPANEL AI Gateway', time: new Date().toISOString() }));
+
+  app.register(async (secured) => {
+    secured.addHook('preHandler', async (req) => {
+      if (!gateway.getSettings().enabled) throw new HttpError(503, 'AI Gateway đang tắt. Bật trong ZenPanel → AI Gateway.');
+      if (!gateway.verifyKey(req.headers.authorization ?? (req.headers['x-api-key'] as string | undefined))) {
+        throw new HttpError(401, 'API key của ZenPanel AI Gateway không đúng (key phải bắt đầu bằng tzp_)');
+      }
+    });
+
+    secured.get('/models', async () => ({
+      object: 'list',
+      data: (await gateway.allModels()).map((m) => ({ id: m.id, object: 'model', owned_by: m.provider, name: m.name, context_length: m.contextLength, pricing: m.pricing })),
+    }));
+    // id có dấu "/" (vd anthropic/claude-x) nên dùng wildcard
+    secured.get('/models/*', async (req) => gateway.modelInfo((req.params as { '*': string })['*']));
+    secured.get('/providers', async () => gateway.providers());
+    secured.get('/key', async () => gateway.keyInfo());
+    secured.get('/usage', async (req) => gateway.usage(Number((req.query as { hours?: string }).hours) || 24));
+    secured.post('/chat/completions', async (req, reply) => pipe(reply, await gateway.chat((req.body ?? {}) as Record<string, unknown>, 'api')));
+    secured.post('/completions', async (req, reply) => pipe(reply, await gateway.completions((req.body ?? {}) as Record<string, unknown>)));
+    secured.post('/embeddings', async (req, reply) => pipe(reply, await gateway.embeddings((req.body ?? {}) as Record<string, unknown>)));
   });
-
-  app.get('/ai/v1/models', async () => ({
-    object: 'list',
-    data: (await gateway.allModels()).map((m) => ({ id: m.id, object: 'model', owned_by: m.provider, name: m.name, context_length: m.contextLength })),
-  }));
-
-  app.post('/ai/v1/chat/completions', async (req, reply) => pipe(reply, await gateway.chat((req.body ?? {}) as Record<string, unknown>, 'api')));
 }
 
 export type { GatewayLog };

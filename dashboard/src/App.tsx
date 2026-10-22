@@ -27,6 +27,7 @@ const Tasks = lazy(() => import('./views/Tasks'));
 const Speedtest = lazy(() => import('./views/Speedtest'));
 const ProcManager = lazy(() => import('./views/ProcManager'));
 const AiGateway = lazy(() => import('./views/AiGateway'));
+const ApiTester = lazy(() => import('./views/ApiTester'));
 
 export function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -60,6 +61,7 @@ export function App() {
                 <Route path="/speedtest" element={<Speedtest />} />
                 <Route path="/procs" element={<ProcManager />} />
                 <Route path="/ai" element={<AiGateway />} />
+                <Route path="/api-tester" element={<ApiTester />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
