@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import {
   Activity,
+  Archive,
   Bot,
   BrainCircuit,
   ChartLine,
@@ -21,7 +22,9 @@ import {
   GitBranch,
   Globe,
   HardDrive,
+  Keyboard,
   KeyRound,
+  Layers,
   LayoutGrid,
   Leaf,
   Link2,
@@ -35,6 +38,8 @@ import {
   RotateCw,
   ScrollText,
   Settings2,
+  Share2,
+  Shield,
   Sparkles,
   Square,
   Table,
@@ -60,7 +65,17 @@ import { DockerMissing } from './Docker';
 const ICONS: Record<string, LucideIcon> = {
   Globe, Newspaper, Database, Zap, Leaf, Table, Table2, Container, Activity, Workflow, GitBranch, HardDrive, FolderOpen, Code, KeyRound, Cloud,
   Clapperboard, ChartLine, ScrollText, Download, RefreshCw, NotebookPen, Wrench, Waypoints, MessagesSquare, Cpu, Bot, BrainCircuit, Monitor,
+  Archive, Keyboard, Share2, Shield, Layers,
 };
+
+export type KernelStore = 'all' | 'windows' | 'linux' | 'docker';
+
+export const KERNEL_STORES = [
+  { id: 'all', label: 'Tất cả kho', icon: '🌐', desc: 'Toàn bộ ứng dụng từ mọi kho nền tảng' },
+  { id: 'windows', label: 'Kho Windows NT', icon: '🪟', desc: 'Ứng dụng & Dịch vụ Native Windows Server / 10 / 11' },
+  { id: 'linux', label: 'Kho Linux Kernel', icon: '🐧', desc: 'Gói công cụ & Daemon tối ưu cho Debian / Ubuntu / CentOS / Alpine' },
+  { id: 'docker', label: 'Kho Docker Container', icon: '🐳', desc: 'Ứng dụng Container hóa đa nhân hệ điều hành' },
+] as const;
 
 const CATEGORIES = [
   { id: 'all', label: 'Tất cả' },
@@ -575,6 +590,8 @@ function N8nWizard({ app, onClose, onDone }: { app: AppView; onClose: () => void
 export default function AppStore() {
   const docker = useApi<DockerInfo>('/api/docker/info');
   const apps = useApi<AppView[]>('/api/apps');
+  const { info } = usePanel();
+  const [kernelStore, setKernelStore] = useState<KernelStore>('all');
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]['id']>('all');
   const [query, setQuery] = useState('');
   const [installing, setInstalling] = useState<AppView | null>(null);
@@ -587,6 +604,9 @@ export default function AppStore() {
   const { runJob } = useJobs();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const isWindowsHost = info?.os.family === 'windows';
+  const isLinuxHost = info?.os.family === 'linux';
 
   useEffect(() => {
     const toInstall = searchParams.get('install');
@@ -602,6 +622,16 @@ export default function AppStore() {
     const q = query.toLowerCase();
     return (apps.data ?? [])
       .filter((a) => {
+        // 1. Lọc theo Kho nhân hệ điều hành (Kernel Storefront)
+        if (kernelStore === 'windows') {
+          if (a.platform !== 'windows') return false;
+        } else if (kernelStore === 'linux') {
+          if (a.platform !== 'linux') return false;
+        } else if (kernelStore === 'docker') {
+          if (a.appType === 'native') return false;
+        }
+
+        // 2. Lọc theo Danh mục chức năng (Category)
         if (category === 'compatible') return a.isCompatible !== false;
         if (category === 'installed') return Boolean(a.installed);
         if (category === 'native') return a.appType === 'native';
@@ -610,7 +640,7 @@ export default function AppStore() {
       })
       .filter((a) => !q || a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q))
       .sort((a, b) => Number(Boolean(b.installed)) - Number(Boolean(a.installed)) || a.name.localeCompare(b.name));
-  }, [apps.data, category, query]);
+  }, [apps.data, kernelStore, category, query]);
 
   const accessApp = apps.data?.find((a) => a.id === access) ?? null;
   const installedCount = (apps.data ?? []).filter((a) => a.installed).length;
@@ -655,6 +685,75 @@ export default function AppStore() {
         <DockerMissing info={docker.data} />
       ) : (
         <>
+          {/* BỘ KHO ỨNG DỤNG THEO TỪNG NHÂN HỆ ĐIỀU HÀNH */}
+          <div className="mb-5 space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span className="font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <Layers className="size-4 text-blue-400" />
+                <span>Kho ứng dụng theo nhân hệ điều hành:</span>
+              </span>
+              {info && (
+                <span className="hidden sm:flex items-center gap-1 text-[11px] text-slate-400">
+                  Máy chủ hiện tại: <b className="text-slate-200">{info.os.name}</b> ({info.os.family === 'windows' ? '🪟 Windows NT' : '🐧 Linux Kernel'})
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {KERNEL_STORES.map((ks) => {
+                const isSelected = kernelStore === ks.id;
+                const isCurrentHostKernel =
+                  (ks.id === 'windows' && isWindowsHost) || (ks.id === 'linux' && isLinuxHost);
+                const count =
+                  ks.id === 'all'
+                    ? (apps.data ?? []).length
+                    : ks.id === 'windows'
+                      ? (apps.data ?? []).filter((a) => a.platform === 'windows').length
+                      : ks.id === 'linux'
+                        ? (apps.data ?? []).filter((a) => a.platform === 'linux').length
+                        : (apps.data ?? []).filter((a) => a.appType !== 'native').length;
+
+                return (
+                  <button
+                    key={ks.id}
+                    type="button"
+                    onClick={() => setKernelStore(ks.id)}
+                    className={cn(
+                      'group relative flex flex-col justify-between rounded-2xl border p-3 text-left transition cursor-pointer',
+                      isSelected
+                        ? 'border-zen-blue bg-zen-blue/15 shadow-lg shadow-zen-blue/10 ring-2 ring-zen-blue/30'
+                        : 'border-slate-800 bg-ink-950/60 hover:border-slate-700 hover:bg-slate-900/40',
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{ks.icon}</span>
+                        <span className={cn('text-xs sm:text-sm font-bold truncate', isSelected ? 'text-white' : 'text-slate-200')}>
+                          {ks.label}
+                        </span>
+                      </div>
+                      <span
+                        className={cn(
+                          'mono rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-bold shrink-0',
+                          isSelected ? 'bg-zen-blue text-white' : 'bg-slate-800 text-slate-400',
+                        )}
+                      >
+                        {count}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-400 line-clamp-1">{ks.desc}</p>
+                    {isCurrentHostKernel && (
+                      <div className="mt-1.5 flex items-center gap-1 text-[10px] font-semibold text-emerald-400">
+                        <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>Khớp nhân VPS của bạn</span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <Tabs value={category} onChange={setCategory} tabs={CATEGORIES.map((c) => ({ id: c.id, label: c.label }))} />
             <SearchInput value={query} onChange={setQuery} placeholder="Tìm ứng dụng..." className="w-full sm:w-64" />
@@ -696,19 +795,30 @@ export default function AppStore() {
                         <p className="mt-1 line-clamp-2 text-sm text-slate-400">{app.description}</p>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
                           {app.appType === 'native' ? (
-                            <span className="inline-flex items-center gap-1 rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-purple-300 border border-purple-500/20">
-                              ⚡ Native {app.platform === 'windows' ? 'Windows' : 'Linux'}
+                            <span className={cn(
+                              'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold border',
+                              app.platform === 'windows'
+                                ? 'bg-blue-500/10 text-blue-300 border-blue-500/20'
+                                : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                            )}>
+                              {app.platform === 'windows' ? '🪟 Windows Native' : '🐧 Linux Native'}
                               {app.requiresGui ? ' (GUI)' : ''}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300 border border-blue-500/20">
-                              🐳 Docker
+                            <span className="inline-flex items-center gap-1 rounded bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-300 border border-indigo-500/20">
+                              🐳 Docker Multi-Arch
                             </span>
                           )}
-                          {app.isCompatible === false && (
+                          {app.isCompatible === false ? (
                             <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 border border-amber-500/20">
                               ⚠️ Không khớp OS
                             </span>
+                          ) : (
+                            (app.platform === info?.os.family || (app.platform === 'windows' && isWindowsHost) || (app.platform === 'linux' && isLinuxHost)) && (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300 border border-emerald-500/20">
+                                ✔ Khớp nhân VPS
+                              </span>
+                            )
                           )}
                         </div>
                       </div>

@@ -310,6 +310,57 @@ export class AppStoreService {
         `;
         await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
         jobLog('✓ Notepad++ đã được cài đặt thành công vào hệ thống Windows');
+      } else if (app.id === 'everything') {
+        jobLog('Đang tải và cài đặt Everything Search silent...');
+        const installerPath = path.join(dir, 'Everything-Setup.exe');
+        const script = `
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $url = "https://www.voidtools.com/Everything-1.4.1.1026.x64-Setup.exe"
+          Invoke-WebRequest -Uri $url -OutFile "${installerPath}" -UseBasicParsing
+          Start-Process -FilePath "${installerPath}" -ArgumentList "/S" -Wait
+          Remove-Item -Path "${installerPath}" -Force -ErrorAction SilentlyContinue
+        `;
+        await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
+        jobLog('✓ Everything Search đã được cài đặt thành công vào hệ thống Windows');
+      } else if (app.id === 'pwsh7') {
+        jobLog('Đang cài đặt PowerShell 7 (Core)...');
+        try {
+          await execAsync(`powershell -NoProfile -Command "winget install Microsoft.PowerShell --silent --accept-source-agreements --accept-package-agreements"`);
+          jobLog('✓ PowerShell 7 đã được cài đặt qua winget');
+        } catch {
+          jobLog('Thử tải gói MSI PowerShell 7 x64 từ GitHub...');
+          const msiPath = path.join(dir, 'pwsh7.msi');
+          const script = `
+            $url = "https://github.com/PowerShell/PowerShell/releases/download/v7.4.5/PowerShell-7.4.5-win-x64.msi"
+            Invoke-WebRequest -Uri $url -OutFile "${msiPath}" -UseBasicParsing
+            Start-Process msiexec.exe -ArgumentList "/i \`"${msiPath}\`" /qn /norestart" -Wait
+            Remove-Item -Path "${msiPath}" -Force -ErrorAction SilentlyContinue
+          `;
+          await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
+          jobLog('✓ PowerShell 7 MSI đã được cài đặt hoàn tất');
+        }
+      } else if (app.id === 'tailscale-win') {
+        jobLog('Đang tải và cài đặt Tailscale VPN cho Windows...');
+        const installerPath = path.join(dir, 'tailscale-setup.exe');
+        const script = `
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe"
+          Invoke-WebRequest -Uri $url -OutFile "${installerPath}" -UseBasicParsing
+          Start-Process -FilePath "${installerPath}" -ArgumentList "/quiet /norestart" -Wait
+          Remove-Item -Path "${installerPath}" -Force -ErrorAction SilentlyContinue
+        `;
+        await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
+        jobLog('✓ Tailscale VPN đã được cài đặt thành công vào hệ thống Windows');
+      } else if (app.id === 'openssh-win') {
+        jobLog('Đang kích hoạt và cấu hình OpenSSH Server trên Windows...');
+        const script = `
+          Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 -ErrorAction SilentlyContinue
+          Start-Service sshd -ErrorAction SilentlyContinue
+          Set-Service -Name sshd -StartupType 'Automatic' -ErrorAction SilentlyContinue
+          New-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -ErrorAction SilentlyContinue
+        `;
+        await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
+        jobLog('✓ OpenSSH Server đã được kích hoạt thành công trên Windows (port 22)');
       }
     } else {
       // Linux
@@ -317,7 +368,23 @@ export class AppStoreService {
       const { promisify } = await import('node:util');
       const execAsync = promisify(exec);
 
-      if (app.id === 'coccoc') {
+      if (app.id === 'btop') {
+        jobLog('Đang cài đặt btop monitor qua package manager...');
+        await execAsync('apt-get update && apt-get install -y btop || (dnf install -y btop || pacman -S --noconfirm btop || apk add btop)');
+        jobLog('✓ btop++ monitor đã được cài đặt thành công!');
+      } else if (app.id === 'fastfetch') {
+        jobLog('Đang cài đặt fastfetch...');
+        await execAsync('apt-get update && apt-get install -y fastfetch || (add-apt-repository -y ppa:zhangsongcui3371/fastfetch && apt-get update && apt-get install -y fastfetch || dnf install -y fastfetch || pacman -S --noconfirm fastfetch)');
+        jobLog('✓ Fastfetch đã được cài đặt thành công!');
+      } else if (app.id === 'fail2ban') {
+        jobLog('Đang cài đặt và kích hoạt Fail2ban...');
+        await execAsync('apt-get update && apt-get install -y fail2ban && systemctl enable --now fail2ban');
+        jobLog('✓ Fail2ban đã hoạt động và đang bảo vệ các cổng mạng');
+      } else if (app.id === 'certbot') {
+        jobLog('Đang cài đặt Certbot (Let\'s Encrypt)...');
+        await execAsync('apt-get update && apt-get install -y certbot');
+        jobLog('✓ Certbot đã được cài đặt thành công!');
+      } else if (app.id === 'coccoc') {
         jobLog('Đang tải gói Cốc Cốc (.deb)...');
         await execAsync('curl -fsSL https://files.coccoc.com/browser/coccoc.deb -o /tmp/coccoc.deb');
         jobLog('Đang cài đặt trình duyệt Cốc Cốc qua dpkg / apt...');
