@@ -13,6 +13,14 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-23',
     highlights: [
       {
+        title: '🔒 Bảo Vệ Khóa Gateway Mặc Định & Chuẩn Hóa Trải Nghiệm Giao Diện',
+        items: [
+          'Bảo vệ Default Gateway Key: Khóa API mặc định của AI Gateway được bảo vệ tuyệt đối, nút xóa được làm mờ và vô hiệu hóa. Khi di chuột vào nút xóa sẽ có thông báo giải thích rõ ràng lý do không thể xóa để giữ kết nối ổn định cho toàn hệ thống.',
+          'Triệt tiêu 100% tooltip mặc định của trình duyệt: Tự động phát hiện và chuyển đổi tất cả thuộc tính title của trình duyệt sang hệ thống Tooltip tùy chỉnh cao cấp của ZenPanel (bo góc, viền kính mờ, hiển thị tức thì, đúng màu sắc chủ đề).',
+          'Loại bỏ hoàn toàn hộp thoại gốc (alert/confirm): Mọi thông báo hay yêu cầu xác nhận trong ZenPanel đều được xử lý qua Modal và Toast hiện đại, tuyệt đối không xuất hiện các popup xám thô sơ của trình duyệt.',
+        ],
+      },
+      {
         title: '🚀 API Tester Chuẩn Postman Siêu Cấp',
         items: [
           'Tab Body chuẩn Postman: Hỗ trợ đầy đủ các chế độ none, form-data, x-www-form-urlencoded, raw, binary. Khi chọn "raw", có ngay dropdown lựa chọn nhanh định dạng (JSON, Text, JavaScript, HTML, XML) kèm nút Beautify/Format JSON thông minh và tự động đồng bộ Content-Type tương ứng.',

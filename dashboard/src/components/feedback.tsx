@@ -1,5 +1,5 @@
 // ZenPanel - Thông báo (toast) và hộp thoại xác nhận dùng chung
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react';
 import { Button, Modal } from './ui';
 
@@ -101,6 +101,30 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
     },
     [toast],
   );
+
+  // Chặn và chuyển hướng triệt để window.alert và window.confirm của trình duyệt sang hệ thống UI tuỳ chỉnh của ZenPanel
+  useEffect(() => {
+    const originalAlert = window.alert;
+    const originalConfirm = window.confirm;
+
+    window.alert = (message?: any) => {
+      toast(String(message ?? ''), 'info');
+    };
+
+    window.confirm = (message?: string) => {
+      void confirm({
+        title: 'Xác nhận',
+        message: message || 'Bạn có chắc chắn muốn tiếp tục?',
+        confirmLabel: 'Đồng ý',
+      });
+      return true;
+    };
+
+    return () => {
+      window.alert = originalAlert;
+      window.confirm = originalConfirm;
+    };
+  }, [toast, confirm]);
 
   const blocked = Boolean(dialog?.typeToConfirm && typed !== dialog.typeToConfirm);
 

@@ -209,6 +209,9 @@ export class AiGatewayService {
   }
 
   deleteApiKey(id: string): void {
+    if (id === 'key_default') {
+      throw badRequest('Khóa mặc định (Default Gateway Key) không thể xoá để đảm bảo hệ thống không bị gián đoạn!');
+    }
     const current = this.getRawApiKeys();
     const next = current.filter((k) => k.id !== id);
     writeJson(KEYS_FILE, next);

@@ -2203,6 +2203,10 @@ function ApiKeysTab({
   };
 
   const handleDelete = (key: GatewayApiKeyView) => {
+    if (key.id === 'key_default') {
+      toast('Khóa mặc định (Default Gateway Key) không thể xoá!', 'error');
+      return;
+    }
     void confirm({
       title: 'Xóa & Thu hồi API Key',
       message: `Bạn có chắc chắn muốn thu hồi API Key "${key.name}"?\nMọi ứng dụng (n8n, Dify, Bot AI...) đang dùng key này sẽ bị ngắt kết nối ngay lập tức!`,
@@ -2330,12 +2334,28 @@ function ApiKeysTab({
                         </label>
                       </td>
                       <td className={cn(td, 'text-right')}>
-                        <IconButton
-                          icon={Trash2}
-                          className="text-red-400 hover:text-red-300"
-                          onClick={() => handleDelete(k)}
-                          title="Thu hồi / Xóa API Key này"
-                        />
+                        {k.id === 'key_default' ? (
+                          <div
+                            className="inline-block"
+                            data-tip="Khóa mặc định (Default Gateway Key) không thể xoá để đảm bảo hệ thống và các dịch vụ cốt lõi không bị mất kết nối"
+                          >
+                            <button
+                              type="button"
+                              disabled
+                              className="inline-flex size-8 items-center justify-center rounded-lg text-slate-600 opacity-25 cursor-not-allowed transition"
+                              aria-label="Khóa mặc định không thể xóa"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <IconButton
+                            icon={Trash2}
+                            className="text-red-400 hover:text-red-300"
+                            onClick={() => handleDelete(k)}
+                            title="Thu hồi / Xóa API Key này"
+                          />
+                        )}
                       </td>
                     </tr>
                   );
