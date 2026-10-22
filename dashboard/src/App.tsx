@@ -8,6 +8,7 @@ import { JobsProvider } from './components/jobs';
 import { TooltipLayer } from './components/TooltipLayer';
 import { WhatsNewProvider } from './components/WhatsNew';
 import { Shell } from './components/layout/Shell';
+import { InAppBrowserGuard } from './components/InAppBrowserGuard';
 import { Spinner } from './components/ui';
 import { Login } from './views/Login';
 
@@ -36,6 +37,7 @@ export function App() {
 
   return (
     <FeedbackProvider>
+      <InAppBrowserGuard />
       <TooltipLayer />
       {!authed ? (
         <Login />
