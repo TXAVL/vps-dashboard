@@ -1,6 +1,6 @@
 // ZenPanel - Web Terminal (xterm.js) nối tới shell của máy chủ qua WebSocket
 // Hỗ trợ dán trực tiếp (Ctrl+V/Menu), bộ công cụ chọn tùy chỉnh, gợi ý thông minh và bảng lệnh mẫu
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -10,6 +10,7 @@ import {
   CornerDownLeft,
   Copy,
   Play,
+  RefreshCw,
   RotateCcw,
   Search,
   Sparkles,
@@ -17,12 +18,14 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { wsUrl } from '../lib/api';
+import { get, wsUrl } from '../lib/api';
 import { usePanel } from '../lib/panel';
 import {
   SHELL_CATALOG,
   pushHistory,
+  setCustomAliases,
   suggest,
+  type CustomAlias,
   type SuggestResult,
 } from '../lib/shellSuggest';
 import { Badge, Button, Modal, SearchInput, StatusDot, cn } from './ui';
@@ -81,6 +84,10 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
   const [hint, setHint] = useState<SuggestState | null>(null);
   const hintRef = useRef<SuggestState | null>(null);
 
+  // Danh sách alias nạp từ ~/.bashrc / Profile
+  const [aliases, setAliases] = useState<CustomAlias[]>([]);
+  const [reloadingAliases, setReloadingAliases] = useState(false);
+
   // Bộ menu tùy chỉnh & thanh công cụ khi bôi đen
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [selectionToolbar, setSelectionToolbar] = useState<SelectionToolbarState | null>(null);
@@ -95,6 +102,27 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
   const termRef = useRef<Terminal | null>(null);
   const sendRef = useRef<(data: string) => void>(() => {});
   const appendLineRef = useRef<(text: string) => void>(() => {});
+
+  // Nạp danh sách alias thực tế từ ~/.bashrc / Profile trên VPS
+  const loadAliases = useCallback(async () => {
+    try {
+      setReloadingAliases(true);
+      const res = await get<{ aliases: CustomAlias[] }>('/api/terminal/aliases');
+      if (res?.aliases) {
+        setCustomAliases(res.aliases);
+        setAliases(res.aliases);
+      }
+    } catch {
+      // bỏ qua nếu lỗi
+    } finally {
+      setReloadingAliases(false);
+    }
+  }, []);
+
+  // Tự động nạp alias khi mở Web Terminal
+  useEffect(() => {
+    loadAliases();
+  }, [loadAliases]);
 
   useEffect(() => {
     if (!host.current) return;
@@ -233,7 +261,16 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
     const input = term.onData((data) => {
       send(data);
       if (data === '\r') {
-        if (line) pushHistory(line);
+        if (line) {
+          pushHistory(line);
+          const low = line.toLowerCase();
+          // Nếu người dùng vừa gõ lệnh source ~/.bashrc hoặc liên quan đến alias/profile -> Tự động nạp lại alias mới
+          if (low.includes('source') || low.includes('.bashrc') || low.includes('.profile') || low.includes('alias')) {
+            setTimeout(() => {
+              loadAliases();
+            }, 800);
+          }
+        }
         line = '';
         setSuggest(null);
         return;
@@ -524,6 +561,22 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
             <kbd className="text-[10px] text-slate-500 font-mono">Ctrl+Space</kbd>
           </button>
 
+          {/* Nạp lại Alias từ .bashrc */}
+          <button
+            onClick={() => {
+              loadAliases();
+              setContextMenu(null);
+            }}
+            className="flex w-full items-center justify-between rounded-xl px-2.5 py-2 transition hover:bg-slate-800/80 hover:text-white"
+            title="Đọc lại các alias mới nhất trong ~/.bashrc và nạp vào auto-complete"
+          >
+            <span className="flex items-center gap-2">
+              <RefreshCw className={cn('size-3.5 text-cyan-400', reloadingAliases && 'animate-spin')} />
+              Nạp lại Alias (.bashrc)
+            </span>
+            <span className="text-[10px] text-cyan-300 font-mono">{aliases.length} alias</span>
+          </button>
+
           {/* Chọn tất cả */}
           <button
             onClick={() => {
@@ -638,6 +691,19 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
           Lệnh mẫu
         </button>
 
+        {/* Nút nạp lại Alias */}
+        <button
+          onClick={() => loadAliases()}
+          className={cn(
+            'flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold transition',
+            aliases.length > 0 ? 'text-cyan-300 hover:bg-cyan-950/50' : 'text-slate-400 hover:bg-slate-800',
+          )}
+          title="Nạp lại alias từ ~/.bashrc hoặc PowerShell Profile"
+        >
+          <RefreshCw className={cn('size-3 text-cyan-400', reloadingAliases && 'animate-spin')} />
+          <span>{aliases.length > 0 ? `${aliases.length} Alias` : 'Nạp Alias'}</span>
+        </button>
+
         <div className="h-3 w-px bg-slate-800" />
 
         <StatusDot tone={status === 'online' ? 'green' : status === 'connecting' ? 'amber' : 'red'} pulse={status === 'online'} />
@@ -657,6 +723,9 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         windows={Boolean(windows)}
+        aliases={aliases}
+        reloadingAliases={reloadingAliases}
+        onReloadAliases={loadAliases}
         onInsert={(cmd) => {
           sendRef.current(cmd);
           appendLineRef.current(cmd);
@@ -678,22 +747,42 @@ function CommandPaletteModal({
   open,
   onClose,
   windows,
+  aliases,
+  reloadingAliases,
+  onReloadAliases,
   onInsert,
   onExecute,
 }: {
   open: boolean;
   onClose: () => void;
   windows: boolean;
+  aliases: CustomAlias[];
+  reloadingAliases: boolean;
+  onReloadAliases: () => Promise<void>;
   onInsert: (cmd: string) => void;
   onExecute: (cmd: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<string>('all');
 
-  const catalog = SHELL_CATALOG.filter((item) => (windows ? item.windows : !item.windows));
+  const baseCatalog = SHELL_CATALOG.filter((item) => (windows ? item.windows : !item.windows));
 
-  const filtered = catalog.filter((item) => {
-    if (category !== 'all' && item.category !== category) return false;
+  // Gộp các alias từ ~/.bashrc vào catalog
+  const aliasItems = aliases.map((a) => ({
+    cmd: a.name,
+    desc: `[Alias từ ${a.source}] ${a.command}`,
+    category: 'alias' as const,
+    rawCmd: a.name,
+  }));
+
+  const allItems = [
+    ...aliasItems,
+    ...baseCatalog.map((c) => ({ ...c, rawCmd: c.cmd })),
+  ];
+
+  const filtered = allItems.filter((item) => {
+    if (category === 'alias' && item.category !== 'alias') return false;
+    if (category !== 'all' && category !== 'alias' && item.category !== category) return false;
     if (!query.trim()) return true;
     const q = query.toLowerCase();
     return item.cmd.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q);
@@ -701,6 +790,7 @@ function CommandPaletteModal({
 
   const categories = [
     { id: 'all', label: 'Tất cả' },
+    { id: 'alias', label: `Alias (.bashrc) [${aliases.length}]` },
     { id: 'shell', label: 'Shell & Môi trường' },
     { id: 'system', label: 'Hệ thống & Dịch vụ' },
     { id: 'docker', label: 'Docker' },
@@ -710,14 +800,27 @@ function CommandPaletteModal({
   ];
 
   return (
-    <Modal open={open} onClose={onClose} title="Bảng gợi ý lệnh có sẵn (Command Palette)" size="lg">
+    <Modal open={open} onClose={onClose} title="Bảng gợi ý lệnh có sẵn & Alias (Command Palette)" size="lg">
       <div className="space-y-4">
-        {/* Tìm kiếm */}
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Tìm lệnh nhanh (vd: source, bashrc, nginx, docker, ram, port, tar...)"
-        />
+        {/* Tìm kiếm & Nút nạp lại */}
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <SearchInput
+              value={query}
+              onChange={setQuery}
+              placeholder="Tìm lệnh hoặc alias (vd: source, bashrc, nginx, docker, ram, port...)"
+            />
+          </div>
+          <button
+            onClick={() => onReloadAliases()}
+            disabled={reloadingAliases}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-800/80 px-3 py-2 text-xs font-semibold text-cyan-300 transition hover:bg-slate-700 hover:text-white disabled:opacity-50"
+            title="Đọc lại danh sách alias mới nhất từ ~/.bashrc"
+          >
+            <RefreshCw className={cn('size-3.5 text-cyan-400', reloadingAliases && 'animate-spin')} />
+            <span className="hidden sm:inline">Nạp lại .bashrc</span>
+          </button>
+        </div>
 
         {/* Danh mục */}
         <div className="flex flex-wrap gap-1.5 border-b border-slate-800 pb-2">
@@ -727,7 +830,11 @@ function CommandPaletteModal({
               onClick={() => setCategory(c.id)}
               className={cn(
                 'rounded-xl px-3 py-1 text-xs font-semibold transition',
-                category === c.id ? 'bg-zen-blue text-white shadow' : 'bg-ink-950/70 text-slate-400 hover:bg-slate-800 hover:text-slate-200',
+                category === c.id
+                  ? c.id === 'alias'
+                    ? 'bg-cyan-600 text-white shadow'
+                    : 'bg-zen-blue text-white shadow'
+                  : 'bg-ink-950/70 text-slate-400 hover:bg-slate-800 hover:text-slate-200',
               )}
             >
               {c.label}
@@ -744,14 +851,25 @@ function CommandPaletteModal({
           ) : (
             filtered.map((item) => (
               <div
-                key={item.cmd}
+                key={`${item.category}-${item.cmd}`}
                 className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-slate-800/80 bg-ink-950/70 p-3.5 transition hover:border-slate-700 hover:bg-ink-900/60"
               >
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-xs font-bold text-emerald-400 select-all">{item.cmd}</span>
-                    <Badge className="text-[10px] px-1.5 py-0" tone={item.category === 'shell' ? 'green' : item.category === 'system' ? 'blue' : 'slate'}>
-                      {item.category}
+                    <Badge
+                      className="text-[10px] px-1.5 py-0"
+                      tone={
+                        item.category === 'alias'
+                          ? 'blue'
+                          : item.category === 'shell'
+                            ? 'green'
+                            : item.category === 'system'
+                              ? 'blue'
+                              : 'slate'
+                      }
+                    >
+                      {item.category === 'alias' ? 'alias (.bashrc)' : item.category}
                     </Badge>
                   </div>
                   <p className="text-xs text-slate-400">{item.desc}</p>

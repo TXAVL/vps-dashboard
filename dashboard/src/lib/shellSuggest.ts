@@ -118,16 +118,33 @@ export function pushHistory(command: string): void {
   }
 }
 
+export interface CustomAlias {
+  name: string;
+  command: string;
+  source: string;
+}
+
+let loadedCustomAliases: CustomAlias[] = [];
+
+export function setCustomAliases(aliases: CustomAlias[]): void {
+  loadedCustomAliases = aliases;
+}
+
+export function getCustomAliases(): CustomAlias[] {
+  return loadedCustomAliases;
+}
+
 export interface SuggestResult {
   cmd: string;
   desc: string;
-  category: 'history' | 'shell' | 'system' | 'docker' | 'web' | 'net' | 'files';
+  category: 'history' | 'alias' | 'shell' | 'system' | 'docker' | 'web' | 'net' | 'files';
 }
 
 /** Gợi ý cho dòng đang gõ:
- * 1. Khớp từ đầu (prefix match)
- * 2. Khớp từ trong chuỗi (word / substring match, vd: gõ "bashrc" ra "source ~/.bashrc")
- * 3. Tìm theo cả phần mô tả tiếng Việt
+ * 1. Alias từ ~/.bashrc / Profile (ưu tiên cao nhất)
+ * 2. Lịch sử đã gõ (khớp tiền tố)
+ * 3. Thư viện lệnh (khớp tiền tố & từ khoá)
+ * 4. Tìm theo cả phần mô tả tiếng Việt
  */
 export function suggest(line: string, windows: boolean, limit = 8): SuggestResult[] {
   if (!line.trim() || line.length < 1) return [];
@@ -138,7 +155,21 @@ export function suggest(line: string, windows: boolean, limit = 8): SuggestResul
   const results: SuggestResult[] = [];
   const seen = new Set<string>();
 
-  // 1. Lịch sử đã gõ (khớp tiền tố)
+  // 1. Alias đọc trực tiếp từ ~/.bashrc hoặc PowerShell Profile
+  for (const a of loadedCustomAliases) {
+    if (results.length >= limit) break;
+    const aName = a.name.toLowerCase();
+    if (aName.startsWith(lower) && !seen.has(aName)) {
+      seen.add(aName);
+      results.push({
+        cmd: a.name,
+        desc: `Alias (${a.source}): ${a.command}`,
+        category: 'alias',
+      });
+    }
+  }
+
+  // 2. Lịch sử đã gõ (khớp tiền tố)
   for (const h of history) {
     if (results.length >= limit) break;
     const hLow = h.toLowerCase();
@@ -148,7 +179,7 @@ export function suggest(line: string, windows: boolean, limit = 8): SuggestResul
     }
   }
 
-  // 2. Thư viện lệnh: Khớp chính xác tiền tố của lệnh (cmd.startsWith)
+  // 3. Thư viện lệnh: Khớp chính xác tiền tố của lệnh (cmd.startsWith)
   for (const item of catalog) {
     if (results.length >= limit) break;
     const k = item.cmd.toLowerCase();
@@ -158,7 +189,7 @@ export function suggest(line: string, windows: boolean, limit = 8): SuggestResul
     }
   }
 
-  // 3. Thư viện lệnh: Khớp từ khoá bên trong lệnh (k.includes)
+  // 4. Thư viện lệnh: Khớp từ khoá bên trong lệnh (k.includes)
   for (const item of catalog) {
     if (results.length >= limit) break;
     const k = item.cmd.toLowerCase();
@@ -168,7 +199,7 @@ export function suggest(line: string, windows: boolean, limit = 8): SuggestResul
     }
   }
 
-  // 4. Khớp theo mô tả tiếng Việt
+  // 5. Khớp theo mô tả tiếng Việt
   for (const item of catalog) {
     if (results.length >= limit) break;
     const k = item.cmd.toLowerCase();

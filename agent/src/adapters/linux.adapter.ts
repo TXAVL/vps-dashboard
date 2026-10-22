@@ -631,8 +631,8 @@ export class LinuxAdapter implements OSAdapter {
   }
 
   defaultShell(): ShellCommand {
-    if (existsSync('/bin/bash')) return { file: '/bin/bash', args: ['-l'], label: 'Bash' };
-    if (existsSync('/bin/zsh')) return { file: '/bin/zsh', args: ['-l'], label: 'Zsh' };
+    if (existsSync('/bin/bash')) return { file: '/bin/bash', args: ['-l', '-i'], label: 'Bash' };
+    if (existsSync('/bin/zsh')) return { file: '/bin/zsh', args: ['-l', '-i'], label: 'Zsh' };
     return { file: '/bin/sh', args: ['-l'], label: 'sh' };
   }
 

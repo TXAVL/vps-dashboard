@@ -10,6 +10,7 @@ import { badRequest, HttpError } from '../core/validate.js';
 import type { AiService } from '../services/ai.service.js';
 import type { SpeedtestService } from '../services/speedtest.service.js';
 import type { TaskService } from '../services/task.service.js';
+import { listShellAliases, saveShellAlias } from '../services/terminal.service.js';
 import type { UpdateService } from '../services/update.service.js';
 
 let publicIpCache: { at: number; ipv4: string | null; ipv6: string | null; reverseDns: string | null } | null = null;
@@ -121,5 +122,12 @@ export async function panelRoutes(
       addresses: (addrs ?? []).map((a) => ({ address: a.address, family: a.family, cidr: a.cidr })),
     }));
     return { publicIpv4: publicIpCache.ipv4, publicIpv6: publicIpCache.ipv6, reverseDns: publicIpCache.reverseDns, hostname: os.hostname(), interfaces };
+  });
+
+  // ------------------------------------------------------------ Shell Aliases (.bashrc / Profile)
+  app.get('/api/terminal/aliases', async () => ({ aliases: await listShellAliases() }));
+  app.post('/api/terminal/aliases', async (req) => {
+    const body = (req.body ?? {}) as { name?: string; command?: string };
+    return saveShellAlias(String(body.name ?? ''), String(body.command ?? ''));
   });
 }
