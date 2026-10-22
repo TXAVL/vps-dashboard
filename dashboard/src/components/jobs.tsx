@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Copy, ListTodo, Loader2, Sparkles, Terminal, XCircle } from 'lucide-react';
-import { get } from '../lib/api';
+import { Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Copy, ListTodo, Loader2, Sparkles, Terminal, Trash2, XCircle } from 'lucide-react';
+import { del, get } from '../lib/api';
 import { formatDate, formatDuration, formatRelative } from '../lib/format';
 import type { Job } from '../lib/types';
 import { useFeedback } from './feedback';
@@ -407,14 +407,48 @@ export function JobsButton() {
   const [open, setOpen] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const { openJob } = useJobs();
+  const { toast, confirm } = useFeedback();
   const running = jobs.filter((j) => j.status === 'running').length;
+  const finishedCount = jobs.filter((j) => j.status !== 'running').length;
+
+  const reloadJobs = useCallback(() => {
+    get<Job[]>('/api/jobs').then(setJobs).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
-    const load = () => get<Job[]>('/api/jobs').then(setJobs).catch(() => undefined);
-    void load();
-    const timer = setInterval(load, running ? 2000 : 10000);
+    reloadJobs();
+    const timer = setInterval(reloadJobs, running ? 2000 : 10000);
     return () => clearInterval(timer);
-  }, [running]);
+  }, [reloadJobs, running]);
+
+  const clearFinished = async () => {
+    if (finishedCount === 0) return;
+    const ok = await confirm({
+      title: 'Xóa tác vụ đã hoàn tất',
+      message: `Bạn có muốn xóa ${finishedCount} tác vụ nền đã hoàn tất khỏi danh sách?`,
+      confirmLabel: 'Xóa tác vụ',
+      danger: false,
+    });
+    if (!ok) return;
+    try {
+      const next = await del<Job[]>('/api/jobs');
+      setJobs(next);
+      toast(`Đã xóa ${finishedCount} tác vụ nền đã hoàn tất`, 'success');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  };
+
+  const deleteSingleJob = async (e: React.MouseEvent, id: string, title: string) => {
+    e.stopPropagation();
+    try {
+      await del(`/api/jobs/${id}`);
+      setJobs((prev) => prev.filter((j) => j.id !== id));
+      toast(`Đã xóa tác vụ "${title}"`, 'success');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  };
 
   return (
     <>
@@ -443,8 +477,21 @@ export function JobsButton() {
           </div>
         }
         footer={
-          <div className="flex w-full items-center justify-between">
-            <span className="text-xs text-slate-500">{jobs.length} tác vụ gần đây</span>
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">{jobs.length} tác vụ ({finishedCount} đã hoàn tất)</span>
+              {finishedCount > 0 && (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  icon={Trash2}
+                  onClick={clearFinished}
+                  className="text-slate-400 hover:text-red-400"
+                >
+                  Xóa các tác vụ đã hoàn thành
+                </Button>
+              )}
+            </div>
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
               Đóng
             </Button>
@@ -455,15 +502,27 @@ export function JobsButton() {
           <EmptyState icon={ListTodo} title="Chưa có tác vụ nào" description="Log cài ứng dụng, pull image, cài web server, cập nhật panel sẽ hiện ở đây." />
         ) : (
           <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1">
+            {finishedCount > 0 && (
+              <div className="flex justify-end pb-1">
+                <button
+                  type="button"
+                  onClick={clearFinished}
+                  className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-red-400 transition font-medium px-2 py-1 rounded-lg hover:bg-red-950/20"
+                >
+                  <Trash2 className="size-3.5" />
+                  <span>Xóa {finishedCount} tác vụ đã hoàn thành</span>
+                </button>
+              </div>
+            )}
             {jobs.map((job) => (
-              <button
+              <div
                 key={job.id}
                 onClick={() => {
                   setOpen(false);
                   openJob(job.id);
                 }}
                 className={cn(
-                  'group flex w-full items-start sm:items-center gap-3 rounded-xl border border-slate-700/50 bg-ink-950/60 p-3 sm:px-4 sm:py-3 text-left transition hover:border-zen-blue/60 hover:bg-ink-900/90',
+                  'group flex w-full items-start sm:items-center gap-3 rounded-xl border border-slate-700/50 bg-ink-950/60 p-3 sm:px-4 sm:py-3 text-left transition hover:border-zen-blue/60 hover:bg-ink-900/90 cursor-pointer',
                 )}
               >
                 <div className="mt-0.5 sm:mt-0 shrink-0">{statusIcon[job.status]}</div>
@@ -486,12 +545,22 @@ export function JobsButton() {
                     </span>
                   )}
                 </div>
-                <div className="shrink-0 self-start sm:self-center">
+                <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
                   <Badge tone={job.status === 'success' ? 'green' : job.status === 'error' ? 'red' : 'blue'}>
                     {job.status === 'success' ? 'Xong' : job.status === 'error' ? 'Lỗi' : 'Đang chạy'}
                   </Badge>
+                  {job.status !== 'running' && (
+                    <button
+                      type="button"
+                      title="Xóa tác vụ này"
+                      onClick={(e) => deleteSingleJob(e, job.id, job.title)}
+                      className="p-1 rounded text-slate-500 hover:text-red-400 hover:bg-red-950/30 transition opacity-60 group-hover:opacity-100"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  )}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}

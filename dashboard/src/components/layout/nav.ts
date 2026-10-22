@@ -58,7 +58,7 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: 'Hệ thống',
-    items: [{ to: '/settings', label: 'Cài đặt', icon: Cog, description: 'Tài khoản, tunnel, thông tin agent' }],
+    items: [{ to: '/settings', label: 'Cài đặt', icon: Cog, description: 'Giao diện & màu sắc, tài khoản, tunnel, thông tin agent' }],
   },
 ];
 

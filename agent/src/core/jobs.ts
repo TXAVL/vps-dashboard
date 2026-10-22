@@ -123,3 +123,18 @@ export function listJobs(): JobView[] {
 export function getJob(id: string): JobView | null {
   return jobs.find((job) => job.id === id)?.view(true) ?? null;
 }
+
+export function clearCompletedJobs(): void {
+  const running = jobs.filter((job) => job.status === 'running');
+  jobs.length = 0;
+  jobs.push(...running);
+}
+
+export function deleteJob(id: string): boolean {
+  const idx = jobs.findIndex((j) => j.id === id);
+  if (idx !== -1 && jobs[idx].status !== 'running') {
+    jobs.splice(idx, 1);
+    return true;
+  }
+  return false;
+}

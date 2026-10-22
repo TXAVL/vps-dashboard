@@ -4,7 +4,7 @@ import os from 'node:os';
 import type { FastifyInstance } from 'fastify';
 import type { PowerAction } from '../adapters/base.adapter.js';
 import type { AppContext } from '../core/context.js';
-import { getJob, listJobs } from '../core/jobs.js';
+import { clearCompletedJobs, deleteJob, getJob, listJobs } from '../core/jobs.js';
 import { getPrefs, updatePrefs, type PanelPrefs } from '../core/prefs.js';
 import { badRequest, HttpError } from '../core/validate.js';
 import type { AiService } from '../services/ai.service.js';
@@ -54,6 +54,15 @@ export async function panelRoutes(
     const job = getJob((req.params as { id: string }).id);
     if (!job) throw new HttpError(404, 'Không tìm thấy tác vụ (log chỉ giữ cho 40 tác vụ gần nhất)');
     return job;
+  });
+  app.delete('/api/jobs', async () => {
+    clearCompletedJobs();
+    return listJobs();
+  });
+  app.delete('/api/jobs/:id', async (req) => {
+    const ok = deleteJob((req.params as { id: string }).id);
+    if (!ok) throw badRequest('Không thể xóa tác vụ (tác vụ không tồn tại hoặc đang chạy)');
+    return { ok: true };
   });
 
   // ------------------------------------------------------------ Tuỳ chọn

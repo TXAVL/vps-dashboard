@@ -11,6 +11,7 @@ import { useWhatsNew } from '../WhatsNew';
 import { TerminalPanel } from '../TerminalPanel';
 import { CopyButton, StatusDot, cn } from '../ui';
 import { ALL_NAV, NAV_SECTIONS } from './nav';
+import { ThemePicker } from './ThemePicker';
 import { WindowMockup } from './WindowMockup';
 
 function Logo() {
@@ -247,6 +248,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <StatusDot tone={connected ? 'green' : 'red'} pulse={connected} />
           </span>
           <ModeToggle mode={mode} onChange={setMode} />
+          <ThemePicker />
           <JobsButton />
           <button
             onClick={() => setToken(null)}
