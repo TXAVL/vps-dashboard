@@ -64,6 +64,68 @@ interface StoredKey {
   key: string;
   savedAt: string;
   lastTest: { ok: boolean; at: string; message: string } | null;
+  /** Model mặc định khi gọi nhà cung cấp này (chọn trong danh sách model đã tải) */
+  defaultModel?: string | null;
+}
+
+export interface AiModel {
+  id: string;
+  name: string;
+  contextLength: number | null;
+  /** USD / 1 triệu token (chỉ OpenRouter công khai giá qua API) */
+  pricing: { prompt: number; completion: number } | null;
+  description: string;
+}
+
+const modelCache = new Map<AiProviderId, { at: number; models: AiModel[] }>();
+
+const bearer = (key: string) => ({ Authorization: `Bearer ${key}` });
+
+/** Tải danh sách model từ API của từng nhà cung cấp, chuẩn hoá về cùng 1 dạng */
+async function fetchModels(id: AiProviderId, key: string): Promise<AiModel[]> {
+  const get = async <T,>(url: string, headers: Record<string, string> = {}) => {
+    const res = await fetch(url, { headers, signal: AbortSignal.timeout(20_000) });
+    if (res.status === 401 || res.status === 403) throw badRequest('API key sai hoặc không có quyền liệt kê model');
+    if (!res.ok) throw new HttpError(502, `Nhà cung cấp trả về lỗi ${res.status} khi tải danh sách model`);
+    return (await res.json()) as T;
+  };
+  const plain = (ids: string[]) => ids.map((m) => ({ id: m, name: m, contextLength: null, pricing: null, description: '' }));
+  switch (id) {
+    case 'openai': {
+      const data = await get<{ data: { id: string }[] }>('https://api.openai.com/v1/models', bearer(key));
+      // Bỏ các model không dùng cho chat (embedding, audio, ảnh, moderation...)
+      return plain(data.data.map((m) => m.id).filter((m) => /^(gpt|o\d|chatgpt)/.test(m) && !/(audio|realtime|transcribe|tts|image|search)/.test(m)).sort());
+    }
+    case 'anthropic': {
+      const data = await get<{ data: { id: string; display_name: string }[] }>('https://api.anthropic.com/v1/models?limit=100', { 'x-api-key': key, 'anthropic-version': '2023-06-01' });
+      return data.data.map((m) => ({ id: m.id, name: m.display_name, contextLength: null, pricing: null, description: '' }));
+    }
+    case 'gemini': {
+      const data = await get<{ models: { name: string; displayName: string; description?: string; inputTokenLimit?: number; supportedGenerationMethods?: string[] }[] }>(
+        `https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=${encodeURIComponent(key)}`,
+      );
+      return data.models
+        .filter((m) => m.supportedGenerationMethods?.includes('generateContent'))
+        .map((m) => ({ id: m.name.replace(/^models\//, ''), name: m.displayName, contextLength: m.inputTokenLimit ?? null, pricing: null, description: m.description ?? '' }));
+    }
+    case 'openrouter': {
+      const data = await get<{ data: { id: string; name: string; description?: string; context_length?: number; pricing?: { prompt: string; completion: string } }[] }>(
+        'https://openrouter.ai/api/v1/models',
+        bearer(key),
+      );
+      return data.data.map((m) => ({
+        id: m.id,
+        name: m.name,
+        contextLength: m.context_length ?? null,
+        pricing: m.pricing ? { prompt: Number(m.pricing.prompt) * 1e6, completion: Number(m.pricing.completion) * 1e6 } : null,
+        description: m.description ?? '',
+      }));
+    }
+    case 'nvidia': {
+      const data = await get<{ data: { id: string }[] }>('https://integrate.api.nvidia.com/v1/models', bearer(key));
+      return plain(data.data.map((m) => m.id).sort());
+    }
+  }
 }
 
 const FILE = 'ai-keys.json';
@@ -83,7 +145,14 @@ export class AiService {
     const stored = load();
     return AI_PROVIDERS.map(({ test: _test, ...def }) => {
       const item = stored[def.id];
-      return { ...def, configured: Boolean(item), masked: item ? mask(item.key) : null, savedAt: item?.savedAt ?? null, lastTest: item?.lastTest ?? null };
+      return {
+        ...def,
+        configured: Boolean(item),
+        masked: item ? mask(item.key) : null,
+        savedAt: item?.savedAt ?? null,
+        lastTest: item?.lastTest ?? null,
+        defaultModel: item?.defaultModel ?? null,
+      };
     });
   }
 
@@ -92,7 +161,8 @@ export class AiService {
     const value = typeof key === 'string' ? key.trim() : '';
     if (value.length < 10 || /\s/.test(value)) throw badRequest('API key không hợp lệ');
     const stored = load();
-    stored[def.id] = { key: value, savedAt: new Date().toISOString(), lastTest: null };
+    stored[def.id] = { key: value, savedAt: new Date().toISOString(), lastTest: null, defaultModel: stored[def.id]?.defaultModel ?? null };
+    modelCache.delete(def.id);
     writeJson(FILE, stored);
     await this.test(id).catch(() => undefined);
   }
@@ -121,6 +191,34 @@ export class AiService {
     stored[def.id] = { ...item, lastTest: { ...result, at: new Date().toISOString() } };
     writeJson(FILE, stored);
     return result;
+  }
+
+  /** Danh sách model của nhà cung cấp (cache 30 phút) */
+  async models(id: string, refresh = false): Promise<AiModel[]> {
+    const def = provider(id);
+    const item = load()[def.id];
+    if (!item) throw badRequest('Chưa kết nối API key cho nhà cung cấp này');
+    const cached = modelCache.get(def.id);
+    if (cached && !refresh && Date.now() - cached.at < 30 * 60_000) return cached.models;
+    const models = await fetchModels(def.id, item.key);
+    modelCache.set(def.id, { at: Date.now(), models });
+    return models;
+  }
+
+  setDefaultModel(id: string, model: string | null): void {
+    const def = provider(id);
+    const stored = load();
+    const item = stored[def.id];
+    if (!item) throw badRequest('Chưa kết nối API key cho nhà cung cấp này');
+    stored[def.id] = { ...item, defaultModel: model?.trim() || null };
+    writeJson(FILE, stored);
+  }
+
+  /** Key + model mặc định của 1 nhà cung cấp (dùng cho AI Gateway) */
+  credentials(id: string): { key: string; baseUrl: string; defaultModel: string | null } | null {
+    const def = AI_PROVIDERS.find((p) => p.id === id);
+    const item = def ? load()[def.id] : undefined;
+    return def && item ? { key: item.key, baseUrl: def.baseUrl, defaultModel: item.defaultModel ?? null } : null;
   }
 
   /** Key + endpoint để bơm vào docker-compose của các app AI */

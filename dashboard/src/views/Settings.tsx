@@ -1,6 +1,6 @@
 // ZenPanel - Cài đặt: tài khoản quản trị, Cloudflare Tunnel, thông tin agent
 import { useEffect, useState, type FormEvent } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import {
   Bot,
   CalendarClock,
@@ -35,12 +35,12 @@ import {
 import { useJobs } from '../components/jobs';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Notice, PageHeader, Select, Spinner, StatusDot, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
-import { del, get, post, put, setToken } from '../lib/api';
+import { del, get, post, setToken } from '../lib/api';
 import { formatBytes, formatDate, formatDuration, formatRate, formatRelative } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
 import { PASSWORD_RULES, RANDOM_DEFAULT_LENGTH, RANDOM_MAX_LENGTH, RANDOM_MIN_LENGTH } from '../lib/password';
-import type { AiProvider, Job, LoginRecord, NetworkInfo, PanelPrefs, RemoteVersion, VersionPackage } from '../lib/types';
+import type { Job, LoginRecord, NetworkInfo, PanelPrefs, RemoteVersion, VersionPackage } from '../lib/types';
 
 type Mode = 'random' | 'custom';
 
@@ -669,100 +669,15 @@ function SessionsCard() {
 }
 
 function AiCard() {
-  const providers = useApi<AiProvider[]>('/api/ai/providers');
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState<string | null>(null);
-  const { confirm, run, toast } = useFeedback();
-
-  const save = async (p: AiProvider) => {
-    const key = drafts[p.id]?.trim();
-    if (!key) return;
-    setBusy(p.id);
-    const list = await run(() => put<AiProvider[]>(`/api/ai/providers/${p.id}`, { key }));
-    setBusy(null);
-    if (!list) return;
-    providers.setData(list);
-    setDrafts({ ...drafts, [p.id]: '' });
-    const saved = list.find((x) => x.id === p.id);
-    toast(saved?.lastTest?.ok ? `${p.label}: key hợp lệ, đã lưu` : `${p.label}: đã lưu nhưng ${saved?.lastTest?.message ?? 'chưa kiểm tra được'}`, saved?.lastTest?.ok ? 'success' : 'error');
-  };
-
-  const test = async (p: AiProvider) => {
-    setBusy(p.id);
-    const result = await run(() => post<{ ok: boolean; message: string }>(`/api/ai/providers/${p.id}/test`));
-    setBusy(null);
-    if (result) toast(`${p.label}: ${result.message}`, result.ok ? 'success' : 'error');
-    await providers.reload();
-  };
-
-  const remove = async (p: AiProvider) => {
-    if (!(await confirm({ title: `Xoá key ${p.label}`, message: 'Các app AI đang dùng key này cần "Cấu hình lại" để gỡ key khỏi container.', danger: true, confirmLabel: 'Xoá key' }))) return;
-    const list = await run(() => del<AiProvider[]>(`/api/ai/providers/${p.id}`), 'Đã xoá API key');
-    if (list) providers.setData(list);
-  };
-
   return (
-    <div className="space-y-4">
-      <Notice icon={Sparkles}>
-        Lưu API key 1 lần, các app AI trong App Store (AI Gateway, Open WebUI...) tự dùng chung. Key được lưu trên VPS, chỉ hiện 6 ký tự đầu và 4 ký tự cuối. Đổi key xong
-        hãy vào App Store bấm <b>Cấu hình lại</b> cho các app AI.
-      </Notice>
-      {!providers.data ? (
-        <Spinner />
-      ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {providers.data.map((p) => (
-            <Card
-              key={p.id}
-              title={p.label}
-              icon={Bot}
-              actions={
-                p.configured ? (
-                  <Badge tone={p.lastTest?.ok ? 'green' : p.lastTest ? 'red' : 'amber'}>{p.lastTest?.ok ? 'Hoạt động' : p.lastTest ? 'Lỗi' : 'Chưa kiểm tra'}</Badge>
-                ) : (
-                  <Badge>Chưa có key</Badge>
-                )
-              }
-            >
-              <div className="space-y-3 text-sm">
-                {p.configured && (
-                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-700/50 bg-ink-950/60 px-3 py-2">
-                    <KeyRound className="size-4 text-slate-500" />
-                    <span className="mono flex-1 text-slate-300">{p.masked}</span>
-                    <Button size="xs" variant="soft" loading={busy === p.id} onClick={() => void test(p)}>
-                      Kiểm tra
-                    </Button>
-                    <IconButton icon={Trash2} title="Xoá key" className="hover:text-zen-red" onClick={() => void remove(p)} />
-                  </div>
-                )}
-                {p.lastTest && !p.lastTest.ok && <p className="text-xs text-red-300">{p.lastTest.message}</p>}
-                <div className="flex gap-2">
-                  <input
-                    className="input mono"
-                    type="password"
-                    autoComplete="off"
-                    placeholder={p.configured ? 'Nhập key mới để thay thế' : p.keyHint}
-                    value={drafts[p.id] ?? ''}
-                    onChange={(e) => setDrafts({ ...drafts, [p.id]: e.target.value })}
-                  />
-                  <Button variant="primary" icon={Save} loading={busy === p.id} disabled={!drafts[p.id]?.trim()} onClick={() => void save(p)}>
-                    Lưu
-                  </Button>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-                  <span>
-                    Endpoint OpenAI-compatible: <code className="mono text-slate-400">{p.baseUrl}</code>
-                  </span>
-                  <a href={p.keyUrl} target="_blank" rel="noreferrer" className="font-semibold text-blue-300 hover:underline">
-                    Lấy API key →
-                  </a>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
+    <Card title="AI đã chuyển sang trang AI Gateway" icon={Bot}>
+      <p className="mb-4 text-sm text-slate-400">Kết nối API key, tải danh sách model, chọn model mặc định, playground và định tuyến dự phòng nằm trong trang AI Gateway.</p>
+      <Link to="/ai">
+        <Button variant="primary" icon={Sparkles}>
+          Mở AI Gateway
+        </Button>
+      </Link>
+    </Card>
   );
 }
 

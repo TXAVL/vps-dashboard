@@ -320,6 +320,7 @@ export interface AiProvider {
   masked: string | null;
   savedAt: string | null;
   lastTest: { ok: boolean; at: string; message: string } | null;
+  defaultModel: string | null;
 }
 
 export interface Stack {

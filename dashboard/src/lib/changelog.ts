@@ -12,6 +12,20 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-22',
     highlights: [
       {
+        title: 'AI Gateway (giống OpenRouter / 9router)',
+        items: [
+          'Trang AI Gateway riêng: 1 endpoint chuẩn OpenAI /ai/v1 dùng chung cho ChatGPT, Claude, Gemini, OpenRouter, NVIDIA',
+          'Kết nối API key xong tự tải danh sách model, chọn model mặc định ngay trong dropdown',
+          'Kho model: tìm kiếm, lọc theo nhà cung cấp, context, giá input/output, chỉ model miễn phí',
+          'Playground chat stream realtime, định tuyến model mặc định + tối đa 5 model dự phòng khi lỗi 429/5xx',
+          'Nhật ký request, thống kê 24h, code mẫu cURL / Python / Node.js / n8n',
+        ],
+      },
+      {
+        title: 'Terminal',
+        items: ['Gợi ý lệnh khi gõ (lịch sử + thư viện lệnh Linux/Windows/Docker/zenpanel): Tab để điền, ↑↓ chọn, Esc ẩn'],
+      },
+      {
         title: 'Ứng dụng chạy nền (thay PM2)',
         items: [
           'Chạy bot Discord/Telegram, worker, API Node.js/Python 24/24 ngay trong ZenPanel',

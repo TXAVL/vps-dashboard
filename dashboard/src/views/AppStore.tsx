@@ -158,8 +158,8 @@ function InstallModal({ app, onClose, onInstalled }: { app: AppView; onClose: ()
         {app.usesAiKeys && (
           <Notice icon={Sparkles}>
             App này dùng các API key AI đã lưu trong{' '}
-            <Link to="/settings?tab=ai" className="font-semibold text-blue-300 underline">
-              Cài đặt → AI
+            <Link to="/ai" className="font-semibold text-blue-300 underline">
+              AI Gateway
             </Link>
             . Thêm key trước khi cài, hoặc thêm sau rồi bấm "Cấu hình lại".
           </Notice>
@@ -476,8 +476,8 @@ function N8nWizard({ app, onClose, onDone }: { app: AppView; onClose: () => void
           <ol className="list-decimal space-y-1.5 pl-5">
             <li>
               Lưu API key ChatGPT / Claude / Gemini / OpenRouter / NVIDIA trong{' '}
-              <Link to="/settings?tab=ai" className="text-blue-300 underline">
-                Cài đặt → AI
+              <Link to="/ai" className="text-blue-300 underline">
+                AI Gateway
               </Link>
               .
             </li>
@@ -596,8 +596,8 @@ export default function AppStore() {
             <div className="mb-4">
               <Notice icon={Sparkles}>
                 Lưu API key của NVIDIA, OpenRouter, ChatGPT, Gemini, Claude một lần trong{' '}
-                <Link to="/settings?tab=ai" className="font-semibold text-blue-300 underline">
-                  Cài đặt → AI
+                <Link to="/ai" className="font-semibold text-blue-300 underline">
+                  AI Gateway
                 </Link>
                 , các app AI sẽ tự dùng chung. Cài <b>AI Gateway</b> để có 1 endpoint chuẩn OpenAI cho mọi model, giống OpenRouter nhưng tự host.
               </Notice>
