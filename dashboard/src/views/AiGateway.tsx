@@ -16,6 +16,8 @@ import {
   Clock,
   Copy,
   Download,
+  Eye,
+  EyeOff,
   KeyRound,
   Layers,
   ListOrdered,
@@ -38,7 +40,7 @@ import {
   X,
 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
-import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Secret, Select, Spinner, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
+import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Select, Spinner, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
 import { del, get, getToken, post, put } from '../lib/api';
 import { formatRelative } from '../lib/format';
 import { useApi } from '../lib/hooks';
@@ -521,12 +523,48 @@ function ProviderCard({ p, onChanged }: { p: AiProvider; onChanged: (list: AiPro
   );
 }
 
-function ProvidersTab({ providers, setProviders }: { providers: AiProvider[]; setProviders: (l: AiProvider[]) => void }) {
+function ProvidersTab({
+  providers,
+  setProviders,
+  gateway,
+  onGoOverview,
+}: {
+  providers: AiProvider[];
+  setProviders: (l: AiProvider[]) => void;
+  gateway: GatewaySettings;
+  onGoOverview: () => void;
+}) {
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {providers.map((p) => (
-        <ProviderCard key={p.id} p={p} onChanged={setProviders} />
-      ))}
+    <div className="space-y-4">
+      {/* Banner trợ giúp tìm Gateway Key của ZenPanel */}
+      <div className="rounded-2xl border border-indigo-500/40 bg-gradient-to-r from-indigo-950/60 via-slate-900 to-slate-900 p-4 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600/30 text-xl ring-1 ring-indigo-400/30">
+            🔑
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="font-bold text-white text-sm">Bạn đang tìm Gateway Key của ZenPanel?</h4>
+              <Badge tone="blue">API Key cho n8n & App ngoài</Badge>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Để kết nối n8n, Flowise, NextChat... với ZenPanel, hãy sao chép <b>Gateway Key</b> bên phải hoặc xem chi tiết cấu hình tại tab Tổng quan.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <CopyButton value={gateway.apiKey} label="Sao chép Gateway Key" className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-3 py-1.5 rounded-lg shadow-md" />
+          <Button size="xs" variant="secondary" onClick={onGoOverview}>
+            Xem Endpoint & Cấu hình →
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {providers.map((p) => (
+          <ProviderCard key={p.id} p={p} onChanged={setProviders} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -2076,6 +2114,23 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
     n8n: `=== CÁCH KẾT NỐI N8N VỚI ZENPANEL AI GATEWAY ===\n\n1. Tạo Credential trong n8n:\n   - Menu trái: Credentials → Add Credential → Chọn "OpenAI"\n   - API Key: ${gateway.apiKey}\n   - Base URL (trong Advanced/URL Options):\n     * Nếu n8n chạy Docker trên cùng VPS (Khuyên dùng):\n       ${dockerBase}\n     * Nếu n8n chạy ngoài hoặc qua Domain/Tunnel:\n       ${base}\n\n2. Kéo Node trong Workflow:\n   - Kéo node "AI Agent" (hoặc "Chat Model")\n   - Kéo node "OpenAI Chat Model" gắn vào cổng Model của AI Agent\n   - Chọn Credential OpenAI vừa tạo ở trên\n\n3. BẬT CUSTOM MODEL (Mấu chốt):\n   - Ô "Model" bấm biểu tượng chuyển sang "Custom" / "Expression"\n   - Gõ tên model bất kỳ:\n     • gemini/gemini-2.5-flash (siêu nhanh, rẻ)\n     • anthropic/claude-3-7-sonnet (thông minh nhất)\n     • openai/gpt-4o\n     • agent/coder (Sub-Agent của bạn)\n     • auto (ZenPanel tự động phân luồng)`,
   };
 
+  const [showKey, setShowKey] = useState(false);
+  const { toast } = useFeedback();
+
+  const copyGatewayKey = async () => {
+    try {
+      await navigator.clipboard.writeText(gateway.apiKey);
+    } catch {
+      const area = document.createElement('textarea');
+      area.value = gateway.apiKey;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    }
+    toast('Đã sao chép Gateway Key của ZenPanel vào clipboard', 'success');
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -2095,7 +2150,7 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
         <Card
-          title="Endpoint chuẩn OpenAI"
+          title="ZenPanel AI Gateway (Chuẩn giao thức OpenAI)"
           icon={Route}
           actions={
             <label className="flex items-center gap-2 text-sm text-slate-300">
@@ -2104,29 +2159,80 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
             </label>
           }
         >
-          <div className="space-y-3">
+          <div className="space-y-3.5">
             {!gateway.enabled && <Notice tone="amber">Gateway đang tắt: endpoint trả lỗi 503. Bật công tắc ở góc trên để dùng từ app khác.</Notice>}
-            <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3 py-2">
-              <div className="text-xs text-slate-500">Base URL (Public / Mạng ngoài)</div>
-              <div className="flex items-center gap-2">
-                <span className="mono min-w-0 flex-1 truncate text-slate-100">{base}</span>
-                <CopyButton value={base} />
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3 py-2">
-              <div className="text-xs text-slate-500">Base URL nội bộ Docker (n8n, Flowise, Open WebUI chạy cùng VPS)</div>
-              <div className="flex items-center gap-2">
-                <span className="mono min-w-0 flex-1 truncate text-emerald-300">{dockerBase}</span>
-                <CopyButton value={dockerBase} />
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3 py-2">
-              <div className="text-xs text-slate-500">API key</div>
-              <div className="flex items-center justify-between gap-2">
-                <Secret value={gateway.apiKey} />
-                <Button size="xs" variant="ghost" icon={RefreshCw} onClick={regenerate}>
+
+            {/* MỤC API KEY CỦA ZENPANEL - SIÊU NỔI BẬT & DỄ THẤY */}
+            <div className="rounded-2xl border-2 border-indigo-500/50 bg-gradient-to-br from-indigo-950/60 via-slate-900 to-slate-950 p-4 shadow-xl space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600/30 text-lg ring-1 ring-indigo-400/40">
+                    🔑
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-extrabold text-white">API Key (Gateway Key của ZenPanel)</h4>
+                      <Badge tone="blue" className="text-[10px] font-bold uppercase tracking-wider">Gateway Key</Badge>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Dán vào ô <b>API Key</b> trong n8n, Flowise, NextChat, Dify hoặc Header Authorization
+                    </p>
+                  </div>
+                </div>
+                <Button size="xs" variant="ghost" icon={RefreshCw} onClick={regenerate} className="text-slate-400 hover:text-white">
                   Tạo key mới
                 </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-indigo-500/40 bg-black/60 p-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowKey(!showKey)}
+                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg border border-slate-800 bg-slate-900/60"
+                  title={showKey ? 'Ẩn key' : 'Hiện key'}
+                >
+                  {showKey ? <EyeOff className="size-3.5 text-indigo-400" /> : <Eye className="size-3.5 text-slate-400" />}
+                  <span>{showKey ? 'Ẩn' : 'Hiện'}</span>
+                </button>
+                <div className="mono min-w-0 flex-1 truncate text-xs font-semibold text-indigo-200 select-all px-1">
+                  {showKey ? gateway.apiKey : `${gateway.apiKey.slice(0, 10)}••••••••••••••••••••••••••••••••••••`}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void copyGatewayKey()}
+                  className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-lg shadow-indigo-900/40 transition cursor-pointer"
+                >
+                  <Copy className="size-3.5" />
+                  <span>Sao chép Gateway Key</span>
+                </button>
+              </div>
+
+              <div className="text-[11px] text-emerald-400 flex items-center gap-2 bg-emerald-950/30 border border-emerald-500/20 rounded-xl px-3 py-2">
+                <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
+                <span>
+                  <b>Bạn đang tìm mục này?</b> Khi app yêu cầu <i>"Dán Gateway Key của ZenPanel (bấm sao chép ở mục API key trên ZenPanel)"</i>, hãy bấm nút màu tím <b>[Sao chép Gateway Key]</b> ở ngay phía trên!
+                </span>
+              </div>
+            </div>
+
+            {/* BASE URL PUBLIC */}
+            <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3.5 py-2.5">
+              <div className="text-xs text-slate-400 font-medium">Base URL (Public / Mạng ngoài / Truy cập từ xa)</div>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="mono min-w-0 flex-1 truncate text-slate-100 text-xs">{base}</span>
+                <CopyButton value={base} label="Sao chép URL" />
+              </div>
+            </div>
+
+            {/* BASE URL DOCKER INTERNAL */}
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/15 px-3.5 py-2.5">
+              <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+                <span>Base URL nội bộ Docker (Dành cho n8n, Flowise, Open WebUI chạy cùng VPS)</span>
+                <Badge tone="green" className="text-[10px]">Khuyên dùng</Badge>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="mono min-w-0 flex-1 truncate text-emerald-300 font-semibold text-xs">{dockerBase}</span>
+                <CopyButton value={dockerBase} label="Sao chép Docker URL" />
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -2314,9 +2420,16 @@ export default function AiGateway() {
         description="1 endpoint chuẩn OpenAI cho ChatGPT, Claude, Gemini, OpenRouter, NVIDIA — tự định tuyến, tự xoay vòng API keys và chia Sub-Agents"
         icon={Sparkles}
         actions={
-          <Link to="/apps">
-            <Button icon={Play}>Cài AI Agent (App Store)</Button>
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <CopyButton
+              value={gateway.apiKey}
+              label="Sao chép Gateway Key"
+              className="rounded-xl border border-indigo-500/40 bg-indigo-950/60 hover:bg-indigo-900/80 px-3 py-2 text-xs font-semibold text-indigo-200 shadow-sm transition"
+            />
+            <Link to="/apps">
+              <Button icon={Play}>Cài AI Agent (App Store)</Button>
+            </Link>
+          </div>
         }
       />
       {!connected && (
@@ -2353,7 +2466,14 @@ export default function AiGateway() {
           }}
         />
       )}
-      {tab === 'providers' && <ProvidersTab providers={providers.data} setProviders={setProviders} />}
+      {tab === 'providers' && (
+        <ProvidersTab
+          providers={providers.data}
+          setProviders={setProviders}
+          gateway={gateway}
+          onGoOverview={() => setTab('overview')}
+        />
+      )}
       {tab === 'models' && (
         <ModelsTab
           gateway={gateway}

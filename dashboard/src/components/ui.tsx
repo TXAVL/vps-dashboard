@@ -323,7 +323,7 @@ export function Modal({ open, onClose, title, children, size = 'md', footer }: {
 
 // ------------------------------------------------------------------ Misc
 
-export function CopyButton({ value, label }: { value: string; label?: string }) {
+export function CopyButton({ value, label, className }: { value: string; label?: string; className?: string }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -341,7 +341,14 @@ export function CopyButton({ value, label }: { value: string; label?: string }) 
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <button onClick={copy} data-tip="Sao chép" className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-slate-400 transition hover:bg-slate-700/60 hover:text-white">
+    <button
+      onClick={copy}
+      data-tip="Sao chép"
+      className={cn(
+        'inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-slate-400 transition hover:bg-slate-700/60 hover:text-white',
+        className,
+      )}
+    >
       {copied ? <Check className="size-3.5 text-zen-green" /> : <Copy className="size-3.5" />}
       {label}
     </button>
