@@ -227,6 +227,7 @@ export interface PanelPrefs {
   expiryWarnDays: number;
   autoCheckUpdate: boolean;
   autoDownloadUpdate: boolean;
+  updateCheckMinutes: number;
   publicHost: string;
 }
 
@@ -290,6 +291,7 @@ export interface ScheduledTask {
 
 export interface NetworkInfo {
   publicIpv4: string | null;
+  reverseDns: string | null;
   publicIpv6: string | null;
   hostname: string;
   interfaces: { name: string; mac: string | null; internal: boolean; addresses: { address: string; family: string; cidr: string | null }[] }[];

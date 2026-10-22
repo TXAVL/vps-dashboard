@@ -100,6 +100,8 @@ vps-dashboard/ (ZenPanel)
 │   │   │   ├── ai.service.ts      # API key AI (OpenAI, Claude, Gemini, OpenRouter, NVIDIA) bơm vào app AI
 │   │   │   ├── stack.service.ts   # Docker Compose stacks
 │   │   │   ├── speedtest.service.ts # Speedtest thật tới speed.cloudflare.com
+│   │   │   ├── procman.service.ts # Ứng dụng chạy nền thay PM2 (auto-restart, log, CPU/RAM, nhập từ PM2)
+│   │   │   ├── dockerhub.service.ts # Kho image Docker Hub (phổ biến, tìm kiếm, tag)
 │   │   │   └── tunnel.service.ts  # Cloudflare Quick Tunnel -> *.trycloudflare.com
 │   │   ├── routes/                # auth, system, files, docker, sites, panel (REST API)
 │   │   ├── ws/realtime.ts         # WebSocket metrics + Web Terminal (node-pty)

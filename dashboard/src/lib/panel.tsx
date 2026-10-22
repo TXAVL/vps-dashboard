@@ -31,6 +31,7 @@ export const DEFAULT_PREFS: PanelPrefs = {
   expiryWarnDays: 7,
   autoCheckUpdate: true,
   autoDownloadUpdate: true,
+  updateCheckMinutes: 360,
   publicHost: '',
 };
 

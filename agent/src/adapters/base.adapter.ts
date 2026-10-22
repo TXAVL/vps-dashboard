@@ -1,5 +1,6 @@
 // ZenPanel - Interface quy chuẩn chung cho mọi OS adapter.
 // Mọi thao tác hệ thống phải đi qua đây, không gọi lệnh OS trực tiếp trong service/controller.
+import type { ChildProcess } from 'node:child_process';
 import type { ExecOptions, ExecResult } from '../core/exec.js';
 import type { WebServerDriver } from './web/types.js';
 
@@ -200,6 +201,10 @@ export interface OSAdapter {
   syncScheduledTasks(tasks: ScheduledTask[]): Promise<void>;
   /** Chạy 1 lệnh người dùng bằng shell mặc định (bash -c / powershell -Command) */
   runShell(command: string, opts?: ExecOptions): Promise<ExecResult>;
+  /** Chạy lệnh dài hạn (bot, worker...) qua shell của OS, stdout/stderr dạng pipe để ghi log */
+  spawnShell(command: string, opts: { cwd: string; env: NodeJS.ProcessEnv }): ChildProcess;
+  /** Dừng cả cây tiến trình (shell + các tiến trình con) */
+  killTree(pid: number, force: boolean): Promise<void>;
 
   // --- Cập nhật panel ---
   /** "install.sh" hoặc "install.ps1" */

@@ -10,7 +10,6 @@ import { getPrefs } from '../core/prefs.js';
 import { dataPath, JsonCollection } from '../core/store.js';
 import { badRequest, HttpError } from '../core/validate.js';
 
-const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const UTF8_BOM = '﻿';
 
 export interface RemoteVersion {
@@ -195,11 +194,15 @@ export class UpdateService {
     return text.slice(-200_000).replace(/\x1b\[[0-9;]*m/g, '');
   }
 
-  /** Tự kiểm tra định kỳ và tải sẵn bản mới (nếu bật trong Cài đặt) */
+  private lastAutoCheck = 0;
+
+  /** Tự kiểm tra theo tần suất trong Cài đặt (đổi tần suất có hiệu lực ngay, không cần khởi động lại) */
   startAuto(): void {
     const tick = async () => {
       const prefs = getPrefs();
       if (!prefs.autoCheckUpdate) return;
+      if (Date.now() - this.lastAutoCheck < prefs.updateCheckMinutes * 60_000) return;
+      this.lastAutoCheck = Date.now();
       const state = await this.check();
       if (state.available && state.latest && prefs.autoDownloadUpdate && !state.downloadedLatest) {
         try {
@@ -210,7 +213,7 @@ export class UpdateService {
       }
     };
     setTimeout(() => void tick(), 30_000);
-    this.timer = setInterval(() => void tick(), CHECK_INTERVAL_MS);
+    this.timer = setInterval(() => void tick(), 60_000);
   }
 
   stop(): void {

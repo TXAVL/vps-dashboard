@@ -17,6 +17,7 @@ import { authRoutes } from './routes/auth.routes.js';
 import { dockerRoutes } from './routes/docker.routes.js';
 import { fileDownloadRoute, fileRoutes } from './routes/files.routes.js';
 import { panelRoutes } from './routes/panel.routes.js';
+import { procRoutes } from './routes/procs.routes.js';
 import { siteRoutes } from './routes/sites.routes.js';
 import { systemRoutes } from './routes/system.routes.js';
 import { AiService } from './services/ai.service.js';
@@ -28,6 +29,8 @@ import { DockerService } from './services/docker.service.js';
 import { SiteService } from './services/site.service.js';
 import { SpeedtestService } from './services/speedtest.service.js';
 import { StackService } from './services/stack.service.js';
+import { DockerHubService } from './services/dockerhub.service.js';
+import { ProcessManager } from './services/procman.service.js';
 import { TaskService } from './services/task.service.js';
 import { UpdateService } from './services/update.service.js';
 import { TunnelService } from './services/tunnel.service.js';
@@ -50,6 +53,8 @@ async function main() {
   const appTunnels = new AppTunnelService(adapter);
   const apps = new AppStoreService(docker, ai, appTunnels);
   const stacks = new StackService(docker);
+  const hub = new DockerHubService();
+  const procs = new ProcessManager(adapter);
   const speedtest = new SpeedtestService();
   const databases = new DatabaseService(docker, apps);
   const sites = new SiteService(adapter);
@@ -82,7 +87,8 @@ async function main() {
     secured.addHook('preHandler', requireAuth);
     await systemRoutes(secured, ctx);
     await fileRoutes(secured, ctx);
-    await dockerRoutes(secured, ctx, { docker, apps, databases, stacks });
+    await dockerRoutes(secured, ctx, { docker, apps, databases, stacks, hub });
+    await procRoutes(secured, { procs });
     await siteRoutes(secured, ctx, { sites, cloudflare });
     await panelRoutes(secured, ctx, { updates, tasks, ai, speedtest });
   });
@@ -110,6 +116,7 @@ async function main() {
   void sites.bootstrap();
   updates.startAuto();
   appTunnels.bootstrap();
+  void procs.bootstrap();
 
   let publicUrl: string | null = null;
   let tunnelNote: string | undefined;
@@ -140,6 +147,7 @@ async function main() {
     metrics.stop();
     updates.stop();
     appTunnels.stopAll();
+    await procs.shutdown();
     await app.close();
     process.exit(0);
   };

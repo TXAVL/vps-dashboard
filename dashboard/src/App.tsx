@@ -25,6 +25,7 @@ const Security = lazy(() => import('./views/Security'));
 const Settings = lazy(() => import('./views/Settings'));
 const Tasks = lazy(() => import('./views/Tasks'));
 const Speedtest = lazy(() => import('./views/Speedtest'));
+const ProcManager = lazy(() => import('./views/ProcManager'));
 
 export function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -56,6 +57,7 @@ export function App() {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/tasks" element={<Tasks />} />
                 <Route path="/speedtest" element={<Speedtest />} />
+                <Route path="/procs" element={<ProcManager />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>

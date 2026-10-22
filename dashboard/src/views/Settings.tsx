@@ -34,13 +34,13 @@ import {
 } from 'lucide-react';
 import { useJobs } from '../components/jobs';
 import { useFeedback } from '../components/feedback';
-import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Notice, PageHeader, Spinner, StatusDot, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
+import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Notice, PageHeader, Select, Spinner, StatusDot, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
 import { del, get, post, put, setToken } from '../lib/api';
 import { formatBytes, formatDate, formatDuration, formatRate, formatRelative } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
 import { PASSWORD_RULES, RANDOM_DEFAULT_LENGTH, RANDOM_MAX_LENGTH, RANDOM_MIN_LENGTH } from '../lib/password';
-import type { AiProvider, Job, LoginRecord, PanelPrefs, RemoteVersion, VersionPackage } from '../lib/types';
+import type { AiProvider, Job, LoginRecord, NetworkInfo, PanelPrefs, RemoteVersion, VersionPackage } from '../lib/types';
 
 type Mode = 'random' | 'custom';
 
@@ -247,6 +247,24 @@ const BASES: { id: PanelPrefs['base']; label: string; colors: [string, string] }
   { id: 'oled', label: 'OLED Black', colors: ['#000000', '#171717'] },
 ];
 
+const UPDATE_INTERVALS: [number, string][] = [
+  [15, '15 phút'],
+  [30, '30 phút'],
+  [60, '1 giờ'],
+  [120, '2 giờ'],
+  [180, '3 giờ'],
+  [240, '4 giờ'],
+  [360, '6 giờ'],
+  [480, '8 giờ'],
+  [720, '12 giờ'],
+  [1440, '1 ngày'],
+  [2880, '2 ngày'],
+  [4320, '3 ngày'],
+  [10080, '1 tuần'],
+  [20160, '2 tuần'],
+  [43200, '1 tháng'],
+];
+
 function AppearanceCard() {
   const { prefs, savePrefs, latest } = usePanel();
   const { run } = useFeedback();
@@ -300,10 +318,10 @@ function AppearanceCard() {
         <div className="grid gap-3 sm:grid-cols-2">
           {(
             [
-              { id: 'bytes', title: 'Byte / giây', units: 'KB/s · MB/s · GB/s', desc: 'Giống trình tải file, dễ ước lượng dung lượng (mặc định)' },
-              { id: 'bits', title: 'Bit / giây', units: 'Kbps · Mbps · Gbps', desc: 'Giống thông số băng thông nhà mạng / nhà cung cấp VPS công bố' },
+              { id: 'bytes', title: 'Theo dung lượng (Byte/giây)', units: 'B/s · KB/s · MB/s · GB/s · TB/s', desc: 'Giống tốc độ tải file trên trình duyệt / IDM, dễ ước lượng thời gian tải (mặc định)' },
+              { id: 'bits', title: 'Theo băng thông (bit/giây)', units: 'bps · Kbps · Mbps · Gbps · Tbps', desc: 'Giống thông số gói cước nhà mạng và băng thông VPS (vd cổng 1 Gbps)' },
             ] as const
-          ).map((opt, index) => (
+          ).map((opt) => (
             <button
               key={opt.id}
               onClick={() => save({ networkUnit: opt.id }, `Đơn vị mạng: ${opt.units}`)}
@@ -314,7 +332,7 @@ function AppearanceCard() {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-bold text-white">
-                  Mục {index + 1}: {opt.title}
+                  {opt.title}
                 </span>
                 {prefs.networkUnit === opt.id && <Check className="size-4 text-blue-300" />}
               </div>
@@ -484,10 +502,28 @@ function UpdateCard() {
             <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-700/50 bg-ink-950/50 px-4 py-3 text-sm">
               <span>
                 <span className="block font-semibold text-slate-100">Tự kiểm tra cập nhật</span>
-                <span className="block text-xs text-slate-500">Kiểm tra GitHub mỗi 6 giờ</span>
+                <span className="block text-xs text-slate-500">Tự hỏi GitHub có bản mới theo tần suất bên dưới</span>
               </span>
               <Toggle checked={prefs.autoCheckUpdate} onChange={(v) => void run(() => savePrefs({ autoCheckUpdate: v }), v ? 'Đã bật tự kiểm tra' : 'Đã tắt tự kiểm tra')} />
             </label>
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-700/50 bg-ink-950/50 px-4 py-3 text-sm">
+              <span>
+                <span className="block font-semibold text-slate-100">Tần suất kiểm tra</span>
+                <span className="block text-xs text-slate-500">Bao lâu hỏi GitHub một lần</span>
+              </span>
+              <Select
+                className="h-9 w-36 py-0 text-xs"
+                value={prefs.updateCheckMinutes}
+                disabled={!prefs.autoCheckUpdate}
+                onChange={(e) => void run(() => savePrefs({ updateCheckMinutes: Number(e.target.value) }), `Kiểm tra cập nhật mỗi ${e.target.selectedOptions[0].text}`)}
+              >
+                {UPDATE_INTERVALS.map(([minutes, label]) => (
+                  <option key={minutes} value={minutes}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </div>
             <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-700/50 bg-ink-950/50 px-4 py-3 text-sm">
               <span>
                 <span className="block font-semibold text-slate-100">Tự tải bản mới</span>
@@ -732,6 +768,7 @@ function AiCard() {
 
 function PublicHostCard() {
   const { prefs, savePrefs } = usePanel();
+  const network = useApi<NetworkInfo>('/api/system/network');
   const [value, setValue] = useState(prefs.publicHost);
   const [saving, setSaving] = useState(false);
   const { run } = useFeedback();
@@ -747,12 +784,34 @@ function PublicHostCard() {
           void run(() => savePrefs({ publicHost: value }), value ? `Đã đặt host public: ${value}` : 'Đã chuyển về tự phát hiện IP public').finally(() => setSaving(false));
         }}
       >
+        <div className="grid gap-2 sm:grid-cols-3">
+          {(
+            [
+              ['IP public (tự phát hiện)', network.data?.publicIpv4],
+              ['IPv6', network.data?.publicIpv6],
+              ['Hostname (reverse DNS)', network.data?.reverseDns],
+            ] as const
+          ).map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3 py-2">
+              <div className="text-xs text-slate-500">{label}</div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="mono truncate text-slate-200">{value ?? (network.loading ? 'Đang lấy...' : 'Không có')}</span>
+                {value && <CopyButton value={value} />}
+              </div>
+            </div>
+          ))}
+        </div>
         <p className="text-sm text-slate-400">
-          Dùng để hiển thị địa chỉ truy cập app (IP:cổng) và host kết nối database cho máy bên ngoài. Để trống = tự lấy IP public. Có domain riêng (vd <code className="mono">vps.example.com</code>
-          ) trỏ bản ghi A về IP VPS thì nhập vào đây.
+          ZenPanel <b>tự dùng IP public ở trên</b> để hiện địa chỉ truy cập app (IP:cổng) và host database, bạn không cần nhập gì. Chỉ điền ô dưới khi có domain riêng (vd{' '}
+          <code className="mono">vps.example.com</code> đã trỏ bản ghi A về IP VPS) hoặc muốn dùng hostname reverse DNS.
         </p>
+        {network.data?.reverseDns && !prefs.publicHost && (
+          <Button type="button" size="sm" variant="soft" onClick={() => setValue(network.data!.reverseDns!)}>
+            Dùng hostname {network.data.reverseDns}
+          </Button>
+        )}
         <div className="flex flex-wrap gap-2">
-          <input className="input mono max-w-md" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Tự phát hiện IP public" />
+          <input className="input mono max-w-md" value={value} onChange={(e) => setValue(e.target.value)} placeholder={`Để trống = dùng ${network.data?.publicIpv4 ?? 'IP public'}`} />
           <Button type="submit" variant="primary" icon={Save} loading={saving}>
             Lưu
           </Button>

@@ -1,4 +1,5 @@
 // ZenPanel - Adapter cho Windows Server / Windows 10/11 (PowerShell, WMI/CIM, Windows Firewall)
+import { spawn } from 'node:child_process';
 import { mkdir, statfs, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -409,6 +410,21 @@ export class WindowsAdapter implements OSAdapter {
 
   runShell(command: string, opts?: ExecOptions) {
     return exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `[Console]::OutputEncoding=[Text.Encoding]::UTF8; ${command}`], opts);
+  }
+
+  spawnShell(command: string, opts: { cwd: string; env: NodeJS.ProcessEnv }) {
+    return spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `[Console]::OutputEncoding=[Text.Encoding]::UTF8; ${command}`], {
+      cwd: opts.cwd,
+      env: opts.env,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  }
+
+  async killTree(pid: number, force: boolean): Promise<void> {
+    // /T dừng cả tiến trình con; không /F thì Windows gửi tín hiệu đóng nhẹ nhàng trước
+    const result = await exec('taskkill', ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])]);
+    if (result.code !== 0 && !force) await exec('taskkill', ['/PID', String(pid), '/T', '/F']);
   }
 
   installerScript(): string {

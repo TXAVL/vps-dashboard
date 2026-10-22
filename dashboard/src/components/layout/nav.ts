@@ -1,5 +1,6 @@
 // ZenPanel - Cấu trúc điều hướng 2 tầng: Admin Master & Site Panel
 import {
+  Bot,
   Boxes,
   CalendarClock,
   Cog,
@@ -30,6 +31,7 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { to: '/', label: 'Tổng quan', icon: Gauge, description: 'CPU, RAM, Disk, Network realtime' },
       { to: '/processes', label: 'Tiến trình', icon: Cpu, description: 'Task Manager - xem và dừng tiến trình' },
+      { to: '/procs', label: 'Ứng dụng nền', icon: Bot, description: 'Chạy bot / worker 24/24 thay PM2' },
       { to: '/services', label: 'Dịch vụ', icon: ListTree, description: 'Windows Services / systemd' },
       { to: '/firewall', label: 'Tường lửa', icon: Shield, description: 'Mở cổng, chặn IP, cổng đang lắng nghe' },
       { to: '/docker', label: 'Docker', icon: Boxes, description: 'Containers, images, volumes' },

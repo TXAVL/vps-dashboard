@@ -8,6 +8,35 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.5.0',
+    date: '2026-10-22',
+    highlights: [
+      {
+        title: 'Ứng dụng chạy nền (thay PM2)',
+        items: [
+          'Chạy bot Discord/Telegram, worker, API Node.js/Python 24/24 ngay trong ZenPanel',
+          'Tự khởi động lại khi chết (chờ lâu dần nếu crash liên tục), tự chạy khi VPS khởi động lại',
+          'Log realtime: tạm dừng, lọc, chỉ xem lỗi, xoá, tải về; xem CPU/RAM cả cây tiến trình',
+          'Giới hạn RAM: vượt ngưỡng tự khởi động lại; nhập 1 chạm các app đang chạy bằng PM2',
+        ],
+      },
+      {
+        title: 'Docker & cập nhật',
+        items: [
+          'Docker → Kho image: image phổ biến theo nhóm, tìm kiếm Docker Hub, chọn tag, pull hoặc tạo container ngay',
+          'Chọn tần suất tự kiểm tra cập nhật: 15 mốc từ 15 phút tới 1 tháng',
+        ],
+      },
+      {
+        title: 'Cài đặt',
+        items: [
+          'Domain/IP public: hiện rõ IP public, IPv6 và hostname reverse DNS tự phát hiện — chỉ cần nhập khi có domain riêng',
+          'Đơn vị tốc độ mạng đặt tên rõ ràng: "Theo dung lượng" (B/s → TB/s) và "Theo băng thông" (bps → Tbps)',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.4.0',
     date: '2026-10-22',
     highlights: [

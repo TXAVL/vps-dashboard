@@ -1,4 +1,5 @@
 // ZenPanel - API của panel: tác vụ nền (jobs), tuỳ chọn, cập nhật & phiên bản, tác vụ định kỳ, nguồn, mạng
+import dns from 'node:dns/promises';
 import os from 'node:os';
 import type { FastifyInstance } from 'fastify';
 import type { PowerAction } from '../adapters/base.adapter.js';
@@ -11,7 +12,7 @@ import type { SpeedtestService } from '../services/speedtest.service.js';
 import type { TaskService } from '../services/task.service.js';
 import type { UpdateService } from '../services/update.service.js';
 
-let publicIpCache: { at: number; ipv4: string | null; ipv6: string | null } | null = null;
+let publicIpCache: { at: number; ipv4: string | null; ipv6: string | null; reverseDns: string | null } | null = null;
 
 async function lookup(url: string): Promise<string | null> {
   try {
@@ -100,7 +101,9 @@ export async function panelRoutes(
   app.get('/api/system/network', async () => {
     if (!publicIpCache || Date.now() - publicIpCache.at > 10 * 60_000) {
       const [ipv4, ipv6] = await Promise.all([lookup('https://api.ipify.org'), lookup('https://api64.ipify.org')]);
-      publicIpCache = { at: Date.now(), ipv4, ipv6: ipv6 && ipv6.includes(':') ? ipv6 : null };
+      // Reverse DNS: nhiều nhà cung cấp VPS gán sẵn hostname (vd vps123.provider.net) cho IP
+      const reverseDns = ipv4 ? ((await dns.reverse(ipv4).catch(() => []))[0] ?? null) : null;
+      publicIpCache = { at: Date.now(), ipv4, ipv6: ipv6 && ipv6.includes(':') ? ipv6 : null, reverseDns };
     }
     const interfaces = Object.entries(os.networkInterfaces()).map(([name, addrs]) => ({
       name,
@@ -108,6 +111,6 @@ export async function panelRoutes(
       internal: Boolean(addrs?.every((a) => a.internal)),
       addresses: (addrs ?? []).map((a) => ({ address: a.address, family: a.family, cidr: a.cidr })),
     }));
-    return { publicIpv4: publicIpCache.ipv4, publicIpv6: publicIpCache.ipv6, hostname: os.hostname(), interfaces };
+    return { publicIpv4: publicIpCache.ipv4, publicIpv6: publicIpCache.ipv6, reverseDns: publicIpCache.reverseDns, hostname: os.hostname(), interfaces };
   });
 }

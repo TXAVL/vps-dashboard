@@ -1,6 +1,6 @@
 // ZenPanel - Quản lý Docker: containers, images, volumes, networks
 import { useState, type FormEvent } from 'react';
-import { Boxes, Download, FileText, HardDrive, Layers, Network, Pause, Play, Plus, RefreshCw, RotateCw, Square, Trash2 } from 'lucide-react';
+import { Boxes, Store, Download, FileText, HardDrive, Layers, Network, Pause, Play, Plus, RefreshCw, RotateCw, Square, Trash2 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, IconButton, Modal, PageHeader, Select, Spinner, Tabs, cn, td, th, tr, type Tone } from '../components/ui';
 import { del, get, post } from '../lib/api';
@@ -9,8 +9,9 @@ import { usePanel } from '../lib/panel';
 import type { DockerContainer, DockerImage, DockerInfo, Job } from '../lib/types';
 import { useJobs } from '../components/jobs';
 import { StacksPanel } from './Stacks';
+import { DockerHubPanel } from './DockerHub';
 
-type Tab = 'containers' | 'stacks' | 'images' | 'volumes' | 'networks';
+type Tab = 'containers' | 'stacks' | 'hub' | 'images' | 'volumes' | 'networks';
 type Stats = Record<string, { cpu: string; memory: string; memPerc: string; net: string }>;
 
 const stateTone = (state: string): Tone => (state === 'running' ? 'green' : state === 'paused' ? 'amber' : state === 'restarting' ? 'blue' : state === 'dead' ? 'red' : 'slate');
@@ -45,8 +46,8 @@ export function DockerMissing({ info }: { info: DockerInfo }) {
   );
 }
 
-function RunContainerModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
-  const [form, setForm] = useState({ image: '', name: '', ports: '', env: '', volumes: '', restart: 'unless-stopped' });
+function RunContainerModal({ open, onClose, onDone, initialImage }: { open: boolean; onClose: () => void; onDone: () => void; initialImage?: string }) {
+  const [form, setForm] = useState({ image: initialImage ?? '', name: '', ports: '', env: '', volumes: '', restart: 'unless-stopped' });
   const [saving, setSaving] = useState(false);
   const { run } = useFeedback();
   const lines = (value: string) => value.split(/[\n,]/).map((v) => v.trim()).filter(Boolean);
@@ -114,7 +115,7 @@ export default function Docker() {
   const volumes = useApi<{ name: string; driver: string }[]>(ready && tab === 'volumes' ? '/api/docker/volumes' : null);
   const networks = useApi<{ id: string; name: string; driver: string; scope: string }[]>(ready && tab === 'networks' ? '/api/docker/networks' : null);
   const [logs, setLogs] = useState<{ name: string; content: string | null } | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<string | null>(null);
   const [pulling, setPulling] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const { confirm, prompt, run } = useFeedback();
@@ -168,7 +169,7 @@ export default function Docker() {
               <Button icon={Download} onClick={() => void pull()} loading={pulling}>
                 Pull image
               </Button>
-              <Button icon={Plus} variant="primary" onClick={() => setCreating(true)}>
+              <Button icon={Plus} variant="primary" onClick={() => setCreating('')}>
                 Tạo container
               </Button>
             </>
@@ -188,6 +189,7 @@ export default function Docker() {
               tabs={[
                 { id: 'containers', label: 'Containers', icon: Boxes, count: containers.data?.length },
                 { id: 'stacks', label: 'Compose', icon: Layers },
+                { id: 'hub', label: 'Kho image', icon: Store },
                 { id: 'images', label: 'Images', icon: Layers },
                 { id: 'volumes', label: 'Volumes', icon: HardDrive },
                 { id: 'networks', label: 'Networks', icon: Network },
@@ -198,7 +200,7 @@ export default function Docker() {
             <IconButton
               icon={RefreshCw}
               title="Làm mới"
-              onClick={() => void (tab === 'stacks' ? Promise.resolve() : { containers, images, volumes, networks }[tab].reload())}
+              onClick={() => void (tab === 'stacks' || tab === 'hub' ? Promise.resolve() : { containers, images, volumes, networks }[tab].reload())}
             />
           }
         >
@@ -265,6 +267,14 @@ export default function Docker() {
             ))}
 
           {tab === 'stacks' && <StacksPanel />}
+          {tab === 'hub' && (
+            <DockerHubPanel
+              onRun={(image) => {
+                setCreating(image);
+                setTab('containers');
+              }}
+            />
+          )}
 
           {tab === 'images' &&
             (!images.data ? (
@@ -318,7 +328,9 @@ export default function Docker() {
         </Card>
       )}
 
-      <RunContainerModal open={creating} onClose={() => setCreating(false)} onDone={() => void containers.reload()} />
+      {creating !== null && (
+        <RunContainerModal open initialImage={creating} onClose={() => setCreating(null)} onDone={() => void containers.reload()} />
+      )}
       <Modal open={Boolean(logs)} onClose={() => setLogs(null)} title={`Log: ${logs?.name ?? ''}`} size="xl">
         {logs?.content === null ? (
           <Spinner />

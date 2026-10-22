@@ -7,16 +7,18 @@ import type { AppStoreService } from '../services/appstore.service.js';
 import type { DatabaseService } from '../services/database.service.js';
 import type { ContainerAction, DockerService } from '../services/docker.service.js';
 import type { StackService } from '../services/stack.service.js';
+import type { DockerHubService } from '../services/dockerhub.service.js';
 
 export interface DockerDeps {
   docker: DockerService;
   stacks: StackService;
+  hub: DockerHubService;
   apps: AppStoreService;
   databases: DatabaseService;
 }
 
 export async function dockerRoutes(app: FastifyInstance, ctx: AppContext, deps: DockerDeps): Promise<void> {
-  const { docker, apps, databases, stacks } = deps;
+  const { docker, apps, databases, stacks, hub } = deps;
 
   // ------------------------------------------------------------ Docker
   app.get('/api/docker/info', async () => docker.info());
@@ -50,6 +52,14 @@ export async function dockerRoutes(app: FastifyInstance, ctx: AppContext, deps: 
     await docker.removeImage(decodeURIComponent((req.params as { id: string }).id));
     return { ok: true };
   });
+
+  // ------------------------------------------------------------ Kho image Docker Hub
+  app.get('/api/docker/hub/featured', async () => hub.featured());
+  app.get('/api/docker/hub/search', async (req) => {
+    const q = req.query as { q?: string; page?: string };
+    return hub.search(String(q.q ?? ''), Number(q.page) || 1);
+  });
+  app.get('/api/docker/hub/tags', async (req) => hub.tags(String((req.query as { name?: string }).name ?? '')));
 
   // ------------------------------------------------------------ App Store
   app.get('/api/apps', async () => apps.list());

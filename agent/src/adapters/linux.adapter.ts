@@ -693,6 +693,24 @@ export class LinuxAdapter implements OSAdapter {
     return exec(shell, ['-c', command], opts);
   }
 
+  spawnShell(command: string, opts: { cwd: string; env: NodeJS.ProcessEnv }) {
+    const shell = existsSync('/bin/bash') ? '/bin/bash' : '/bin/sh';
+    // detached = process group riêng, để dừng được cả cây tiến trình bằng kill(-pid)
+    return spawn(shell, ['-c', command], { cwd: opts.cwd, env: opts.env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  }
+
+  async killTree(pid: number, force: boolean): Promise<void> {
+    try {
+      process.kill(-pid, force ? 'SIGKILL' : 'SIGTERM');
+    } catch {
+      try {
+        process.kill(pid, force ? 'SIGKILL' : 'SIGTERM');
+      } catch {
+        // đã thoát
+      }
+    }
+  }
+
   installerScript(): string {
     return 'install.sh';
   }

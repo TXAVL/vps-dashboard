@@ -4,6 +4,8 @@ import { badRequest } from './validate.js';
 
 export const THEMES = ['zen', 'emerald', 'violet', 'amber', 'rose', 'cyan'] as const;
 export const BASES = ['slate', 'oled', 'navy'] as const;
+/** 15 mốc tần suất kiểm tra cập nhật (phút): 15 phút → 1 tháng */
+export const UPDATE_INTERVALS = [15, 30, 60, 120, 180, 240, 360, 480, 720, 1440, 2880, 4320, 10080, 20160, 43200] as const;
 
 export interface PanelPrefs {
   /** bytes: KB/s, MB/s, GB/s · bits: Kbps, Mbps, Gbps */
@@ -19,6 +21,8 @@ export interface PanelPrefs {
   /** Tự kiểm tra bản mới trên GitHub và tải sẵn gói cập nhật */
   autoCheckUpdate: boolean;
   autoDownloadUpdate: boolean;
+  /** Tần suất tự kiểm tra cập nhật (phút), 1 trong UPDATE_INTERVALS */
+  updateCheckMinutes: number;
   /** Domain / IP public của VPS để hiển thị địa chỉ truy cập app & database (trống = tự lấy IP public) */
   publicHost: string;
 }
@@ -36,6 +40,7 @@ export const DEFAULT_PREFS: PanelPrefs = {
   expiryWarnDays: 7,
   autoCheckUpdate: true,
   autoDownloadUpdate: true,
+  updateCheckMinutes: 360,
   publicHost: '',
 };
 
@@ -73,6 +78,11 @@ export function updatePrefs(input: Partial<PanelPrefs>): PanelPrefs {
   if (input.expiryWarnDays !== undefined) next.expiryWarnDays = Math.min(90, Math.max(1, Math.round(Number(input.expiryWarnDays) || 7)));
   if (input.autoCheckUpdate !== undefined) next.autoCheckUpdate = Boolean(input.autoCheckUpdate);
   if (input.autoDownloadUpdate !== undefined) next.autoDownloadUpdate = Boolean(input.autoDownloadUpdate);
+  if (input.updateCheckMinutes !== undefined) {
+    const minutes = Number(input.updateCheckMinutes);
+    if (!(UPDATE_INTERVALS as readonly number[]).includes(minutes)) throw badRequest('Tần suất kiểm tra không hợp lệ');
+    next.updateCheckMinutes = minutes;
+  }
   if (input.publicHost !== undefined) {
     const host = String(input.publicHost).trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     if (host && !/^[a-z0-9.\-:[\]]{1,253}$/.test(host)) throw badRequest('Domain / IP không hợp lệ');
