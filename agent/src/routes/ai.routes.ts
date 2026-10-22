@@ -85,6 +85,15 @@ export async function aiPanelRoutes(app: FastifyInstance, deps: { ai: AiService;
     }
   });
 
+  // Quản lý API Keys cấp phát cho Gateway
+  app.get('/api/ai/gateway/keys', async () => gateway.listApiKeys());
+  app.post('/api/ai/gateway/keys', async (req) => gateway.createApiKey((req.body ?? {}) as Parameters<typeof gateway.createApiKey>[0]));
+  app.put('/api/ai/gateway/keys/:id', async (req) => gateway.updateApiKey((req.params as Params).id, (req.body ?? {}) as Parameters<typeof gateway.updateApiKey>[1]));
+  app.delete('/api/ai/gateway/keys/:id', async (req) => {
+    gateway.deleteApiKey((req.params as Params).id);
+    return { ok: true };
+  });
+
   app.get('/api/ai/gateway', async () => gateway.getSettings());
   app.put('/api/ai/gateway', async (req) => gateway.update((req.body ?? {}) as Record<string, never>));
   app.post('/api/ai/gateway/regenerate', async () => gateway.regenerateKey());
@@ -117,8 +126,9 @@ export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiG
   app.register(async (secured) => {
     secured.addHook('preHandler', async (req) => {
       if (!gateway.getSettings().enabled) throw new HttpError(503, 'AI Gateway đang tắt. Bật trong ZenPanel → AI Gateway.');
-      if (!gateway.verifyKey(req.headers.authorization ?? (req.headers['x-api-key'] as string | undefined))) {
-        throw new HttpError(401, 'API key của ZenPanel AI Gateway không đúng (key phải bắt đầu bằng tzp_)');
+      const verified = gateway.verifyKey(req.headers.authorization ?? (req.headers['x-api-key'] as string | undefined));
+      if (!verified.ok) {
+        throw new HttpError(401, 'API key của ZenPanel AI Gateway không đúng, bị vô hiệu hóa hoặc đã hết hạn (phải bắt đầu bằng tzp_).');
       }
     });
 

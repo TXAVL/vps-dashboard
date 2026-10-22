@@ -49,11 +49,27 @@ export interface GatewayLog {
   rotatedFrom?: string | null;
 }
 
-const AGENTS_FILE = 'ai-agents.json';
+export interface GatewayApiKey {
+  id: string;
+  name: string;
+  key: string;
+  masked: string;
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  enabled: boolean;
+}
 
-/** API key dùng chung của gateway luôn có prefix "tzp_" */
+export type GatewayApiKeyView = Omit<GatewayApiKey, 'key'>;
+
+const AGENTS_FILE = 'ai-agents.json';
+const KEYS_FILE = 'ai-gateway-keys.json';
+
+/** API key dùng chung của gateway có prefix "tzp_" hoặc "tzp_live_" */
 const KEY_PREFIX = 'tzp_';
+const LIVE_KEY_PREFIX = 'tzp_live_';
 const newKey = () => `${KEY_PREFIX}${randomBytes(24).toString('base64url')}`;
+const newLiveKey = () => `${LIVE_KEY_PREFIX}${randomBytes(24).toString('base64url')}`;
 
 /**
  * Danh tính cố định của mọi model chạy qua gateway. Gắn ở phía server vào system prompt,
@@ -123,13 +139,111 @@ export class AiGatewayService {
     return next;
   }
 
-  verifyKey(header: string | undefined): boolean {
+  // ------------------------------------------------------------------ Quản lý Cấp phát API Keys
+  private getRawApiKeys(): GatewayApiKey[] {
+    const list = readJson<GatewayApiKey[]>(KEYS_FILE, []);
+    // Nếu chưa có key nào, tự động khởi tạo 1 key mặc định từ root key
+    if (list.length === 0) {
+      const s = settings();
+      const defaultKey: GatewayApiKey = {
+        id: 'key_default',
+        name: 'Default Gateway Key (Mặc định)',
+        key: s.apiKey,
+        masked: `${s.apiKey.slice(0, 10)}••••••••••••${s.apiKey.slice(-4)}`,
+        createdAt: new Date().toISOString(),
+        expiresAt: null,
+        lastUsedAt: null,
+        enabled: true,
+      };
+      writeJson(KEYS_FILE, [defaultKey]);
+      return [defaultKey];
+    }
+    return list;
+  }
+
+  listApiKeys(): GatewayApiKeyView[] {
+    return this.getRawApiKeys().map(({ key: _k, ...rest }) => rest);
+  }
+
+  createApiKey(input: { name?: string; expiresInDays?: number | null; customExpiresAt?: string | null }): { key: string; info: GatewayApiKeyView } {
+    const name = (input.name || '').trim() || `API Key #${this.getRawApiKeys().length + 1}`;
+    let expiresAt: string | null = null;
+    if (input.customExpiresAt) {
+      expiresAt = new Date(input.customExpiresAt).toISOString();
+    } else if (typeof input.expiresInDays === 'number' && input.expiresInDays > 0) {
+      expiresAt = new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString();
+    }
+
+    const key = newLiveKey();
+    const id = `key_${randomBytes(8).toString('hex')}`;
+    const masked = `${key.slice(0, 13)}••••••••••••••••${key.slice(-4)}`;
+    const createdAt = new Date().toISOString();
+
+    const newRecord: GatewayApiKey = {
+      id,
+      name,
+      key,
+      masked,
+      createdAt,
+      expiresAt,
+      lastUsedAt: null,
+      enabled: true,
+    };
+
+    const current = this.getRawApiKeys();
+    writeJson(KEYS_FILE, [newRecord, ...current]);
+
+    const { key: _k, ...info } = newRecord;
+    return { key, info };
+  }
+
+  updateApiKey(id: string, patch: { name?: string; enabled?: boolean }): GatewayApiKeyView {
+    const current = this.getRawApiKeys();
+    const target = current.find((k) => k.id === id);
+    if (!target) throw badRequest('Không tìm thấy API Key');
+    if (patch.name !== undefined) target.name = patch.name.trim() || target.name;
+    if (patch.enabled !== undefined) target.enabled = Boolean(patch.enabled);
+    writeJson(KEYS_FILE, current);
+    const { key: _k, ...info } = target;
+    return info;
+  }
+
+  deleteApiKey(id: string): void {
+    const current = this.getRawApiKeys();
+    const next = current.filter((k) => k.id !== id);
+    writeJson(KEYS_FILE, next);
+  }
+
+  verifyKey(header: string | undefined): { ok: boolean; keyId?: string; keyName?: string } {
+    const token = header?.startsWith('Bearer ') ? header.slice(7).trim() : header?.trim();
+    if (!token) return { ok: false };
+
+    const keys = this.getRawApiKeys();
+    const now = Date.now();
+    for (const k of keys) {
+      if (!k.enabled) continue;
+      if (k.expiresAt && new Date(k.expiresAt).getTime() < now) continue;
+
+      const a = Buffer.from(token);
+      const b = Buffer.from(k.key);
+      if (a.length === b.length && timingSafeEqual(a, b)) {
+        k.lastUsedAt = new Date().toISOString();
+        writeJson(KEYS_FILE, keys);
+        return { ok: true, keyId: k.id, keyName: k.name };
+      }
+    }
+
+    // Fallback cho key root cũ
     const s = settings();
-    const token = header?.startsWith('Bearer ') ? header.slice(7) : header;
-    if (!token) return false;
-    const a = Buffer.from(token);
-    const b = Buffer.from(s.apiKey);
-    return a.length === b.length && timingSafeEqual(a, b);
+    if (s.apiKey) {
+      const a = Buffer.from(token);
+      const b = Buffer.from(s.apiKey);
+      if (a.length === b.length && timingSafeEqual(a, b)) {
+        return { ok: true, keyId: 'root', keyName: 'Root Gateway Key' };
+      }
+    }
+
+    return { ok: false };
   }
 
   logs(): GatewayLog[] {

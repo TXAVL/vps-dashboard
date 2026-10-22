@@ -16,8 +16,6 @@ import {
   Clock,
   Copy,
   Download,
-  Eye,
-  EyeOff,
   KeyRound,
   Layers,
   ListOrdered,
@@ -114,6 +112,16 @@ interface GatewaySettings {
   apiKey: string;
   defaultModel: string | null;
   fallbacks: string[];
+}
+
+export interface GatewayApiKeyView {
+  id: string;
+  name: string;
+  masked: string;
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  enabled: boolean;
 }
 
 interface GatewayLog {
@@ -2088,9 +2096,470 @@ function ActivityTab() {
   );
 }
 
+// ------------------------------------------------------------------ Quản lý Cấp phát API Keys (Developer Keys)
+
+function getExpiryInfo(expiresAt: string | null): { label: string; tone: 'green' | 'amber' | 'red' | 'blue'; isExpired: boolean } {
+  if (!expiresAt) return { label: 'Vĩnh viễn', tone: 'blue', isExpired: false };
+  const target = new Date(expiresAt).getTime();
+  const diff = target - Date.now();
+  if (diff <= 0) {
+    return { label: `Đã hết hạn (${new Date(expiresAt).toLocaleDateString('vi-VN')})`, tone: 'red', isExpired: true };
+  }
+  const days = Math.ceil(diff / 86_400_000);
+  if (days <= 3) {
+    return { label: `Còn ${days} ngày (${new Date(expiresAt).toLocaleDateString('vi-VN')})`, tone: 'amber', isExpired: false };
+  }
+  return { label: `Còn ${days} ngày (${new Date(expiresAt).toLocaleDateString('vi-VN')})`, tone: 'green', isExpired: false };
+}
+
+function ApiKeysTab({
+  keys,
+  reloadKeys,
+  createModalOpen,
+  setCreateModalOpen,
+}: {
+  keys: GatewayApiKeyView[];
+  reloadKeys: () => void;
+  createModalOpen: boolean;
+  setCreateModalOpen: (open: boolean) => void;
+}) {
+  const { toast, confirm } = useFeedback();
+  const { tunnel } = usePanel();
+  const [createdSecret, setCreatedSecret] = useState<string | null>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
+
+  // Form state tạo key
+  const [name, setName] = useState('');
+  const [expiryOption, setExpiryOption] = useState<'never' | '7' | '30' | '60' | '90' | 'custom'>('never');
+  const [customDate, setCustomDate] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const base = `${tunnel?.status === 'online' && tunnel.url ? tunnel.url : window.location.origin}/zen/v1`;
+  const dockerBase = 'http://host.docker.internal:8000/zen/v1';
+
+  const handleCreate = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      let expiresInDays: number | null = null;
+      let customExpiresAt: string | null = null;
+
+      if (expiryOption === 'custom') {
+        if (!customDate) {
+          toast('Vui lòng chọn ngày hết hạn tùy chọn', 'error');
+          setSubmitting(false);
+          return;
+        }
+        customExpiresAt = new Date(customDate).toISOString();
+      } else if (expiryOption !== 'never') {
+        expiresInDays = parseInt(expiryOption, 10);
+      }
+
+      const res = await post<{ key: string; info: GatewayApiKeyView }>('/api/ai/gateway/keys', {
+        name: name.trim() || undefined,
+        expiresInDays,
+        customExpiresAt,
+      });
+
+      // Mở modal hiển thị secret key (chỉ hiện 1 lần)
+      setCreatedSecret(res.key);
+      setCreateModalOpen(false);
+      setName('');
+      setExpiryOption('never');
+      setCustomDate('');
+      reloadKeys();
+      toast('Đã tạo API Key thành công!', 'success');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCopySecret = async (secret: string) => {
+    try {
+      await navigator.clipboard.writeText(secret);
+    } catch {
+      const area = document.createElement('textarea');
+      area.value = secret;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+    }
+    setCopiedKey(true);
+    toast('Đã sao chép API Key vào clipboard!', 'success');
+    setTimeout(() => setCopiedKey(false), 3000);
+  };
+
+  const handleToggle = async (key: GatewayApiKeyView) => {
+    try {
+      await put(`/api/ai/gateway/keys/${key.id}`, { enabled: !key.enabled });
+      reloadKeys();
+      toast(key.enabled ? `Đã tạm dừng API Key "${key.name}"` : `Đã kích hoạt API Key "${key.name}"`, 'success');
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  };
+
+  const handleDelete = (key: GatewayApiKeyView) => {
+    void confirm({
+      title: 'Xóa & Thu hồi API Key',
+      message: `Bạn có chắc chắn muốn thu hồi API Key "${key.name}"?\nMọi ứng dụng (n8n, Dify, Bot AI...) đang dùng key này sẽ bị ngắt kết nối ngay lập tức!`,
+      danger: true,
+      confirmLabel: 'Thu hồi key',
+    }).then(async (yes) => {
+      if (!yes) return;
+      await del(`/api/ai/gateway/keys/${key.id}`);
+      reloadKeys();
+      toast(`Đã thu hồi API Key "${key.name}"`, 'success');
+    });
+  };
+
+  const activeKeysCount = keys.filter((k) => k.enabled && !getExpiryInfo(k.expiresAt).isExpired).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Banner & Nút Tạo Key */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/50 via-slate-900 to-purple-950/40 p-4 shadow-xl">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-extrabold text-white">Quản lý Cấp phát API Keys</h3>
+            <Badge tone="blue" className="text-xs">Format: tzp_live_*</Badge>
+          </div>
+          <p className="text-xs text-slate-300">
+            Tạo và phân bổ API Key riêng biệt cho từng website, workflow n8n, AI Agent hoặc ứng dụng ngoài. Đặt hạn dùng và thu hồi bất kỳ lúc nào.
+          </p>
+        </div>
+        <Button
+          onClick={() => setCreateModalOpen(true)}
+          icon={Plus}
+          className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-900/50"
+        >
+          Tạo API Key mới
+        </Button>
+      </div>
+
+      {/* Thẻ thống kê */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          ['Tổng số API Keys', String(keys.length), 'khóa đã được cấp'],
+          ['Đang hoạt động', String(activeKeysCount), 'sẵn sàng xác thực'],
+          ['Khóa vĩnh viễn', String(keys.filter((k) => !k.expiresAt).length), 'không hết hạn'],
+          ['Khóa có thời hạn', String(keys.filter((k) => k.expiresAt).length), 'tự động hết hạn khi tới ngày'],
+        ].map(([label, val, sub]) => (
+          <div key={label} className="glass p-3.5">
+            <div className="text-xs text-slate-400">{label}</div>
+            <div className="mono text-lg font-black text-white mt-0.5">{val}</div>
+            <div className="text-[11px] text-slate-500">{sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Bảng danh sách Keys */}
+      <Card
+        title={`Danh sách API Keys (${keys.length})`}
+        icon={KeyRound}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button size="xs" variant="ghost" icon={RefreshCw} onClick={reloadKeys}>
+              Làm mới
+            </Button>
+            <Button size="xs" icon={Plus} onClick={() => setCreateModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold">
+              Tạo key mới
+            </Button>
+          </div>
+        }
+      >
+        {keys.length === 0 ? (
+          <EmptyState
+            icon={KeyRound}
+            title="Chưa có API Key nào"
+            description="Tạo API Key đầu tiên để kết nối n8n, Dify, Flowise, hoặc AI Agent từ website ngoài vào ZenPanel."
+            action={<Button icon={Plus} onClick={() => setCreateModalOpen(true)}>Tạo API Key mới</Button>}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className={tr}>
+                  <th className={th}>Tên Khóa</th>
+                  <th className={th}>Mã Khóa (Secret)</th>
+                  <th className={th}>Hạn sử dụng</th>
+                  <th className={th}>Lần dùng cuối</th>
+                  <th className={th}>Ngày tạo</th>
+                  <th className={th}>Trạng thái</th>
+                  <th className={cn(th, 'text-right')}>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {keys.map((k) => {
+                  const expiry = getExpiryInfo(k.expiresAt);
+                  return (
+                    <tr key={k.id} className="hover:bg-slate-900/40 transition">
+                      <td className={cn(td, 'font-semibold text-white')}>
+                        <div className="flex items-center gap-2">
+                          <span>{k.name}</span>
+                          {k.id === 'key_default' && (
+                            <Badge tone="blue" className="text-[10px]">Mặc định</Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className={td}>
+                        <div className="mono flex items-center gap-1.5 text-slate-300 bg-black/40 px-2 py-1 rounded border border-slate-800 max-w-fit">
+                          <span>{k.masked}</span>
+                        </div>
+                      </td>
+                      <td className={td}>
+                        <Badge tone={expiry.tone} className="text-[11px] font-medium">
+                          {expiry.label}
+                        </Badge>
+                      </td>
+                      <td className={cn(td, 'text-slate-400')}>
+                        {k.lastUsedAt ? formatRelative(k.lastUsedAt) : 'Chưa sử dụng'}
+                      </td>
+                      <td className={cn(td, 'text-slate-400')}>
+                        {new Date(k.createdAt).toLocaleDateString('vi-VN')}
+                      </td>
+                      <td className={td}>
+                        <label className="inline-flex items-center gap-2 cursor-pointer">
+                          <Toggle checked={k.enabled} onChange={() => void handleToggle(k)} />
+                          <span className={k.enabled ? 'text-emerald-400 font-medium' : 'text-slate-500'}>
+                            {k.enabled ? (expiry.isExpired ? 'Hết hạn' : 'Đang bật') : 'Đã tắt'}
+                          </span>
+                        </label>
+                      </td>
+                      <td className={cn(td, 'text-right')}>
+                        <IconButton
+                          icon={Trash2}
+                          className="text-red-400 hover:text-red-300"
+                          onClick={() => handleDelete(k)}
+                          title="Thu hồi / Xóa API Key này"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Card Hướng dẫn tích hợp Endpoint AI Gateway */}
+      <Card title="Hướng dẫn sử dụng Endpoint AI Gateway với API Key" icon={Route}>
+        <div className="space-y-3 text-xs text-slate-300">
+          <Notice tone="blue">
+            Bất kỳ AI Agent nào (n8n, Flowise, Dify, AutoGPT, Chatbot website...) chỉ cần cấu hình 2 thông tin: <strong>Base URL</strong> và <strong>API Key</strong> là có thể sử dụng toàn bộ sức mạnh của các model và Sub-Agents trong ZenPanel.
+          </Notice>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-700 bg-slate-950/70 p-3 space-y-2">
+              <div className="font-bold text-white flex items-center justify-between">
+                <span>1. Base URL (Public / Mạng ngoài / Cloud):</span>
+                <CopyButton value={base} label="Sao chép" />
+              </div>
+              <div className="mono rounded bg-black/60 p-2 text-indigo-300 break-all select-all">
+                {base}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Dùng khi AI Agent hoặc website nằm ở máy tính khác, hoặc qua mạng Internet.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-3 space-y-2">
+              <div className="font-bold text-emerald-300 flex items-center justify-between">
+                <span>2. Base URL Docker Internal (n8n, Dify trên cùng VPS):</span>
+                <CopyButton value={dockerBase} label="Sao chép" />
+              </div>
+              <div className="mono rounded bg-black/60 p-2 text-emerald-300 break-all select-all">
+                {dockerBase}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Khuyên dùng tối ưu tốc độ, kết nối trực tiếp trong mạng nội bộ Docker.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-black/60 p-3 space-y-2">
+            <div className="font-bold text-white">Cách gọi API chuẩn OpenAI:</div>
+            <pre className="mono overflow-x-auto text-emerald-300 text-[11px] leading-relaxed">
+{`curl ${base}/chat/completions \\
+  -H "Authorization: Bearer <API_KEY_CỦA_BẠN>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "auto",
+    "messages": [{"role": "user", "content": "Xin chào AI Agent!"}]
+  }'`}
+            </pre>
+            <p className="text-[11px] text-slate-400">
+              * Thay <code className="text-indigo-300">auto</code> bằng bất kỳ model nào: <code className="text-white">gemini/gemini-2.5-flash</code>, <code className="text-white">anthropic/claude-3-7-sonnet</code>, <code className="text-white">openai/gpt-4o</code> hoặc Sub-Agent <code className="text-purple-300">agent/tên_agent</code>.
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      {/* MODAL 1: TẠO API KEY MỚI */}
+      <Modal
+        open={createModalOpen}
+        title="Tạo API Key Mới Cho ZenPanel AI Gateway"
+        onClose={() => !submitting && setCreateModalOpen(false)}
+      >
+        <form onSubmit={handleCreate} className="space-y-4 text-xs">
+          <Notice tone="blue">
+            Khóa API mới sẽ được tạo với định dạng chuẩn <code className="mono font-bold">tzp_live_...</code>. Bạn có thể chọn thời hạn tự động hết hạn cho khóa này.
+          </Notice>
+
+          <Field label="Tên API Key (Gợi nhớ mục đích sử dụng)">
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ví dụ: n8n Production Workflow, Dify Chatbot, Webhook CSKH..."
+              className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+              autoFocus
+            />
+          </Field>
+
+          <div className="space-y-2">
+            <label className="font-semibold text-slate-200">Thời hạn sử dụng (Expiration)</label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {[
+                { id: 'never', label: 'Vĩnh viễn', sub: 'Không bao giờ hết hạn' },
+                { id: '7', label: '7 ngày', sub: 'Thử nghiệm ngắn hạn' },
+                { id: '30', label: '30 ngày', sub: 'Khuyên dùng' },
+                { id: '60', label: '60 ngày', sub: '2 tháng' },
+                { id: '90', label: '90 ngày', sub: '3 tháng' },
+                { id: 'custom', label: 'Tùy chỉnh...', sub: 'Chọn ngày cụ thể' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setExpiryOption(opt.id as typeof expiryOption)}
+                  className={cn(
+                    'flex flex-col items-start p-2.5 rounded-xl border text-left transition cursor-pointer',
+                    expiryOption === opt.id
+                      ? 'border-indigo-500 bg-indigo-950/60 ring-2 ring-indigo-500/30'
+                      : 'border-slate-800 bg-slate-900/60 hover:border-slate-700 text-slate-400'
+                  )}
+                >
+                  <span className={cn('font-bold text-xs', expiryOption === opt.id ? 'text-white' : 'text-slate-300')}>
+                    {opt.label}
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5">{opt.sub}</span>
+                </button>
+              ))}
+            </div>
+
+            {expiryOption === 'custom' && (
+              <div className="mt-2.5 space-y-1">
+                <label className="text-[11px] text-slate-400">Chọn ngày hết hạn:</label>
+                <input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={customDate}
+                  onChange={(e) => setCustomDate(e.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
+                  required
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+            <Button type="button" variant="ghost" onClick={() => setCreateModalOpen(false)} disabled={submitting}>
+              Hủy
+            </Button>
+            <Button type="submit" icon={Plus} disabled={submitting} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold">
+              {submitting ? 'Đang tạo...' : 'Tạo API Key'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL 2: HIỂN THỊ SECRET KEY MỚI (CHỈ HIỆN 1 LẦN DUY NHẤT) */}
+      <Modal
+        open={Boolean(createdSecret)}
+        title="🎉 API Key Đã Được Tạo Thành Công!"
+        onClose={() => setCreatedSecret(null)}
+      >
+        <div className="space-y-4 text-xs">
+          {/* Cảnh báo bảo mật quan trọng */}
+          <div className="rounded-xl border border-amber-500/50 bg-amber-950/40 p-3.5 space-y-1.5 text-amber-200">
+            <div className="flex items-center gap-2 font-bold text-sm text-amber-300">
+              <span>⚠️ LƯU Ý BẢO MẬT: CHỈ HIỂN THỊ 1 LẦN DUY NHẤT</span>
+            </div>
+            <p className="text-xs leading-relaxed text-amber-200/90">
+              Vì lý do an toàn bảo mật, bạn chỉ có thể <strong>xem và sao chép mã khóa này MỘT LẦN DUY NHẤT</strong> tại đây. Sau khi đóng cửa sổ này, hệ thống sẽ tự động che giấu mã khóa và bạn sẽ không thể xem lại được nữa!
+            </p>
+          </div>
+
+          {/* Ô Secret Key to rõ */}
+          <div className="space-y-2">
+            <label className="font-semibold text-slate-200 text-xs">Mã API Key bí mật của bạn:</label>
+            <div className="relative rounded-2xl border-2 border-indigo-500/70 bg-black/90 p-3.5 shadow-2xl space-y-3">
+              <div className="mono break-all text-xs sm:text-sm font-bold text-emerald-300 select-all leading-relaxed p-1">
+                {createdSecret}
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => createdSecret && void handleCopySecret(createdSecret)}
+                  className={cn(
+                    'inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-xs shadow-lg transition cursor-pointer',
+                    copiedKey
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/50'
+                  )}
+                >
+                  {copiedKey ? <Check className="size-4" /> : <Copy className="size-4" />}
+                  <span>{copiedKey ? 'Đã sao chép vào Clipboard!' : 'Sao chép API Key'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Cách sử dụng nhanh */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 space-y-1.5 text-slate-300">
+            <div className="font-semibold text-white">Cách cấu hình vào n8n, Flowise, Dify hoặc SDK:</div>
+            <div className="text-[11px] space-y-1 text-slate-400">
+              <div>• <strong>Base URL:</strong> <code className="text-indigo-300">{base}</code></div>
+              <div>• <strong>API Key:</strong> <code className="text-emerald-300">{createdSecret ? `${createdSecret.slice(0, 18)}...` : ''}</code></div>
+              <div>• <strong>Authorization Header:</strong> <code className="text-indigo-300">Bearer {createdSecret ? `${createdSecret.slice(0, 18)}...` : ''}</code></div>
+            </div>
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <Button
+              onClick={() => setCreatedSecret(null)}
+              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg"
+            >
+              Tôi đã sao chép và lưu khóa an toàn (Hoàn tất)
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ Tổng quan
 
-function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway: GatewaySettings; saveGateway: (patch: Partial<GatewaySettings>, msg: string) => Promise<void>; regenerate: () => void; providers: AiProvider[] }) {
+function OverviewTab({
+  gateway,
+  saveGateway,
+  providers,
+  keys,
+  onOpenCreateKey,
+  onSwitchToKeysTab,
+}: {
+  gateway: GatewaySettings;
+  saveGateway: (patch: Partial<GatewaySettings>, msg: string) => Promise<void>;
+  providers: AiProvider[];
+  keys: GatewayApiKeyView[];
+  onOpenCreateKey: () => void;
+  onSwitchToKeysTab: () => void;
+}) {
   const { tunnel } = usePanel();
   const logs = useApi<GatewayLog[]>('/api/ai/gateway/logs', 15000);
   const [lang, setLang] = useState<'curl' | 'python' | 'node' | 'n8n'>('curl');
@@ -2108,27 +2577,10 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
   const dockerBase = 'http://host.docker.internal:8000/zen/v1';
 
   const samples = {
-    curl: `curl ${base}/chat/completions \\\n  -H "Authorization: Bearer ${gateway.apiKey}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${model}", "messages": [{"role": "user", "content": "Xin chào"}]}'`,
-    python: `from openai import OpenAI\n\nclient = OpenAI(base_url="${base}", api_key="${gateway.apiKey}")\nres = client.chat.completions.create(\n    model="${model}",\n    messages=[{"role": "user", "content": "Xin chào"}],\n)\nprint(res.choices[0].message.content)`,
-    node: `import OpenAI from 'openai';\n\nconst client = new OpenAI({ baseURL: '${base}', apiKey: '${gateway.apiKey}' });\nconst res = await client.chat.completions.create({\n  model: '${model}',\n  messages: [{ role: 'user', content: 'Xin chào' }],\n});\nconsole.log(res.choices[0].message.content);`,
-    n8n: `=== CÁCH KẾT NỐI N8N VỚI ZENPANEL AI GATEWAY ===\n\n1. Tạo Credential trong n8n:\n   - Menu trái: Credentials → Add Credential → Chọn "OpenAI"\n   - API Key: ${gateway.apiKey}\n   - Base URL (trong Advanced/URL Options):\n     * Nếu n8n chạy Docker trên cùng VPS (Khuyên dùng):\n       ${dockerBase}\n     * Nếu n8n chạy ngoài hoặc qua Domain/Tunnel:\n       ${base}\n\n2. Kéo Node trong Workflow:\n   - Kéo node "AI Agent" (hoặc "Chat Model")\n   - Kéo node "OpenAI Chat Model" gắn vào cổng Model của AI Agent\n   - Chọn Credential OpenAI vừa tạo ở trên\n\n3. BẬT CUSTOM MODEL (Mấu chốt):\n   - Ô "Model" bấm biểu tượng chuyển sang "Custom" / "Expression"\n   - Gõ tên model bất kỳ:\n     • gemini/gemini-2.5-flash (siêu nhanh, rẻ)\n     • anthropic/claude-3-7-sonnet (thông minh nhất)\n     • openai/gpt-4o\n     • agent/coder (Sub-Agent của bạn)\n     • auto (ZenPanel tự động phân luồng)`,
-  };
-
-  const [showKey, setShowKey] = useState(false);
-  const { toast } = useFeedback();
-
-  const copyGatewayKey = async () => {
-    try {
-      await navigator.clipboard.writeText(gateway.apiKey);
-    } catch {
-      const area = document.createElement('textarea');
-      area.value = gateway.apiKey;
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand('copy');
-      area.remove();
-    }
-    toast('Đã sao chép Gateway Key của ZenPanel vào clipboard', 'success');
+    curl: `curl ${base}/chat/completions \\\n  -H "Authorization: Bearer <API_KEY_CỦA_BẠN>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${model}", "messages": [{"role": "user", "content": "Xin chào"}]}'`,
+    python: `from openai import OpenAI\n\nclient = OpenAI(base_url="${base}", api_key="<API_KEY_CỦA_BẠN>")\nres = client.chat.completions.create(\n    model="${model}",\n    messages=[{"role": "user", "content": "Xin chào"}],\n)\nprint(res.choices[0].message.content)`,
+    node: `import OpenAI from 'openai';\n\nconst client = new OpenAI({ baseURL: '${base}', apiKey: '<API_KEY_CỦA_BẠN>' });\nconst res = await client.chat.completions.create({\n  model: '${model}',\n  messages: [{ role: 'user', content: 'Xin chào' }],\n});\nconsole.log(res.choices[0].message.content);`,
+    n8n: `=== CÁCH KẾT NỐI N8N VỚI ZENPANEL AI GATEWAY ===\n\n1. Tạo Credential trong n8n:\n   - Menu trái: Credentials → Add Credential → Chọn "OpenAI"\n   - API Key: Dán API Key bạn tạo tại tab "Cấp phát API Keys" (tzp_live_...)\n   - Base URL (trong Advanced/URL Options):\n     * Nếu n8n chạy Docker trên cùng VPS (Khuyên dùng):\n       ${dockerBase}\n     * Nếu n8n chạy ngoài hoặc qua Domain/Tunnel:\n       ${base}\n\n2. Kéo Node trong Workflow:\n   - Kéo node "AI Agent" (hoặc "Chat Model")\n   - Kéo node "OpenAI Chat Model" gắn vào cổng Model của AI Agent\n   - Chọn Credential OpenAI vừa tạo ở trên\n\n3. BẬT CUSTOM MODEL (Mấu chốt):\n   - Ô "Model" bấm biểu tượng chuyển sang "Custom" / "Expression"\n   - Gõ tên model bất kỳ:\n     • gemini/gemini-2.5-flash (siêu nhanh, rẻ)\n     • anthropic/claude-3-7-sonnet (thông minh nhất)\n     • openai/gpt-4o\n     • agent/coder (Sub-Agent của bạn)\n     • auto (ZenPanel tự động phân luồng)`,
   };
 
   return (
@@ -2162,7 +2614,7 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
           <div className="space-y-3.5">
             {!gateway.enabled && <Notice tone="amber">Gateway đang tắt: endpoint trả lỗi 503. Bật công tắc ở góc trên để dùng từ app khác.</Notice>}
 
-            {/* MỤC API KEY CỦA ZENPANEL - SIÊU NỔI BẬT & DỄ THẤY */}
+            {/* MỤC QUẢN LÝ CẤP PHÁT API KEYS CỦA ZENPANEL */}
             <div className="rounded-2xl border-2 border-indigo-500/50 bg-gradient-to-br from-indigo-950/60 via-slate-900 to-slate-950 p-4 shadow-xl space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
@@ -2171,46 +2623,49 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h4 className="text-sm font-extrabold text-white">API Key (Gateway Key của ZenPanel)</h4>
-                      <Badge tone="blue" className="text-[10px] font-bold uppercase tracking-wider">Gateway Key</Badge>
+                      <h4 className="text-sm font-extrabold text-white">Quản lý Cấp phát API Keys (Gateway Keys)</h4>
+                      <Badge tone="blue" className="text-[10px] font-bold uppercase tracking-wider">Format: tzp_live_*</Badge>
                     </div>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Dán vào ô <b>API Key</b> trong n8n, Flowise, NextChat, Dify hoặc Header Authorization
+                      Cấp API Key riêng cho từng AI Agent, n8n, Flowise, Dify. Đặt hạn dùng và thu hồi linh hoạt.
                     </p>
                   </div>
                 </div>
-                <Button size="xs" variant="ghost" icon={RefreshCw} onClick={regenerate} className="text-slate-400 hover:text-white">
-                  Tạo key mới
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button size="xs" variant="ghost" onClick={onSwitchToKeysTab} className="text-indigo-300 hover:text-white">
+                    Quản lý tất cả ({keys.length}) →
+                  </Button>
+                  <Button size="xs" icon={Plus} onClick={onOpenCreateKey} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold">
+                    + Tạo API Key mới
+                  </Button>
+                </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-indigo-500/40 bg-black/60 p-2.5">
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition px-2 py-1 rounded-lg border border-slate-800 bg-slate-900/60"
-                  title={showKey ? 'Ẩn key' : 'Hiện key'}
-                >
-                  {showKey ? <EyeOff className="size-3.5 text-indigo-400" /> : <Eye className="size-3.5 text-slate-400" />}
-                  <span>{showKey ? 'Ẩn' : 'Hiện'}</span>
-                </button>
-                <div className="mono min-w-0 flex-1 truncate text-xs font-semibold text-indigo-200 select-all px-1">
-                  {showKey ? gateway.apiKey : `${gateway.apiKey.slice(0, 10)}••••••••••••••••••••••••••••••••••••`}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void copyGatewayKey()}
-                  className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-lg shadow-indigo-900/40 transition cursor-pointer"
-                >
-                  <Copy className="size-3.5" />
-                  <span>Sao chép Gateway Key</span>
-                </button>
+              {/* Danh sách rút gọn 2 key mới nhất */}
+              <div className="space-y-1.5 pt-1">
+                {keys.slice(0, 2).map((k) => {
+                  const exp = getExpiryInfo(k.expiresAt);
+                  return (
+                    <div key={k.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-black/60 p-2.5 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold text-white truncate">{k.name}</span>
+                        <span className="mono text-[11px] text-slate-400">{k.masked}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge tone={exp.tone} className="text-[10px]">{exp.label}</Badge>
+                        <Badge tone={k.enabled ? 'green' : 'slate'} className="text-[10px]">
+                          {k.enabled ? 'Đang bật' : 'Đã tắt'}
+                        </Badge>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="text-[11px] text-emerald-400 flex items-center gap-2 bg-emerald-950/30 border border-emerald-500/20 rounded-xl px-3 py-2">
                 <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
                 <span>
-                  <b>Bạn đang tìm mục này?</b> Khi app yêu cầu <i>"Dán Gateway Key của ZenPanel (bấm sao chép ở mục API key trên ZenPanel)"</i>, hãy bấm nút màu tím <b>[Sao chép Gateway Key]</b> ở ngay phía trên!
+                  <b>Muốn cấp key mới?</b> Bấm <b>[+ Tạo API Key mới]</b> để đặt tên, chọn hạn dùng (Vĩnh viễn hoặc theo ngày). Khóa bí mật chỉ hiện 1 lần duy nhất trên modal tạo để bạn sao chép an toàn!
                 </span>
               </div>
             </div>
@@ -2381,25 +2836,21 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
   );
 }
 
-type TabId = 'overview' | 'company' | 'subagents' | 'providers' | 'models' | 'playground' | 'routing' | 'activity';
+type TabId = 'overview' | 'apikeys' | 'company' | 'subagents' | 'providers' | 'models' | 'playground' | 'routing' | 'activity';
 
 export default function AiGateway() {
   const providers = useApi<AiProvider[]>('/api/ai/providers');
   const gatewayApi = useApi<GatewaySettings>('/api/ai/gateway');
+  const keysApi = useApi<GatewayApiKeyView[]>('/api/ai/gateway/keys');
   const allModels = useApi<AiModel[]>('/api/ai/models');
   const subagents = useApi<SubAgent[]>('/api/ai/subagents');
   const [tab, setTab] = useState<TabId>('overview');
   const [tryModel, setTryModel] = useState('');
-  const { confirm, run } = useFeedback();
+  const [createKeyModalOpen, setCreateKeyModalOpen] = useState(false);
+  const { run } = useFeedback();
 
   const saveGateway = async (patch: Partial<GatewaySettings>, msg: string) => {
     const next = await run(() => put<GatewaySettings>('/api/ai/gateway', patch), msg);
-    if (next) gatewayApi.setData(next);
-  };
-
-  const regenerate = async () => {
-    if (!(await confirm({ title: 'Tạo API key mới', message: 'Key cũ ngừng hoạt động ngay, các app đang dùng gateway cần đổi sang key mới.', danger: true, confirmLabel: 'Tạo key mới' }))) return;
-    const next = await run(() => post<GatewaySettings>('/api/ai/gateway/regenerate'), 'Đã tạo API key mới');
     if (next) gatewayApi.setData(next);
   };
 
@@ -2417,17 +2868,22 @@ export default function AiGateway() {
     <>
       <PageHeader
         title="AI Gateway"
-        description="1 endpoint chuẩn OpenAI cho ChatGPT, Claude, Gemini, OpenRouter, NVIDIA — tự định tuyến, tự xoay vòng API keys và chia Sub-Agents"
+        description="Cấp phát API Keys & 1 endpoint chuẩn OpenAI cho ChatGPT, Claude, Gemini, NVIDIA — tự định tuyến, chia Sub-Agents và AI Company"
         icon={Sparkles}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <CopyButton
-              value={gateway.apiKey}
-              label="Sao chép Gateway Key"
-              className="rounded-xl border border-indigo-500/40 bg-indigo-950/60 hover:bg-indigo-900/80 px-3 py-2 text-xs font-semibold text-indigo-200 shadow-sm transition"
-            />
+            <Button
+              icon={Plus}
+              onClick={() => {
+                setTab('apikeys');
+                setCreateKeyModalOpen(true);
+              }}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shadow-indigo-900/40"
+            >
+              + Cấp API Key mới
+            </Button>
             <Link to="/apps">
-              <Button icon={Play}>Cài AI Agent (App Store)</Button>
+              <Button icon={Play} variant="ghost" size="sm">Cài AI Agent (App Store)</Button>
             </Link>
           </div>
         }
@@ -2435,7 +2891,7 @@ export default function AiGateway() {
       {!connected && (
         <div className="mb-4">
           <Notice icon={KeyRound}>
-            Bắt đầu bằng cách kết nối API key ở tab <b>Nhà cung cấp</b>, rồi chọn model mặc định hoặc tạo <b>Sub-Agents</b> chuyên biệt.
+            Bắt đầu bằng cách kết nối API key ở tab <b>Nhà cung cấp</b>, rồi tạo <b>API Keys</b> để phân bổ cho các ứng dụng ngoài hoặc tạo <b>Sub-Agents</b> chuyên biệt.
           </Notice>
         </div>
       )}
@@ -2445,6 +2901,7 @@ export default function AiGateway() {
           onChange={setTab}
           tabs={[
             { id: 'overview', label: 'Tổng quan', icon: Route },
+            { id: 'apikeys', label: '🔑 Cấp phát API Keys', icon: KeyRound, count: keysApi.data?.length },
             { id: 'company', label: '🏢 AI Company (Sếp & Công nhân)', icon: Building2 },
             { id: 'subagents', label: 'Sub AI Agents', icon: Bot, count: subagents.data?.length },
             { id: 'providers', label: 'Nhà cung cấp & Keys', icon: KeyRound, count: providers.data.filter((p) => p.configured).length },
@@ -2455,7 +2912,27 @@ export default function AiGateway() {
           ]}
         />
       </div>
-      {tab === 'overview' && <OverviewTab gateway={gateway} saveGateway={saveGateway} regenerate={() => void regenerate()} providers={providers.data} />}
+      {tab === 'overview' && (
+        <OverviewTab
+          gateway={gateway}
+          saveGateway={saveGateway}
+          providers={providers.data}
+          keys={keysApi.data ?? []}
+          onOpenCreateKey={() => {
+            setTab('apikeys');
+            setCreateKeyModalOpen(true);
+          }}
+          onSwitchToKeysTab={() => setTab('apikeys')}
+        />
+      )}
+      {tab === 'apikeys' && (
+        <ApiKeysTab
+          keys={keysApi.data ?? []}
+          reloadKeys={keysApi.reload}
+          createModalOpen={createKeyModalOpen}
+          setCreateModalOpen={setCreateKeyModalOpen}
+        />
+      )}
       {tab === 'company' && <CompanyTab models={allModels.data ?? []} providers={providers.data} />}
       {tab === 'subagents' && (
         <SubAgentsTab
