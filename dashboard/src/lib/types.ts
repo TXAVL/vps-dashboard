@@ -498,3 +498,26 @@ export interface NodeStatusResponse {
   }[];
   checkedAt: string;
 }
+
+export interface SystemToolItem {
+  id: 'node' | 'npm' | 'git' | 'cloudflared' | 'docker';
+  name: string;
+  category: 'runtime' | 'package_manager' | 'vcs' | 'network' | 'container';
+  description: string;
+  installed: boolean;
+  currentVersion: string | null;
+  latestVersion: string | null;
+  hasUpdate: boolean;
+  isCrucialForZenPanel: boolean;
+  changelogUrl?: string;
+  releaseDate?: string;
+  securityNotes?: string;
+  notes?: string;
+}
+
+export interface SystemToolsStatusResponse {
+  tools: SystemToolItem[];
+  checkedAt: string;
+  totalWithUpdates: number;
+}
+

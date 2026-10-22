@@ -13,6 +13,7 @@ import type { TaskService } from '../services/task.service.js';
 import { listShellAliases, saveShellAlias } from '../services/terminal.service.js';
 import type { UpdateService } from '../services/update.service.js';
 import { nodeService } from '../services/nodejs.service.js';
+import { systemToolsService } from '../services/system-tools.service.js';
 
 let publicIpCache: { at: number; ipv4: string | null; ipv6: string | null; reverseDns: string | null } | null = null;
 
@@ -104,6 +105,17 @@ export async function panelRoutes(
   app.post('/api/system/node/upgrade', async (req) => {
     const target = (req.body as { version?: string } | undefined)?.version;
     return nodeService.upgrade(target);
+  });
+
+  // ------------------------------------------------------------ Công cụ hệ thống (Node, npm, Git, Cloudflared, Docker)
+  app.get('/api/system/tools', async (req) => {
+    const force = Boolean((req.query as { refresh?: string })?.refresh);
+    return systemToolsService.getStatus(force);
+  });
+  app.post('/api/system/tools/check', async () => systemToolsService.getStatus(true));
+  app.post('/api/system/tools/:id/upgrade', async (req) => {
+    const id = (req.params as { id: string }).id;
+    return systemToolsService.upgradeTool(id);
   });
 
   // ------------------------------------------------------------ Tác vụ định kỳ

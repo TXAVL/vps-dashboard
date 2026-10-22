@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   Bot,
+  Boxes,
   CalendarClock,
   Check,
   CheckCircle2,
@@ -36,6 +37,7 @@ import {
   Copy,
   Cpu,
   ShieldAlert,
+  Wrench,
 } from 'lucide-react';
 import { useJobs } from '../components/jobs';
 import { useFeedback } from '../components/feedback';
@@ -46,7 +48,7 @@ import { txaformat } from '../lib/txaformat';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
 import { PASSWORD_RULES, RANDOM_DEFAULT_LENGTH, RANDOM_MAX_LENGTH, RANDOM_MIN_LENGTH } from '../lib/password';
-import type { Job, LoginRecord, NetworkInfo, NodeStatusResponse, PanelPrefs, RemoteVersion, VersionPackage } from '../lib/types';
+import type { Job, LoginRecord, NetworkInfo, NodeStatusResponse, PanelPrefs, RemoteVersion, SystemToolItem, SystemToolsStatusResponse, VersionPackage } from '../lib/types';
 
 type Mode = 'random' | 'custom';
 
@@ -651,6 +653,209 @@ function NodeRuntimeCard() {
               ))}
             </ul>
           </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function SystemToolsCard() {
+  const toolsApi = useApi<SystemToolsStatusResponse>('/api/system/tools');
+  const [checking, setChecking] = useState(false);
+  const { runJob } = useJobs();
+  const { confirm, toast } = useFeedback();
+
+  const check = async () => {
+    setChecking(true);
+    try {
+      const res = await post<SystemToolsStatusResponse>('/api/system/tools/check');
+      if (res) toolsApi.setData(res);
+      toast('Đã kiểm tra phiên bản mới nhất của các công cụ hệ thống', 'success');
+    } catch (err: any) {
+      toast(err?.message || 'Không thể kiểm tra công cụ hệ thống', 'error');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const upgradeTool = async (tool: SystemToolItem) => {
+    if (!tool.latestVersion) return;
+    const ok = await confirm({
+      title: `Nâng cấp ${tool.name}`,
+      message: `Hệ thống sẽ tự động tải và cài đặt ${tool.name} phiên bản ${tool.latestVersion} mới nhất. Bạn có muốn tiếp tục?`,
+      confirmLabel: `Nâng cấp ngay`,
+    });
+    if (!ok) return;
+
+    try {
+      await runJob(
+        () => post<Job>(`/api/system/tools/${tool.id}/upgrade`),
+        () => {
+          void toolsApi.reload();
+          toast(`Đã hoàn tất nâng cấp ${tool.name} lên ${tool.latestVersion}`, 'success');
+        },
+      );
+    } catch (err: any) {
+      toast(err?.message || `Không thể bắt đầu nâng cấp ${tool.name}`, 'error');
+    }
+  };
+
+  const getToolIcon = (id: SystemToolItem['id']) => {
+    switch (id) {
+      case 'node':
+        return Cpu;
+      case 'npm':
+        return Package;
+      case 'git':
+        return GitBranch;
+      case 'cloudflared':
+        return Cloud;
+      case 'docker':
+        return Boxes;
+      default:
+        return Wrench;
+    }
+  };
+
+  return (
+    <Card
+      title="Công cụ hệ thống & Môi trường chạy (System Tools)"
+      icon={Wrench}
+      actions={
+        <div className="flex items-center gap-2">
+          {toolsApi.data && (
+            toolsApi.data.totalWithUpdates > 0 ? (
+              <Badge tone="amber" className="font-semibold text-xs">
+                Có {toolsApi.data.totalWithUpdates} bản cập nhật mới
+              </Badge>
+            ) : (
+              <Badge tone="green" className="font-semibold text-xs">
+                Tất cả đã mới nhất
+              </Badge>
+            )
+          )}
+          <Button size="xs" variant="ghost" icon={RefreshCw} loading={checking} onClick={() => void check()}>
+            Kiểm tra bản mới
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        {toolsApi.error ? (
+          <ErrorBox message={toolsApi.error} onRetry={toolsApi.reload} />
+        ) : !toolsApi.data ? (
+          <Spinner />
+        ) : (
+          toolsApi.data.tools.map((tool) => {
+            const Icon = getToolIcon(tool.id);
+            return (
+              <div
+                key={tool.id}
+                className={cn(
+                  'rounded-2xl border p-4 transition-all',
+                  tool.hasUpdate
+                    ? 'border-amber-500/50 bg-gradient-to-r from-amber-950/25 via-slate-900/60 to-ink-950/80 shadow-lg ring-1 ring-amber-500/20'
+                    : 'border-slate-700/50 bg-ink-950/60 hover:border-slate-600',
+                )}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                    <div
+                      className={cn(
+                        'flex size-11 shrink-0 items-center justify-center rounded-xl ring-1',
+                        tool.hasUpdate
+                          ? 'bg-amber-500/20 text-amber-300 ring-amber-500/40'
+                          : 'bg-slate-800 text-slate-300 ring-slate-700/60',
+                      )}
+                    >
+                      <Icon className="size-5" />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-bold text-white">{tool.name}</h4>
+                        {tool.isCrucialForZenPanel && (
+                          <Badge tone="blue" className="text-[10px]">
+                            Cần cho ZenPanel
+                          </Badge>
+                        )}
+                        {tool.installed ? (
+                          tool.hasUpdate ? (
+                            <Badge tone="amber" className="text-[10px] font-bold">
+                              Có bản mới: {tool.latestVersion}
+                            </Badge>
+                          ) : (
+                            <Badge tone="green" className="text-[10px]">
+                              Đã mới nhất
+                            </Badge>
+                          )
+                        ) : (
+                          <Badge tone="red" className="text-[10px]">
+                            Chưa cài đặt
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400">{tool.description}</p>
+
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-xs">
+                        <span className="text-slate-400">
+                          Phiên bản hiện tại: <b className="mono text-slate-200">{tool.currentVersion || 'Chưa cài'}</b>
+                        </span>
+                        {tool.latestVersion && (
+                          <span className="text-slate-400">
+                            Bản mới nhất: <b className="mono text-emerald-400">{tool.latestVersion}</b>
+                          </span>
+                        )}
+                        {tool.releaseDate && (
+                          <span className="text-slate-500 text-[11px]">
+                            Phát hành: {tool.releaseDate}
+                          </span>
+                        )}
+                        {tool.changelogUrl && (
+                          <a
+                            href={tool.changelogUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] text-blue-400 hover:underline flex items-center gap-0.5"
+                          >
+                            Changelog <ExternalLink className="size-2.5" />
+                          </a>
+                        )}
+                      </div>
+
+                      {tool.securityNotes && (
+                        <div className="mt-2 rounded-xl border border-red-500/40 bg-red-950/20 px-3 py-2 text-xs text-red-200 flex items-start gap-2">
+                          <ShieldAlert className="size-4 shrink-0 text-red-400 mt-0.5" />
+                          <span>{tool.securityNotes}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* NÚT NÂNG CẤP: CHỈ HIỆN KHI CÓ BẢN MỚI */}
+                  <div className="shrink-0 sm:self-center flex items-center gap-2">
+                    {tool.hasUpdate && tool.latestVersion ? (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        icon={Download}
+                        onClick={() => void upgradeTool(tool)}
+                        className="font-bold bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white shadow-lg shadow-amber-950/40"
+                      >
+                        Nâng cấp lên {tool.latestVersion}
+                      </Button>
+                    ) : tool.installed ? (
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400 bg-emerald-950/20 border border-emerald-500/20 px-3 py-1.5 rounded-xl">
+                        <CheckCircle2 className="size-4" />
+                        <span>Đã mới nhất</span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-slate-500 italic">Chưa cài trên máy</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </Card>
@@ -1313,7 +1518,7 @@ function SystemCard() {
   );
 }
 
-type TabId = 'account' | 'appearance' | 'ai' | 'vps' | 'update' | 'sessions' | 'system';
+type TabId = 'account' | 'appearance' | 'ai' | 'vps' | 'tools' | 'update' | 'sessions' | 'system';
 
 export default function Settings() {
   const [params, setParams] = useSearchParams();
@@ -1322,7 +1527,7 @@ export default function Settings() {
 
   return (
     <>
-      <PageHeader title="Cài đặt" description="Tài khoản, giao diện, hạn VPS, cập nhật & phiên bản ZenPanel" icon={Cog} />
+      <PageHeader title="Cài đặt" description="Tài khoản, giao diện, công cụ hệ thống, hạn VPS, cập nhật & phiên bản ZenPanel" icon={Cog} />
       <div className="mb-5">
         <Tabs
           value={tab}
@@ -1332,6 +1537,7 @@ export default function Settings() {
             { id: 'appearance', label: 'Giao diện', icon: Palette },
             { id: 'ai', label: 'AI', icon: Bot },
             { id: 'vps', label: 'Hạn VPS', icon: CalendarClock },
+            { id: 'tools', label: 'Công cụ hệ thống', icon: Wrench },
             { id: 'update', label: update?.available ? 'Cập nhật •' : 'Cập nhật', icon: Sparkles },
             { id: 'sessions', label: 'Đăng nhập', icon: History },
             { id: 'system', label: 'Hệ thống', icon: Info },
@@ -1350,7 +1556,18 @@ export default function Settings() {
           <VpsCard />
         </div>
       )}
-      {tab === 'update' && <UpdateCard />}
+      {tab === 'tools' && (
+        <div className="space-y-5">
+          <SystemToolsCard />
+          <NodeRuntimeCard />
+        </div>
+      )}
+      {tab === 'update' && (
+        <div className="space-y-5">
+          <UpdateCard />
+          <SystemToolsCard />
+        </div>
+      )}
       {tab === 'sessions' && <SessionsCard />}
       {tab === 'system' && <SystemCard />}
     </>
