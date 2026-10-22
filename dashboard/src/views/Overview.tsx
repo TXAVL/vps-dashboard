@@ -19,6 +19,7 @@ import {
   Power,
   RotateCcw,
   ShieldAlert,
+  Sparkles,
   Zap,
 } from 'lucide-react';
 import { AreaChart, CoreGrid, RingGauge } from '../components/charts';
@@ -189,6 +190,26 @@ export default function Overview() {
           <Notice tone="amber" icon={ShieldAlert}>
             Agent đang chạy <b>không có quyền {info.os.family === 'windows' ? 'Administrator' : 'root'}</b>. Một số chức năng (dịch vụ, tường lửa, web server) sẽ bị từ chối.
           </Notice>
+        </div>
+      )}
+
+      {(latest.cpu.usage >= 70 || diskPct >= 85) && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zen-amber/40 bg-zen-amber/10 px-4 py-3 text-sm text-amber-200">
+          <div className="flex items-center gap-2.5">
+            <Sparkles className="size-5 shrink-0 text-zen-amber" />
+            <span>
+              {latest.cpu.usage >= 70 && diskPct >= 85
+                ? `CPU đang quá tải (${latest.cpu.usage}%) và ổ đĩa gần đầy (${diskPct}%).`
+                : latest.cpu.usage >= 70
+                  ? `CPU đang hoạt động ở mức cao (${latest.cpu.usage}%). Hãy kiểm tra tiến trình để hạ tải.`
+                  : `Ổ đĩa máy chủ đang sắp đầy (${diskPct}%). Cần dọn dẹp để tránh đầy ổ đĩa (full disk).`}
+            </span>
+          </div>
+          <Link to="/cleanup">
+            <Button size="xs" variant="secondary" className="border-amber-400/40 text-amber-100 hover:bg-amber-400/20">
+              Vào tab Dọn dẹp ngay →
+            </Button>
+          </Link>
         </div>
       )}
 

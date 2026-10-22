@@ -5,6 +5,7 @@ import { generatePassword } from '../core/auth.js';
 import { jobLog } from '../core/jobs.js';
 import { dataPath, JsonCollection } from '../core/store.js';
 import { badRequest, HttpError, isPort } from '../core/validate.js';
+import type { OSAdapter } from '../adapters/base.adapter.js';
 import type { AiService } from './ai.service.js';
 import { APP_CATALOG, type AppDefinition } from './appstore.catalog.js';
 import { APP_GUIDES, type AppGuide } from './appstore.guides.js';
@@ -43,6 +44,7 @@ export class AppStoreService {
     private readonly docker: DockerService,
     private readonly ai: AiService,
     private readonly tunnels: AppTunnelService,
+    private readonly adapter?: OSAdapter,
   ) {}
 
   installedApps(): InstalledApp[] {
@@ -114,10 +116,40 @@ export class AppStoreService {
     return params;
   }
 
-  /** Kiểm tra tham số trước khi chạy job cài đặt (lỗi nhập liệu báo ngay cho người dùng) */
-  prepareInstall(id: string, input: Record<string, unknown>): Record<string, string> {
+  /** Kiểm tra dung lượng ổ đĩa còn trống trước khi cài đặt để tránh làm đầy ổ cứng (full disk) */
+  async assertSufficientDiskSpace(app: AppDefinition): Promise<{ free: number; total: number; mount: string; required: number }> {
+    if (!this.adapter) return { free: 0, total: 0, mount: '/', required: 0 };
+    const disks = await this.adapter.getDisks().catch(() => []);
+    if (!disks.length) return { free: 0, total: 0, mount: '/', required: 0 };
+
+    const targetDir = appDir(app.id);
+    let primary = disks.find((d) => targetDir.toLowerCase().startsWith(d.mount.toLowerCase()));
+    if (!primary) {
+      primary = disks.find((d) => d.mount === '/' || /^[a-zA-Z]:\\?$/.test(d.mount)) ?? disks[0];
+    }
+
+    const freeBytes = primary.total - primary.used;
+    // App AI cần tối thiểu 4.0 GB trống, các app khác tối thiểu 2.5 GB trống
+    const requiredBytes = (app.category === 'ai' ? 4.0 : 2.5) * 1024 * 1024 * 1024;
+    const requiredGb = (requiredBytes / (1024 * 1024 * 1024)).toFixed(1);
+    const freeGb = (freeBytes / (1024 * 1024 * 1024)).toFixed(2);
+
+    if (freeBytes < requiredBytes) {
+      throw badRequest(
+        `Dung lượng ổ đĩa khả dụng không đủ (${freeGb} GB còn trống trên phân vùng ${primary.mount}). ` +
+        `Cần tối thiểu ${requiredGb} GB trống để cài đặt ${app.name} an toàn nhằm tránh làm đầy ổ đĩa (full disk) gây treo máy chủ. ` +
+        `Vui lòng vào tab "Dọn dẹp" để giải phóng bớt dung lượng trước khi cài đặt.`
+      );
+    }
+
+    return { free: freeBytes, total: primary.total, mount: primary.mount, required: requiredBytes };
+  }
+
+  /** Kiểm tra tham số và dung lượng đĩa trước khi chạy job cài đặt */
+  async prepareInstall(id: string, input: Record<string, unknown>): Promise<Record<string, string>> {
     const app = findApp(id);
     if (installed.get(id)) throw badRequest('Ứng dụng đã được cài đặt');
+    await this.assertSufficientDiskSpace(app);
     return this.validateParams(app, input);
   }
 
@@ -147,6 +179,15 @@ export class AppStoreService {
   async install(id: string, params: Record<string, string>): Promise<void> {
     const app = findApp(id);
     jobLog(`Ứng dụng: ${app.name}`);
+    try {
+      const disk = await this.assertSufficientDiskSpace(app);
+      if (disk.total > 0) {
+        jobLog(`Kiểm tra ổ đĩa ${disk.mount}: còn trống ${(disk.free / 1073741824).toFixed(2)} GB / tổng ${(disk.total / 1073741824).toFixed(2)} GB (an toàn) ✔`);
+      }
+    } catch (err) {
+      jobLog(`✘ LỖI Ổ ĐĨA: ${(err as Error).message}`);
+      throw err;
+    }
     const dir = await this.writeFiles(app, params);
     jobLog('Đang tải image và khởi động container (lần đầu có thể mất vài phút)...');
     try {

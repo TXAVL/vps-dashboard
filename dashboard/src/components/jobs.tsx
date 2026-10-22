@@ -1,8 +1,7 @@
-// ZenPanel - Trung tâm tác vụ nền: xem log realtime khi cài ứng dụng, pull image, cài web server, cập nhật panel...
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { CheckCircle2, ListTodo, Loader2, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Copy, ListTodo, Loader2, Sparkles, Terminal, XCircle } from 'lucide-react';
 import { get } from '../lib/api';
-import { formatDate, formatRelative } from '../lib/format';
+import { formatDate, formatDuration, formatRelative } from '../lib/format';
 import type { Job } from '../lib/types';
 import { useFeedback } from './feedback';
 import { Badge, Button, EmptyState, Modal, cn } from './ui';
@@ -21,8 +20,17 @@ const statusIcon = {
   error: <XCircle className="size-4 text-zen-red" />,
 };
 
+const statusBadge = {
+  running: <Badge tone="blue">Đang thực hiện</Badge>,
+  success: <Badge tone="green">Hoàn thành</Badge>,
+  error: <Badge tone="red">Thất bại</Badge>,
+};
+
 function JobLog({ id, onClose }: { id: string; onClose: () => void }) {
   const [job, setJob] = useState<Job | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const box = useRef<HTMLPreElement>(null);
   const stick = useRef(true);
 
@@ -44,47 +52,267 @@ function JobLog({ id, onClose }: { id: string; onClose: () => void }) {
     };
   }, [id]);
 
+  // Bộ đếm thời gian realtime khi job đang chạy để hiển thị ETA mượt mà
   useEffect(() => {
-    // Tự cuộn xuống cuối khi có log mới (trừ khi người dùng đang cuộn lên đọc)
+    if (job?.status !== 'running') return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [job?.status]);
+
+  useEffect(() => {
     if (box.current && stick.current) box.current.scrollTop = box.current.scrollHeight;
-  }, [job?.log]);
+  }, [job?.log, expanded]);
+
+  // Tính toán thời lượng & ETA
+  const startedTime = job ? new Date(job.startedAt).getTime() : now;
+  const endedTime = job?.endedAt ? new Date(job.endedAt).getTime() : now;
+  const elapsedSec = Math.max(0, Math.floor(((job?.status === 'running' ? now : endedTime) - startedTime) / 1000));
+
+  // Ước lượng thời gian hoàn thành theo loại tác vụ
+  const expectedSec =
+    job?.kind === 'clean' ? 12 : job?.kind === 'docker' || job?.kind === 'image' ? 25 : job?.kind === 'php' || job?.kind === 'webserver' ? 35 : job?.kind === 'app' ? 45 : 30;
+
+  // Tính phần trăm tiến độ
+  let percent = 0;
+  if (job?.status === 'success') {
+    percent = 100;
+  } else if (job?.progress !== undefined && job.progress !== null) {
+    percent = Math.min(100, Math.max(0, job.progress));
+  } else if (job?.status === 'running') {
+    // Tăng dần theo hàm tiệm cận đến 95% trong khi vẫn đang xử lý
+    const simulated = Math.min(94, Math.max(8, Math.round((1 - Math.exp(-elapsedSec / (expectedSec * 0.45))) * 100)));
+    percent = simulated;
+  } else if (job?.status === 'error') {
+    percent = Math.min(90, Math.max(15, Math.round((elapsedSec / expectedSec) * 100)));
+  }
+
+  // Tính ETA
+  const etaSec =
+    job?.etaSeconds !== undefined && job.etaSeconds !== null
+      ? job.etaSeconds
+      : job?.status === 'running'
+        ? Math.max(0, expectedSec - elapsedSec)
+        : 0;
+
+  // Giai đoạn hiện tại
+  const currentStage =
+    job?.stage ||
+    (job?.status === 'success'
+      ? 'Tác vụ đã hoàn tất thành công'
+      : job?.status === 'error'
+        ? `Lỗi: ${job.error || 'Đã xảy ra sự cố'}`
+        : percent < 30
+          ? 'Đang chuẩn bị môi trường và kiểm tra tài nguyên...'
+          : percent < 65
+            ? 'Đang tải xuống các gói cài đặt và tài nguyên...'
+            : percent < 90
+              ? 'Đang giải nén, tối ưu cấu hình và thiết lập dịch vụ...'
+              : 'Đang kiểm tra kết nối và khởi động hoàn tất...');
+
+  // 4 cột mốc trực quan
+  const milestones = [
+    { label: 'Khởi tạo', threshold: 10 },
+    { label: 'Tải tài nguyên', threshold: 40 },
+    { label: 'Cấu hình', threshold: 75 },
+    { label: 'Sẵn sàng', threshold: 100 },
+  ];
+
+  const copyLog = async () => {
+    if (!job?.log) return;
+    try {
+      await navigator.clipboard.writeText(job.log);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
 
   return (
     <Modal
       open
       onClose={onClose}
-      size="xl"
+      size="lg"
       title={
-        <span className="flex items-center gap-2">
-          {job && statusIcon[job.status]}
-          {job?.title ?? 'Đang tải...'}
-        </span>
+        <div className="flex flex-wrap items-center justify-between gap-2 pr-2">
+          <div className="flex items-center gap-2.5">
+            <div className={cn(
+              "flex size-7 items-center justify-center rounded-lg ring-1",
+              job?.status === 'running' ? "bg-zen-blue/20 text-zen-blue ring-zen-blue/30" :
+              job?.status === 'success' ? "bg-zen-green/20 text-zen-green ring-zen-green/30" :
+              "bg-zen-red/20 text-zen-red ring-zen-red/30"
+            )}>
+              {job?.status === 'running' && <Loader2 className="size-4 animate-spin" />}
+              {job?.status === 'success' && <CheckCircle2 className="size-4" />}
+              {job?.status === 'error' && <XCircle className="size-4" />}
+            </div>
+            <div>
+              <div className="text-sm font-bold text-white">{job?.title ?? 'Đang tải tác vụ...'}</div>
+              <div className="text-[11px] text-slate-400">
+                Mã tác vụ: <code className="mono text-slate-300">{id.slice(0, 8)}</code>
+              </div>
+            </div>
+          </div>
+          {job?.status && statusBadge[job.status]}
+        </div>
       }
       footer={
-        <>
-          {job && (
-            <span className="mr-auto text-xs text-slate-500">
-              Bắt đầu {formatDate(job.startedAt)}
-              {job.endedAt && ` · kết thúc ${formatDate(job.endedAt)}`}
-            </span>
-          )}
-          <Button variant={job?.status === 'running' ? 'ghost' : 'primary'} onClick={onClose}>
-            {job?.status === 'running' ? 'Chạy nền' : 'Đóng'}
-          </Button>
-        </>
+        <div className="flex w-full items-center justify-between">
+          <span className="text-xs text-slate-500">
+            Bắt đầu {formatDate(job?.startedAt)}
+            {job?.endedAt && ` · Xong ${formatDate(job.endedAt)}`}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button variant={job?.status === 'running' ? 'ghost' : 'primary'} onClick={onClose}>
+              {job?.status === 'running' ? 'Chạy nền' : 'Đóng'}
+            </Button>
+          </div>
+        </div>
       }
     >
-      <pre
-        ref={box}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-        }}
-        className="mono h-[55vh] overflow-auto whitespace-pre-wrap break-words rounded-xl bg-[#0a0e17] p-4 text-xs leading-relaxed text-slate-300"
-      >
-        {job?.log || 'Đang chờ log...'}
-      </pre>
-      {job?.status === 'error' && <p className="mt-3 text-sm text-red-300">✘ {job.error}</p>}
+      <div className="space-y-4">
+        {/* Khối Hero: Thanh tiến trình & ETA trực quan */}
+        <div className="rounded-2xl border border-slate-800/80 bg-gradient-to-b from-[#111624] to-[#0b0e17] p-4 shadow-lg shadow-black/30">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+              {job?.status === 'running' && <Sparkles className="size-3.5 text-cyan-400 animate-pulse" />}
+              <span>{currentStage}</span>
+            </span>
+            <span className={cn(
+              "mono text-sm font-black tracking-tight",
+              job?.status === 'success' ? "text-zen-green" : job?.status === 'error' ? "text-zen-red" : "text-cyan-400"
+            )}>
+              {percent}%
+            </span>
+          </div>
+
+          {/* Thanh phần trăm tiến độ */}
+          <div className="relative h-3 w-full overflow-hidden rounded-full bg-slate-900/90 ring-1 ring-white/10">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all duration-500 ease-out",
+                job?.status === 'error'
+                  ? "bg-gradient-to-r from-red-600 to-rose-400"
+                  : job?.status === 'success'
+                  ? "bg-gradient-to-r from-emerald-500 to-teal-400"
+                  : "bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-400"
+              )}
+              style={{ width: `${percent}%` }}
+            />
+            {job?.status === 'running' && (
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
+            )}
+          </div>
+
+          {/* Dòng trạng thái Thời gian & ETA */}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400">
+            <div className="flex items-center gap-1.5">
+              <Clock className="size-3 text-slate-500" />
+              <span>Đã chạy: <b className="text-slate-200">{formatDuration(elapsedSec)}</b></span>
+            </div>
+            <div>
+              {job?.status === 'running' ? (
+                <span>
+                  {etaSec > 0 ? (
+                    <>Dự kiến còn: <b className="text-cyan-300">~{formatDuration(etaSec)}</b></>
+                  ) : (
+                    <span className="text-amber-300 font-medium">Đang hoàn tất bước cuối...</span>
+                  )}
+                </span>
+              ) : job?.status === 'success' ? (
+                <span className="text-emerald-400 font-medium">✔ Hoàn tất trong {formatDuration(elapsedSec)}</span>
+              ) : (
+                <span className="text-rose-400 font-medium">✘ Dừng sau {formatDuration(elapsedSec)}</span>
+              )}
+            </div>
+          </div>
+
+          {/* 4 Cột mốc trực quan */}
+          <div className="mt-4 grid grid-cols-4 gap-2 border-t border-slate-800/60 pt-3">
+            {milestones.map((m, idx) => {
+              const isDone = percent >= m.threshold;
+              const isCurrent = !isDone && (idx === 0 || percent >= milestones[idx - 1].threshold);
+              return (
+                <div key={m.label} className="text-center">
+                  <div className="flex items-center justify-center">
+                    <div className={cn(
+                      "flex size-5 items-center justify-center rounded-full text-[10px] font-bold transition",
+                      isDone
+                        ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40"
+                        : isCurrent
+                        ? "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-400 animate-pulse"
+                        : "bg-slate-800 text-slate-500 ring-1 ring-white/5"
+                    )}>
+                      {isDone ? '✓' : idx + 1}
+                    </div>
+                  </div>
+                  <div className={cn(
+                    "mt-1 truncate text-[10px]",
+                    isDone ? "text-slate-300 font-medium" : isCurrent ? "text-cyan-300 font-bold" : "text-slate-500"
+                  )}>
+                    {m.label}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Khung nhỏ bên dưới hiển thị log terminal */}
+        <div className="rounded-xl border border-slate-800/80 bg-[#070a12] shadow-inner">
+          <div className="flex items-center justify-between border-b border-slate-800/80 px-3 py-2 bg-[#0c101c]/80 rounded-t-xl">
+            <div className="flex items-center gap-2">
+              <Terminal className="size-3.5 text-slate-400" />
+              <span className="text-xs font-semibold text-slate-300">Nhật ký thực thi (Live Terminal Logs)</span>
+              <span className="rounded bg-slate-800/80 px-1.5 py-0.5 text-[10px] text-slate-400">
+                {(job?.log || '').split('\n').filter(Boolean).length} dòng
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={copyLog}
+                disabled={!job?.log}
+                title="Sao chép toàn bộ log"
+                className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-800 hover:text-white transition disabled:opacity-40"
+              >
+                {copied ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+                <span>{copied ? 'Đã sao chép' : 'Sao chép'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setExpanded(!expanded)}
+                className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-800 hover:text-white transition"
+              >
+                {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                <span>{expanded ? 'Thu nhỏ' : 'Mở rộng'}</span>
+              </button>
+            </div>
+          </div>
+
+          <pre
+            ref={box}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+            }}
+            className={cn(
+              "mono overflow-auto whitespace-pre-wrap break-words p-3 text-[11px] leading-relaxed text-slate-300 transition-all duration-200 select-text",
+              expanded ? "h-64 sm:h-80" : "h-28 sm:h-32"
+            )}
+          >
+            {job?.log || 'Đang chờ luồng dữ liệu...'}
+          </pre>
+        </div>
+
+        {job?.status === 'error' && (
+          <div className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-3 text-xs text-rose-300 flex items-start gap-2">
+            <XCircle className="size-4 shrink-0 text-rose-400 mt-0.5" />
+            <div className="flex-1">
+              <div className="font-semibold text-rose-200">Tác vụ thất bại</div>
+              <div className="mt-0.5 opacity-90">{job.error || 'Vui lòng kiểm tra log chi tiết ở trên.'}</div>
+            </div>
+          </div>
+        )}
+      </div>
     </Modal>
   );
 }
@@ -155,11 +383,34 @@ export function JobsButton() {
         {running ? <Loader2 className="size-5 animate-spin text-zen-blue" /> : <ListTodo className="size-5" />}
         {running > 0 && <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-zen-blue text-[10px] font-bold text-white">{running}</span>}
       </button>
-      <Modal open={open} onClose={() => setOpen(false)} title="Tác vụ nền" size="lg">
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        size="lg"
+        title={
+          <div className="flex items-center gap-2">
+            <ListTodo className="size-5 text-zen-blue" />
+            <span>Tác vụ nền & Log</span>
+            {running > 0 && (
+              <span className="rounded-full bg-zen-blue/20 px-2 py-0.5 text-xs font-semibold text-blue-300">
+                {running} đang chạy
+              </span>
+            )}
+          </div>
+        }
+        footer={
+          <div className="flex w-full items-center justify-between">
+            <span className="text-xs text-slate-500">{jobs.length} tác vụ gần đây</span>
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+              Đóng
+            </Button>
+          </div>
+        }
+      >
         {jobs.length === 0 ? (
           <EmptyState icon={ListTodo} title="Chưa có tác vụ nào" description="Log cài ứng dụng, pull image, cài web server, cập nhật panel sẽ hiện ở đây." />
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-[65vh] overflow-y-auto pr-1">
             {jobs.map((job) => (
               <button
                 key={job.id}
@@ -167,16 +418,35 @@ export function JobsButton() {
                   setOpen(false);
                   openJob(job.id);
                 }}
-                className={cn('flex w-full items-center gap-3 rounded-xl border border-slate-700/50 bg-ink-950/50 px-4 py-3 text-left transition hover:border-zen-blue/50')}
+                className={cn(
+                  'group flex w-full items-start sm:items-center gap-3 rounded-xl border border-slate-700/50 bg-ink-950/60 p-3 sm:px-4 sm:py-3 text-left transition hover:border-zen-blue/60 hover:bg-ink-900/90',
+                )}
               >
-                {statusIcon[job.status]}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-slate-100">{job.title}</span>
-                  <span className="block truncate text-xs text-slate-500">{job.error ?? formatRelative(job.startedAt)}</span>
-                </span>
-                <Badge tone={job.status === 'success' ? 'green' : job.status === 'error' ? 'red' : 'blue'}>
-                  {job.status === 'success' ? 'Xong' : job.status === 'error' ? 'Lỗi' : 'Đang chạy'}
-                </Badge>
+                <div className="mt-0.5 sm:mt-0 shrink-0">{statusIcon[job.status]}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="truncate text-sm font-semibold text-slate-100 group-hover:text-blue-300 transition">
+                      {job.title}
+                    </span>
+                    <span className="text-[11px] text-slate-500 shrink-0">
+                      · {formatRelative(job.startedAt)}
+                    </span>
+                  </div>
+                  {job.error ? (
+                    <span className="mt-1 block line-clamp-2 text-xs font-mono text-red-400">
+                      {job.error}
+                    </span>
+                  ) : (
+                    <span className="mt-0.5 block text-xs text-slate-500">
+                      Bấm để xem log chi tiết
+                    </span>
+                  )}
+                </div>
+                <div className="shrink-0 self-start sm:self-center">
+                  <Badge tone={job.status === 'success' ? 'green' : job.status === 'error' ? 'red' : 'blue'}>
+                    {job.status === 'success' ? 'Xong' : job.status === 'error' ? 'Lỗi' : 'Đang chạy'}
+                  </Badge>
+                </div>
               </button>
             ))}
           </div>

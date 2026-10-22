@@ -269,6 +269,31 @@ export interface Job {
   endedAt: string | null;
   error: string | null;
   log: string;
+  progress?: number;
+  stage?: string;
+  etaSeconds?: number | null;
+}
+
+export interface PhpStatus {
+  installed: boolean;
+  version: string | null;
+  fpmRunning: boolean;
+  fpmService: string | null;
+  socketPath: string | null;
+  extensions: string[];
+  iniPath: string | null;
+  memoryLimit: string | null;
+  uploadMaxFilesize: string | null;
+  postMaxSize: string | null;
+  maxExecutionTime: string | null;
+  supportedVersions: string[];
+}
+
+export interface PhpConfigInput {
+  memoryLimit?: string;
+  uploadMaxFilesize?: string;
+  postMaxSize?: string;
+  maxExecutionTime?: string;
 }
 
 export type TaskSchedule =
@@ -369,4 +394,47 @@ export interface CfAccessRule {
   value: string;
   notes: string;
   createdAt: string;
+}
+
+export interface CleanScanResult {
+  cpu: {
+    usage: number;
+    cores: number;
+    isOverloaded: boolean;
+    topProcesses: { pid: number; name: string; cpu: number; memory: number; user: string | null; command: string | null }[];
+  };
+  ram: {
+    total: number;
+    used: number;
+    free: number;
+    pageCache: number;
+  };
+  disks: DiskUsage[];
+  docker: {
+    installed: boolean;
+    running: boolean;
+    stoppedContainers: number;
+    danglingImages: number;
+    totalImages: number;
+    totalVolumes: number;
+    systemDfText: string;
+  };
+  system: {
+    systemLogsBytes: number;
+    packageCacheBytes: number;
+    tempFilesBytes: number;
+  };
+  estimatedTotalReclaimableBytes: number;
+}
+
+export interface CleanExecutionOptions {
+  cleanDockerContainers?: boolean;
+  cleanDockerImages?: boolean;
+  cleanDockerAllImages?: boolean;
+  cleanDockerBuildCache?: boolean;
+  cleanDockerVolumes?: boolean;
+  cleanSystemLogs?: boolean;
+  cleanPackageCache?: boolean;
+  cleanTempFiles?: boolean;
+  cleanRamCache?: boolean;
 }

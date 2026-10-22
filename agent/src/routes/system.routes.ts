@@ -1,14 +1,15 @@
 // ZenPanel - API hệ thống: thông tin máy, metrics, tiến trình, dịch vụ, tường lửa, cổng mạng
 import type { FastifyInstance } from 'fastify';
-import type { FirewallRuleInput, ServiceAction, ServiceInfo } from '../adapters/base.adapter.js';
+import type { CleanExecutionOptions, FirewallRuleInput, ServiceAction, ServiceInfo } from '../adapters/base.adapter.js';
 import type { AppContext } from '../core/context.js';
 import { config } from '../config.js';
 import { startJob } from '../core/jobs.js';
 import { badRequest, HttpError, isIpOrCidr, isPortSpec, isServiceName } from '../core/validate.js';
+import type { CleanService } from '../services/clean.service.js';
 
 const SERVICE_ACTIONS: ServiceAction[] = ['start', 'stop', 'restart', 'enable', 'disable'];
 
-export async function systemRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
+export async function systemRoutes(app: FastifyInstance, ctx: AppContext, services?: { clean?: CleanService }): Promise<void> {
   const { adapter } = ctx;
 
   const expected: Record<ServiceAction, (s: ServiceInfo) => boolean> = {
@@ -119,4 +120,29 @@ export async function systemRoutes(app: FastifyInstance, ctx: AppContext): Promi
   });
 
   app.get('/api/ports', async () => adapter.listListeningPorts());
+
+  // ------------------------------------------------------------ Dọn dẹp hệ thống & Hạ tải CPU
+  app.get('/api/system/clean/scan', async () => services?.clean?.scan());
+
+  app.post('/api/system/clean/execute', async (req) => {
+    if (!services?.clean) throw badRequest('Dịch vụ dọn dẹp chưa sẵn sàng');
+    const options = (req.body ?? {}) as CleanExecutionOptions;
+    return startJob('Dọn dẹp hệ thống', 'clean', () => services.clean!.execute(options));
+  });
+
+  app.post('/api/system/clean/kill-cpu-hogs', async (req) => {
+    const minCpu = Number((req.body as { minCpu?: number } | undefined)?.minCpu ?? 35);
+    const procs = await adapter.listProcesses();
+    const hogs = procs.filter((p) => p.cpu >= minCpu && p.pid !== process.pid);
+    const killed: { pid: number; name: string; cpu: number }[] = [];
+    for (const p of hogs) {
+      try {
+        await adapter.killProcess(p.pid, true);
+        killed.push({ pid: p.pid, name: p.name, cpu: p.cpu });
+      } catch {
+        // bỏ qua tiến trình không thể dừng
+      }
+    }
+    return { ok: true, killedCount: killed.length, killed };
+  });
 }

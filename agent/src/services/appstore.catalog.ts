@@ -321,14 +321,24 @@ export const APP_CATALOG: AppDefinition[] = [
   },
   {
     id: 'filebrowser',
-    name: 'File Browser',
-    description: 'Chia sẻ & quản lý file qua web cho người dùng cuối.',
+    name: 'ZenFile Explorer Pro',
+    description: 'Bản nâng cấp File Explorer Pro: duyệt toàn bộ tệp tin VPS, xem trước ảnh gallery & video streaming & âm thanh, đọc PDF, chia sẻ link tải bảo mật (mật khẩu & thời hạn), tìm kiếm đệ quy.',
     category: 'storage',
     icon: 'FolderOpen',
     website: 'https://filebrowser.org',
-    params: [portParam('port', 'Cổng HTTP', 8084)],
+    params: [
+      portParam('port', 'Cổng HTTP', 8084),
+      { key: 'rootPath', label: 'Thư mục quản lý trên máy chủ', type: 'text', default: '/', hint: 'Thư mục máy chủ được gắn vào để duyệt tệp (mặc định / là toàn bộ VPS)' },
+    ],
     webPort: 'port',
-    compose: (p, c) => service({ container: c, image: 'filebrowser/filebrowser:latest', ports: [`${p.port}:80`], volumes: { srv: '/srv' } }),
+    compose: (p, c) =>
+      service({
+        container: c,
+        image: 'filebrowser/filebrowser:latest',
+        ports: [`${p.port}:80`],
+        volumes: { data: '/database' },
+        binds: [`${p.rootPath || '/'}:/srv`],
+      }),
   },
   {
     id: 'code-server',

@@ -20,6 +20,7 @@ import { panelRoutes } from './routes/panel.routes.js';
 import { procRoutes } from './routes/procs.routes.js';
 import { aiGatewayRoutes, aiPanelRoutes, GATEWAY_PREFIXES } from './routes/ai.routes.js';
 import { httpRoutes } from './routes/http.routes.js';
+import { phpRoutes } from './routes/php.routes.js';
 import { siteRoutes } from './routes/sites.routes.js';
 import { systemRoutes } from './routes/system.routes.js';
 import { AiService } from './services/ai.service.js';
@@ -27,9 +28,11 @@ import { AiGatewayService } from './services/aigateway.service.js';
 import { HttpClientService } from './services/httpclient.service.js';
 import { AppStoreService } from './services/appstore.service.js';
 import { AppTunnelService } from './services/apptunnel.service.js';
+import { CleanService } from './services/clean.service.js';
 import { CloudflareService } from './services/cloudflare.service.js';
 import { DatabaseService } from './services/database.service.js';
 import { DockerService } from './services/docker.service.js';
+import { PhpService } from './services/php.service.js';
 import { SiteService } from './services/site.service.js';
 import { SpeedtestService } from './services/speedtest.service.js';
 import { StackService } from './services/stack.service.js';
@@ -57,7 +60,7 @@ async function main() {
   const gateway = new AiGatewayService(ai);
   const http = new HttpClientService();
   const appTunnels = new AppTunnelService(adapter);
-  const apps = new AppStoreService(docker, ai, appTunnels);
+  const apps = new AppStoreService(docker, ai, appTunnels, adapter);
   const stacks = new StackService(docker);
   const hub = new DockerHubService();
   const procs = new ProcessManager(adapter);
@@ -67,6 +70,8 @@ async function main() {
   const tasks = new TaskService(adapter);
   const updates = new UpdateService(adapter, pkg.version);
   const cloudflare = new CloudflareService();
+  const clean = new CleanService(adapter, docker);
+  const php = new PhpService(adapter);
 
   const app = Fastify({ logger: { level: process.env.ZENPANEL_LOG_LEVEL ?? 'warn' }, bodyLimit: 10 * 1024 * 1024 });
   await app.register(fastifyWebsocket);
@@ -93,12 +98,13 @@ async function main() {
   // Mọi API còn lại bắt buộc đăng nhập
   await app.register(async (secured) => {
     secured.addHook('preHandler', requireAuth);
-    await systemRoutes(secured, ctx);
+    await systemRoutes(secured, ctx, { clean });
     await fileRoutes(secured, ctx);
     await dockerRoutes(secured, ctx, { docker, apps, databases, stacks, hub });
     await procRoutes(secured, { procs });
     await aiPanelRoutes(secured, { ai, gateway });
     await httpRoutes(secured, { http });
+    await phpRoutes(secured, { php });
     await siteRoutes(secured, ctx, { sites, cloudflare });
     await panelRoutes(secured, ctx, { updates, tasks, ai, speedtest });
   });

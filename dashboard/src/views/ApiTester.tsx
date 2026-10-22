@@ -12,6 +12,7 @@ import {
   FolderPlus,
   Globe2,
   History,
+  PanelLeft,
   Pencil,
   Plus,
   Save,
@@ -264,6 +265,8 @@ export default function ApiTester() {
   const [reqTab, setReqTab] = useState<'params' | 'auth' | 'headers' | 'body' | 'code'>('params');
   const [resTab, setResTab] = useState<'pretty' | 'raw' | 'preview' | 'headers'>('pretty');
   const [envOpen, setEnvOpen] = useState(false);
+  const [mobileView, setMobileView] = useState<'sidebar' | 'editor'>('sidebar');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const { confirm, prompt, run, toast } = useFeedback();
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -298,11 +301,13 @@ export default function ApiTester() {
     const existing = source && tabs.find((t) => t.source?.requestId === source.requestId);
     if (existing) {
       setActive(existing.key);
+      setMobileView('editor');
       return;
     }
     const key = uid();
     setTabs([...tabs.slice(-9), { key, request: structuredClone(request), source, dirty: false, response: null, error: null, sending: false }]);
     setActive(key);
+    setMobileView('editor');
   };
 
   const patchTab = (key: string, patch: Partial<OpenTab>) => setTabs((list) => list.map((t) => (t.key === key ? { ...t, ...patch } : t)));
@@ -407,15 +412,27 @@ export default function ApiTester() {
   const resType = res?.headers.find(([k]) => k.toLowerCase() === 'content-type')?.[1] ?? '';
   const lang = /json/.test(resType) ? 'json' : /html/.test(resType) ? 'html' : /xml/.test(resType) ? 'xml' : /javascript/.test(resType) ? 'javascript' : 'plaintext';
 
+  const totalRequests = ws.collections.reduce((sum, c) => sum + c.requests.length, 0);
+
   return (
     <div className="-m-3 flex h-[calc(100vh-4rem)] min-h-[560px] flex-col sm:-m-6">
       {/* Thanh trên: tiêu đề + môi trường */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-ink-950/80 px-4 py-2">
-        <Globe2 className="size-5 text-zen-blue" />
-        <span className="font-bold text-white">API Tester</span>
-        <span className="hidden text-xs text-slate-500 sm:inline">Request gửi từ VPS · Ctrl+Enter gửi · Ctrl+S lưu</span>
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-ink-950/80 px-3 py-2 sm:px-4">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white lg:flex"
+            data-tip={sidebarOpen ? 'Thu gọn danh sách' : 'Mở rộng danh sách'}
+            aria-label="Toggle sidebar"
+          >
+            <PanelLeft className="size-4" />
+          </button>
+          <Globe2 className="size-5 text-zen-blue" />
+          <span className="font-bold text-white">API Tester</span>
+        </div>
+        <span className="hidden text-xs text-slate-500 xl:inline">Request gửi từ VPS · Ctrl+Enter gửi · Ctrl+S lưu</span>
         <div className="ml-auto flex items-center gap-2">
-          <Select className="h-8 w-48 py-0 text-xs" value={ws.activeEnv ?? ''} onChange={(e) => persist({ ...ws, activeEnv: e.target.value || null })}>
+          <Select className="h-8 max-w-[170px] sm:w-48 py-0 text-xs" value={ws.activeEnv ?? ''} onChange={(e) => persist({ ...ws, activeEnv: e.target.value || null })}>
             <option value="">Không dùng môi trường</option>
             {ws.environments.map((e) => (
               <option key={e.id} value={e.id}>
@@ -427,9 +444,39 @@ export default function ApiTester() {
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      {/* Thanh chuyển đổi chế độ xem cho Mobile & Tablet */}
+      <div className="flex lg:hidden border-b border-slate-800 bg-ink-950/95 p-1 gap-1">
+        <button
+          onClick={() => setMobileView('sidebar')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition',
+            mobileView === 'sidebar' ? 'bg-zen-blue text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          )}
+        >
+          <Folder className="size-3.5" />
+          <span>Collections ({totalRequests})</span>
+        </button>
+        <button
+          onClick={() => setMobileView('editor')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition',
+            mobileView === 'editor' ? 'bg-zen-blue text-white shadow' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+          )}
+        >
+          <Send className="size-3.5" />
+          <span className="truncate">{tab ? `${tab.request.method} ${tab.request.name}` : 'Request'}</span>
+        </button>
+      </div>
+
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="hidden w-72 shrink-0 flex-col border-r border-slate-800 bg-ink-950/60 md:flex">
+        <aside
+          className={cn(
+            'flex-col border-r border-slate-800 bg-ink-950/60',
+            mobileView === 'sidebar' ? 'flex w-full lg:w-72 lg:shrink-0' : 'hidden',
+            sidebarOpen ? 'lg:flex lg:w-72 lg:shrink-0' : 'lg:hidden'
+          )}
+        >
           <div className="flex border-b border-slate-800">
             {(
               [
@@ -542,9 +589,23 @@ export default function ApiTester() {
         </aside>
 
         {/* Vùng chính */}
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div
+          className={cn(
+            'min-w-0 flex-1 flex-col',
+            mobileView === 'editor' ? 'flex w-full' : 'hidden',
+            'lg:flex'
+          )}
+        >
           {/* Tab request đang mở */}
           <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-800 bg-ink-950/40 px-2 pt-1.5">
+            <button
+              onClick={() => setMobileView('sidebar')}
+              className="lg:hidden shrink-0 flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition mr-1"
+              title="Quay lại danh sách"
+            >
+              <Folder className="size-3.5 text-zen-amber" />
+              <span>Danh sách</span>
+            </button>
             {tabs.map((t) => (
               <div
                 key={t.key}
@@ -570,9 +631,14 @@ export default function ApiTester() {
               title="Mở một request để bắt đầu"
               description={'Chọn request trong collection "ZenPanel AI Gateway" để thử ngay các endpoint của gateway, hoặc tạo request mới tới bất kỳ API nào.'}
               action={
-                <Button variant="primary" icon={Plus} onClick={() => openRequest(blank(), null)}>
-                  Request mới
-                </Button>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <Button variant="primary" icon={Plus} onClick={() => openRequest(blank(), null)}>
+                    Request mới
+                  </Button>
+                  <Button variant="secondary" icon={Folder} onClick={() => setMobileView('sidebar')} className="lg:hidden">
+                    Xem danh sách Collections ({totalRequests})
+                  </Button>
+                </div>
               }
             />
           ) : (

@@ -159,4 +159,23 @@ export class DockerService {
     const envArgs = Object.entries(env).flatMap(([key, value]) => ['-e', `${key}=${value}`]);
     return this.docker(['exec', ...envArgs, container, ...command], 120_000);
   }
+
+  async systemDf(): Promise<string> {
+    return this.docker(['system', 'df']).catch(() => '');
+  }
+
+  async prune(target: 'containers' | 'images' | 'all-images' | 'builder' | 'volumes'): Promise<string> {
+    switch (target) {
+      case 'containers':
+        return this.docker(['container', 'prune', '-f']);
+      case 'images':
+        return this.docker(['image', 'prune', '-f']);
+      case 'all-images':
+        return this.docker(['image', 'prune', '-a', '-f']);
+      case 'builder':
+        return this.docker(['builder', 'prune', '-a', '-f']);
+      case 'volumes':
+        return this.docker(['volume', 'prune', '-f']);
+    }
+  }
 }

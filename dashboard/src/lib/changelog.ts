@@ -8,6 +8,104 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.5.2',
+    date: '2026-10-22',
+    highlights: [
+      {
+        title: 'Khắc phục kết nối Web Quản trị Database (Adminer / phpMyAdmin)',
+        items: [
+          'Giải quyết triệt để lỗi không truy cập được cổng :8082 khi xem panel qua Cloudflare Tunnel (trycloudflare.com).',
+          'Tích hợp hộp thoại kết nối thông minh với nút bấm 1-chạm "Bật Link Public Cloudflare riêng cho Adminer" kèm HTTPS truy cập từ mọi nơi.',
+          'Hỗ trợ truy cập trực tiếp bằng IP Public của VPS (kèm nút mở cổng Firewall) và mạng nội bộ Localhost/LAN.',
+        ],
+      },
+      {
+        title: 'ZenFile Explorer Pro (Bản nâng cấp File Manager trong App Store)',
+        items: [
+          'Nâng cấp ứng dụng trong App Store thành "ZenFile Explorer Pro", gắn kết trực tiếp thư mục gốc VPS (bind mount) để quản lý toàn diện.',
+          'Không kích hoạt sẵn nhằm tiết kiệm RAM/CPU, cài đặt nhanh bằng 1 click trong App Store qua Docker Compose.',
+          'Thêm mẫu cấu hình docker-compose.yml độc lập tại agent/templates/zen-file-explorer/ để người dùng sao chép hoặc tải về thủ công.',
+        ],
+      },
+      {
+        title: 'Nâng cấp toàn diện trình File Manager tích hợp',
+        items: [
+          'Trình xem trước tệp tin đa phương tiện (Media Preview): xem ảnh trực tiếp, phát nhạc audio player, phát video streaming và xem tài liệu PDF.',
+          'Tải tệp từ internet trực tiếp về VPS (Remote Download): tải nhanh từ link HTTP/HTTPS vào thư mục hiện tại.',
+          'Phân quyền tập tin (Chmod): xem và chỉnh sửa mã quyền Octal (0755, 0644, 0777, 0600) linh hoạt.',
+          'Sao chép đường dẫn tuyệt đối với 1 click và thanh lọc tệp thông minh (Tất cả, Thư mục, Hình ảnh, Video & Nhạc, Code, Nén).',
+          'Nút chuyển đổi & giới thiệu nhanh ZenFile Pro ngay trên thanh tiêu đề File Manager.',
+        ],
+      },
+      {
+        title: 'Nâng cấp Quản lý Máy chủ PHP & Giao diện PHP-FPM chuyên nghiệp',
+        items: [
+          'Thẻ quản lý Máy chủ PHP trực quan: kiểm tra phiên bản PHP, trạng thái dịch vụ PHP-FPM và đường dẫn socket FastCGI realtime.',
+          'Cài đặt 1-chạm PHP & PHP-FPM cùng các module thiết yếu (mysqli, pdo_mysql, curl, mbstring, gd, zip, xml, opcache, bcmath, intl).',
+          'Hộp thoại Tùy chỉnh php.ini: dễ dàng chỉnh memory_limit, upload_max_filesize, post_max_size, max_execution_time và tự động nạp lại dịch vụ.',
+          'Hộp thoại Danh sách Extensions: tra cứu, lọc tìm kiếm nhanh tất cả module PHP đã nạp.',
+          'Hỗ trợ kiểm tra điều kiện thông minh khi tạo website PHP (báo ngay socket FastCGI hoặc hướng dẫn cài đặt nếu chưa có PHP-FPM).',
+        ],
+      },
+      {
+        title: 'Hộp thoại Cài đặt kiểu mới: Thanh tiến trình, ETA & Khung log thu gọn',
+        items: [
+          'Thay thế màn hình log choáng ngợp bằng giao diện Thanh tiến trình thông minh (Progress Bar) với phần trăm và hiệu ứng chuyển động mượt mà.',
+          'Dự tính thời gian hoàn thành (ETA) và đếm thời gian thực thi realtime (vd: "Đã chạy 14s · Còn lại dự tính ~16s").',
+          'Theo dõi 4 cột mốc trực quan: Khởi tạo, Tải tài nguyên, Cấu hình dịch vụ, Hoàn tất.',
+          'Khung log Console thu nhỏ gọn gàng bên dưới, tự động cuộn xuống cuối, nút sao chép log 1-chạm và nút Mở rộng/Thu gọn tiện lợi.',
+        ],
+      },
+      {
+        title: 'Cải tiến Hộp thoại "Có gì mới" (Accordion & Tìm kiếm)',
+        items: [
+          'Chế độ thu gọn thông minh: Chỉ mở bản mới nhất theo mặc định, tất cả các bản cũ được thu gọn thành dạng Accordion ngăn nắp.',
+          'Thao tác 1 chạm: Click vào thẻ phiên bản bất kỳ để mở/đóng, kèm nút "Thu gọn / Mở tất cả bản cũ" tiện lợi.',
+          'Tìm kiếm tức thì: Thanh tìm kiếm theo từ khóa (Docker, CPU, Adminer, v.v.), tự động mở và làm nổi bật các phiên bản phù hợp.',
+        ],
+      },
+    ],
+  },
+  {
+    version: '0.5.1',
+    date: '2026-10-22',
+    highlights: [
+      {
+        title: 'Sửa hiển thị Tác vụ nền (Desktop & Mobile)',
+        items: [
+          'Sử dụng React Portal đưa popup ra body, khắc phục triệt để lỗi bị lệch/thụt lên trên do backdrop-filter của thanh header.',
+          'Hỗ trợ chế độ Bottom Sheet trên điện thoại và căn giữa màn hình chuẩn xác trên Desktop.',
+          'Độ cao cuộn tối đa linh hoạt (max-h-[65vh]), tiêu đề hiển thị số lượng tác vụ đang chạy.',
+        ],
+      },
+      {
+        title: 'Tối ưu API Tester cho Mobile & Tablet',
+        items: [
+          'Thêm thanh chuyển đổi tab [Collections] ↔ [Request & Response] khi xem trên màn hình nhỏ.',
+          'Nút thu gọn/mở rộng thanh sidebar tiện lợi trên desktop và tự động chuyển sang tab soạn thảo khi mở request.',
+          'Khắc phục hiện tượng tràn ngang màn hình, giúp thao tác chọn và test API trơn tru trên mọi thiết bị.',
+        ],
+      },
+      {
+        title: 'Cơ chế bảo vệ dung lượng ổ đĩa (Chống Full Disk)',
+        items: [
+          'Tự động kiểm tra dung lượng ổ đĩa còn trống trước khi cài đặt ứng dụng App Store (yêu cầu tối thiểu 2.5 GB cho app thường, 4.0 GB cho app AI).',
+          'Cảnh báo trực tiếp trong hộp thoại cài đặt nếu ổ đĩa còn ít dung lượng và chặn cài đặt khi dung lượng ở mức báo động (< 1.5 GB).',
+          'Banner cảnh báo sớm ngay trên trang Tổng quan khi CPU ≥ 70% hoặc Disk ≥ 85% kèm nút chuyển nhanh tới Dọn dẹp.',
+        ],
+      },
+      {
+        title: 'Tab Dọn dẹp hệ thống & Hạ tải CPU (Jupiter Glassmorphism)',
+        items: [
+          'Quản lý và giải phóng CPU: phát hiện top tiến trình ngốn CPU, tính năng khẩn cấp "Hạ tải CPU tức thì" dừng nhanh các tiến trình ăn > 35% CPU.',
+          'Dọn rác Docker toàn diện: Containers đã dừng, Docker Images thừa/dangling, Build cache và Volumes không dùng.',
+          'Dọn rác OS & Giải phóng RAM Cache: nhật ký hệ thống journalctl, cache gói APT/DNF, file tạm /tmp và $env:TEMP, thả cache RAM (drop_caches).',
+          'Chạy tiến trình dọn dẹp bằng background job có log streaming chi tiết realtime.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.5.0',
     date: '2026-10-22',
     highlights: [

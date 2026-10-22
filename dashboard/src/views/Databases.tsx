@@ -1,14 +1,13 @@
-// ZenPanel - Quản lý Database (MySQL, MariaDB, PostgreSQL, Redis, MongoDB) + Adminer/phpMyAdmin 1-click
-import { useMemo, useState, type FormEvent } from 'react';
-import { Link } from 'react-router';
-import { Database, DoorOpen, ExternalLink, Globe, Plus, RefreshCw, Server, Table2, Trash2 } from 'lucide-react';
+import { useState, type FormEvent } from 'react';
+import { Link, useNavigate } from 'react-router';
+import { AlertTriangle, Database, DoorOpen, ExternalLink, Globe, Plus, RefreshCw, Server, Table2, Trash2 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Secret, Spinner, cn, td, th, tr } from '../components/ui';
 import { del, post } from '../lib/api';
 import { formatBytes } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { usePublicHost } from '../lib/panel';
-import type { AppView, DatabaseItem, DatabaseServer, ServiceInfo } from '../lib/types';
+import type { AppView, DatabaseItem, DatabaseServer, ServiceInfo, TunnelState } from '../lib/types';
 
 const ENGINE_LABEL: Record<DatabaseServer['engine'], string> = { mysql: 'MySQL', mariadb: 'MariaDB', postgres: 'PostgreSQL', redis: 'Redis', mongodb: 'MongoDB' };
 
@@ -148,7 +147,13 @@ function ExternalAccess({ server }: { server: DatabaseServer }) {
   );
 }
 
-function ServerPanel({ server, adminUrl }: { server: DatabaseServer; adminUrl: string | null }) {
+function ServerPanel({
+  server,
+  onOpenAdmin,
+}: {
+  server: DatabaseServer;
+  onOpenAdmin: (server: DatabaseServer) => void;
+}) {
   const list = useApi<DatabaseItem[]>(server.running ? `/api/databases/${server.appId}` : null);
   const [creating, setCreating] = useState(false);
   const { confirm, run } = useFeedback();
@@ -178,12 +183,10 @@ function ServerPanel({ server, adminUrl }: { server: DatabaseServer; adminUrl: s
       icon={Database}
       actions={
         <>
-          {sql && adminUrl && (
-            <a href={adminUrl} target="_blank" rel="noreferrer">
-              <Button size="sm" variant="soft" icon={ExternalLink}>
-                Mở {server.engine === 'postgres' ? 'Adminer' : 'quản trị web'}
-              </Button>
-            </a>
+          {sql && (
+            <Button size="sm" variant="soft" icon={ExternalLink} onClick={() => onOpenAdmin(server)}>
+              Mở {server.engine === 'postgres' ? 'Adminer' : 'quản trị web'}
+            </Button>
           )}
           {server.engine !== 'redis' && (
             <Button size="sm" variant="primary" icon={Plus} disabled={!server.running} onClick={() => setCreating(true)}>
@@ -254,21 +257,201 @@ function ServerPanel({ server, adminUrl }: { server: DatabaseServer; adminUrl: s
   );
 }
 
+function AdminAccessModal({
+  server,
+  app,
+  onClose,
+  onReloadApps,
+}: {
+  server: DatabaseServer;
+  app: AppView | null;
+  onClose: () => void;
+  onReloadApps: () => void;
+}) {
+  const { host } = usePublicHost();
+  const { toast, run } = useFeedback();
+  const [enabling, setEnabling] = useState(false);
+  const [openingPort, setOpeningPort] = useState(false);
+
+  const port = app?.installed?.params.port ?? (server.engine === 'postgres' ? 8082 : 8083);
+  const isPostgres = server.engine === 'postgres';
+  const queryStr = isPostgres
+    ? `pgsql=host.docker.internal:${server.port}&username=postgres`
+    : `server=host.docker.internal:${server.port}&username=root`;
+
+  const tunnelUrl = app?.publicLink?.url ? `${app.publicLink.url}/?${queryStr}` : null;
+  const directIpUrl = `http://${host}:${port}/?${queryStr}`;
+  const localUrl = `http://localhost:${port}/?${queryStr}`;
+
+  const enablePublicLink = async () => {
+    if (!app) return;
+    setEnabling(true);
+    try {
+      const res = await post<TunnelState & { enabled: boolean }>(`/api/apps/${app.id}/public-link`, { enabled: true });
+      if (res?.url) {
+        toast('Đã khởi tạo link public Cloudflare!', 'success');
+        onReloadApps();
+        window.open(`${res.url}/?${queryStr}`, '_blank');
+        onClose();
+      } else {
+        toast('Đang xin domain từ Cloudflare, vui lòng đợi 5-10 giây...', 'info');
+        setTimeout(() => {
+          onReloadApps();
+          setEnabling(false);
+        }, 6000);
+      }
+    } catch (err) {
+      toast((err as Error).message, 'error');
+      setEnabling(false);
+    }
+  };
+
+  const openFirewallPort = async () => {
+    setOpeningPort(true);
+    await run(() => post('/api/firewall/rules', { port: Number(port), protocol: 'tcp', direction: 'in', action: 'allow' }), `Đã mở cổng ${port} trên tường lửa`);
+    setOpeningPort(false);
+  };
+
+  return (
+    <Modal
+      open={true}
+      title={`Mở Web Quản trị Database (${server.name})`}
+      onClose={onClose}
+    >
+      <div className="space-y-4">
+        <Notice tone="amber" icon={AlertTriangle}>
+          <div className="space-y-1 text-xs">
+            <p className="font-semibold text-amber-200">
+              Không thể truy cập cổng :{port} qua Cloudflare Tunnel ({window.location.hostname})!
+            </p>
+            <p className="text-slate-300">
+              Domain <code className="mono">trycloudflare.com</code> của dashboard chỉ chuyển tiếp cổng bảng điều khiển và chặn các cổng dịch vụ khác như <code className="mono">:{port}</code>. Hãy chọn 1 trong các cách kết nối bên dưới:
+            </p>
+          </div>
+        </Notice>
+
+        {app?.publicLink?.url ? (
+          <div className="space-y-2 rounded-xl border border-emerald-500/40 bg-emerald-950/30 p-4">
+            <div className="flex items-center gap-2 font-semibold text-emerald-300">
+              <Globe className="size-4" /> Link Public Cloudflare (Khuyên dùng)
+            </div>
+            <p className="text-xs text-slate-300">Đã bật tunnel HTTPS riêng cho {app.name}, truy cập an toàn từ mọi nơi:</p>
+            <div className="flex items-center gap-2">
+              <input readOnly value={tunnelUrl ?? ''} className="input mono h-9 flex-1 text-xs" />
+              <CopyButton value={tunnelUrl ?? ''} />
+              <a href={tunnelUrl ?? ''} target="_blank" rel="noreferrer">
+                <Button size="sm" variant="success" icon={ExternalLink}>
+                  Mở ngay
+                </Button>
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3 rounded-xl border border-zen-blue/40 bg-zen-blue/10 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 font-semibold text-white">
+                <Globe className="size-4 text-blue-400" /> Cách 1: Bật Link Public Cloudflare (Khuyên dùng)
+              </div>
+              <Badge tone="blue">Tiện lợi nhất</Badge>
+            </div>
+            <p className="text-xs text-slate-300">
+              Tạo đường dẫn HTTPS riêng từ Cloudflare cho {app?.name ?? 'Adminer'}, mở được từ mọi thiết bị mà không cần mở cổng tường lửa.
+            </p>
+            <Button
+              variant="primary"
+              icon={Globe}
+              loading={enabling}
+              onClick={() => void enablePublicLink()}
+              className="w-full"
+            >
+              ⚡ Bật Link Public & Mở {app?.name ?? 'Adminer'} ngay
+            </Button>
+          </div>
+        )}
+
+        <div className="space-y-3 rounded-xl border border-slate-700/50 bg-ink-950/40 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 font-semibold text-white">
+              <Server className="size-4 text-slate-400" /> Cách 2: Truy cập bằng IP Public của VPS
+            </div>
+          </div>
+          <p className="text-xs text-slate-400">
+            Dùng IP trực tiếp của máy chủ (cần mở cổng {port} trên tường lửa VPS và Security Group của nhà cung cấp):
+          </p>
+          <div className="flex items-center gap-2">
+            <input readOnly value={directIpUrl} className="input mono h-9 flex-1 text-xs" />
+            <CopyButton value={directIpUrl} />
+            <a href={directIpUrl} target="_blank" rel="noreferrer">
+              <Button size="sm" variant="soft" icon={ExternalLink}>
+                Mở
+              </Button>
+            </a>
+          </div>
+          <Button size="xs" variant="ghost" icon={DoorOpen} loading={openingPort} onClick={() => void openFirewallPort()}>
+            Mở cổng {port} trên tường lửa VPS
+          </Button>
+        </div>
+
+        <div className="space-y-1.5 rounded-xl border border-slate-800 bg-ink-950/30 p-3">
+          <p className="text-xs font-semibold text-slate-400">Cách 3: Nếu bạn đang ở mạng LAN hoặc Localhost:</p>
+          <div className="flex items-center justify-between text-xs">
+            <code className="mono text-slate-300">{localUrl}</code>
+            <CopyButton value={localUrl} />
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <Button variant="ghost" onClick={onClose}>
+            Đóng
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function Databases() {
   const { data, error, loading, reload } = useApi<{ servers: DatabaseServer[]; native: ServiceInfo[] }>('/api/databases');
   const apps = useApi<AppView[]>('/api/apps');
-  const adminers = useMemo(() => {
-    const url = (id: string) => {
-      const port = apps.data?.find((a) => a.id === id)?.installed?.params.port;
-      return port ? `http://${window.location.hostname}:${port}` : null;
-    };
-    return { adminer: url('adminer'), phpmyadmin: url('phpmyadmin') };
-  }, [apps.data]);
+  const { host } = usePublicHost();
+  const { confirm } = useFeedback();
+  const navigate = useNavigate();
+  const [adminModal, setAdminModal] = useState<{ server: DatabaseServer; app: AppView | null } | null>(null);
 
-  const adminUrlFor = (server: DatabaseServer) => {
-    if (server.engine === 'postgres') return adminers.adminer ? `${adminers.adminer}/?pgsql=host.docker.internal:${server.port}&username=postgres` : null;
-    if (adminers.phpmyadmin) return adminers.phpmyadmin;
-    return adminers.adminer ? `${adminers.adminer}/?server=host.docker.internal:${server.port}&username=root` : null;
+  const handleOpenAdmin = async (server: DatabaseServer) => {
+    const adminerApp = apps.data?.find((a) => a.id === (server.engine === 'postgres' ? 'adminer' : 'adminer'))
+      ?? apps.data?.find((a) => a.id === 'phpmyadmin')
+      ?? null;
+
+    if (!adminerApp || !adminerApp.installed) {
+      const ok = await confirm({
+        title: 'Chưa cài đặt Web Quản trị Database',
+        message: 'Bạn chưa cài đặt Adminer hoặc phpMyAdmin. Bạn có muốn mở App Store để cài đặt Adminer chỉ với 1 click không?',
+        confirmLabel: 'Mở App Store',
+      });
+      if (ok) navigate('/apps?install=adminer');
+      return;
+    }
+
+    const port = adminerApp.installed.params.port;
+    const isPostgres = server.engine === 'postgres';
+    const queryStr = isPostgres
+      ? `pgsql=host.docker.internal:${server.port}&username=postgres`
+      : `server=host.docker.internal:${server.port}&username=root`;
+
+    if (adminerApp.publicLink?.enabled && adminerApp.publicLink?.url) {
+      window.open(`${adminerApp.publicLink.url}/?${queryStr}`, '_blank');
+      return;
+    }
+
+    const isTunnel = window.location.hostname.includes('trycloudflare.com');
+    if (isTunnel) {
+      setAdminModal({ server, app: adminerApp });
+      return;
+    }
+
+    const targetHost = host && host !== 'localhost' ? host : window.location.hostname;
+    window.open(`http://${targetHost}:${port}/?${queryStr}`, '_blank');
   };
 
   return (
@@ -291,18 +474,6 @@ export default function Databases() {
         }
       />
 
-      {!adminers.adminer && !adminers.phpmyadmin && (
-        <div className="mb-4">
-          <Notice>
-            Cài <b>Adminer</b> hoặc <b>phpMyAdmin</b> trong{' '}
-            <Link to="/apps" className="font-semibold text-blue-300 underline">
-              App Store
-            </Link>{' '}
-            để có nút mở trang quản trị database 1-click.
-          </Notice>
-        </div>
-      )}
-
       {error && <ErrorBox message={error} onRetry={reload} />}
       {!data ? (
         !error && <Spinner />
@@ -324,7 +495,9 @@ export default function Databases() {
               />
             </Card>
           ) : (
-            data.servers.map((server) => <ServerPanel key={server.appId} server={server} adminUrl={adminUrlFor(server)} />)
+            data.servers.map((server) => (
+              <ServerPanel key={server.appId} server={server} onOpenAdmin={handleOpenAdmin} />
+            ))
           )}
 
           {data.native.length > 0 && (
@@ -346,6 +519,15 @@ export default function Databases() {
             </Card>
           )}
         </div>
+      )}
+
+      {adminModal && (
+        <AdminAccessModal
+          server={adminModal.server}
+          app={adminModal.app}
+          onClose={() => setAdminModal(null)}
+          onReloadApps={() => void apps.reload()}
+        />
       )}
     </>
   );

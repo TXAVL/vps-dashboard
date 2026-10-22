@@ -67,7 +67,7 @@ export async function dockerRoutes(app: FastifyInstance, ctx: AppContext, deps: 
   // Cài / cập nhật / gỡ chạy dưới dạng job để dashboard xem log realtime
   app.post('/api/apps/:id/install', async (req) => {
     const id = (req.params as { id: string }).id;
-    const params = apps.prepareInstall(id, (req.body ?? {}) as Record<string, unknown>);
+    const params = await apps.prepareInstall(id, (req.body ?? {}) as Record<string, unknown>);
     return startJob(`Cài đặt ${id}`, 'app', () => apps.install(id, params));
   });
 

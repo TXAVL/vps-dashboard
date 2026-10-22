@@ -30,9 +30,15 @@ export const APP_GUIDES: Record<string, AppGuide> = {
   portainer: { steps: [OPEN, 'Tạo tài khoản admin trong 5 phút đầu sau khi cài (quá hạn thì bấm Khởi động lại app).', 'Chọn môi trường "Docker" local để quản lý container.'] },
   'uptime-kuma': { steps: [OPEN, 'Tạo tài khoản admin ở lần đầu.', 'Thêm monitor cho website / cổng / ping và cấu hình thông báo Telegram, Discord...'] },
   gitea: { steps: [OPEN, 'Trang cài đặt lần đầu: giữ SQLite3, sửa "Base URL" thành link public, tạo tài khoản admin ở cuối trang.'] },
-  minio: { credentials: 'minioadmin / mật khẩu đặt lúc cài.', steps: [OPEN, 'Console nằm ở cổng Console; API S3 ở cổng API.', 'Tạo bucket và Access Key để ứng dụng khác kết nối.'] },
-  filebrowser: { credentials: 'admin / mật khẩu ngẫu nhiên in trong log container (Docker → Log).', steps: [OPEN, 'Đổi mật khẩu trong Settings → Profile.'] },
-  vaultwarden: { steps: [OPEN, 'Vaultwarden bắt buộc HTTPS: hãy dùng link public (trycloudflare có sẵn HTTPS).', 'Tạo tài khoản, sau đó dùng app Bitwarden với "Server URL" là link public.'] },
+  filebrowser: {
+    credentials: 'Tài khoản mặc định: admin / admin (Đổi mật khẩu ngay trong Settings → Profile).',
+    steps: [
+      OPEN,
+      'Đăng nhập với tài khoản mặc định: admin / admin.',
+      'Duyệt toàn bộ tệp tin VPS tại thư mục /srv.',
+      'Hỗ trợ xem trước ảnh gallery, phát nhạc và video streaming trực tiếp, tạo link chia sẻ file có mật khẩu & thời hạn.',
+    ],
+  },
   nextcloud: { steps: [OPEN, 'Tạo tài khoản admin, chọn SQLite (đơn giản) hoặc nhập MySQL/PostgreSQL từ mục Databases.', 'Thêm domain/link public vào "trusted_domains" nếu Nextcloud báo truy cập không tin cậy.'] },
   ghost: { steps: ['Đặt tham số "URL website" đúng link public rồi bấm "Cấu hình lại".', 'Vào <link>/ghost để tạo tài khoản quản trị.'] },
   jellyfin: { steps: [OPEN, 'Làm theo trình hướng dẫn: tạo tài khoản, thêm thư viện từ thư mục /media.'] },

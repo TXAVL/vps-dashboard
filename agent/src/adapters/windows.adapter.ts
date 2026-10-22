@@ -4,6 +4,8 @@ import { mkdir, statfs, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import type {
+  CleanExecutionOptions,
+  SystemCleanScan,
   DiskUsage,
   FirewallPersistence,
   FirewallRule,
@@ -456,5 +458,58 @@ export class WindowsAdapter implements OSAdapter {
 
   async installFirewallPersistence(): Promise<void> {
     // Windows Firewall luôn lưu quy tắc vĩnh viễn
+  }
+
+  async cleanScan(): Promise<SystemCleanScan> {
+    let tempFilesBytes = 0;
+    try {
+      const script = `
+        $tmp = @($env:TEMP, "C:\\Windows\\Temp");
+        $sum = 0;
+        foreach ($d in $tmp) {
+          if (Test-Path $d) {
+            $m = Get-ChildItem -Path $d -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum;
+            if ($m.Sum) { $sum += $m.Sum }
+          }
+        }
+        $sum
+      `;
+      const out = (await this.ps(script, 15000)).trim();
+      const num = parseInt(out, 10);
+      if (!isNaN(num) && num > 0) tempFilesBytes = num;
+    } catch {
+      // bỏ qua
+    }
+    return {
+      systemLogsBytes: 0,
+      packageCacheBytes: 0,
+      tempFilesBytes,
+      pageCacheBytes: 0,
+    };
+  }
+
+  async cleanSystem(options: CleanExecutionOptions, onLog: (msg: string) => void): Promise<void> {
+    if (options.cleanTempFiles) {
+      onLog('Đang dọn dẹp các file tạm trong %TEMP% và C:\\Windows\\Temp...');
+      const script = `
+        $paths = @("$env:TEMP\\*", "C:\\Windows\\Temp\\*");
+        foreach ($p in $paths) {
+          Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue
+        }
+      `;
+      await this.ps(script, 30000).catch(() => null);
+      onLog('Đã hoàn tất dọn dẹp thư mục file tạm.');
+    }
+
+    if (options.cleanRamCache) {
+      onLog('Đang kích hoạt thu gom bộ nhớ và xóa DNS cache...');
+      const script = `
+        [System.GC]::Collect();
+        [System.GC]::WaitForPendingFinalizers();
+        Clear-DnsClientCache -ErrorAction SilentlyContinue
+      `;
+      await this.ps(script, 15000).catch(() => null);
+      onLog('Đã giải phóng bộ nhớ và xoá cache DNS.');
+    }
   }
 }

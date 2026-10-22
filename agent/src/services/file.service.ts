@@ -1,6 +1,6 @@
 // ZenPanel - File Manager: duyệt, sửa, tải lên/xuống, nén/giải nén (.zip, .tar.gz) thuần Node
 import { createReadStream, createWriteStream } from 'node:fs';
-import { cp, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, cp, lstat, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Unzip, UnzipInflate, Zip, ZipDeflate, type UnzipFile } from 'fflate';
@@ -256,4 +256,41 @@ export async function directoryUsage(dir: string, limit = 200_000): Promise<{ by
     }
   }
   return { bytes, files };
+}
+
+/** Đổi quyền hạn file/thư mục (chmod) */
+export async function chmodEntry(file: string, modeStr: string): Promise<void> {
+  const mode = parseInt(modeStr, 8);
+  if (isNaN(mode)) throw badRequest('Mã quyền không hợp lệ (ví dụ: 0755, 0644)');
+  await chmod(file, mode).catch((err: Error) => {
+    // Trên Windows chmod có thể hạn chế, nhưng vẫn hỗ trợ nếu hệ thống cho phép
+    throw badRequest(`Không thể đổi quyền: ${err.message}`);
+  });
+}
+
+/** Tải file từ internet (HTTP/HTTPS) trực tiếp về thư mục trên VPS */
+export async function downloadRemoteFile(urlStr: string, destDir: string, customName?: string): Promise<{ path: string; size: number }> {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(urlStr);
+  } catch {
+    throw badRequest('URL tải về không hợp lệ');
+  }
+  if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+    throw badRequest('Chỉ hỗ trợ giao thức HTTP hoặc HTTPS');
+  }
+
+  const res = await fetch(urlStr, {
+    headers: { 'User-Agent': 'ZenPanel-RemoteDownloader/1.0' },
+  });
+  if (!res.ok) throw badRequest(`Tải file thất bại: HTTP ${res.status} ${res.statusText}`);
+
+  let filename = customName?.trim() || path.basename(parsedUrl.pathname) || 'downloaded_file';
+  filename = filename.replace(/[\\/]/g, '_');
+  const target = path.join(destDir, filename);
+
+  const arrayBuffer = await res.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  await writeFile(target, buffer);
+  return { path: target, size: buffer.length };
 }

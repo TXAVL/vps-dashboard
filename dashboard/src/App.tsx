@@ -28,6 +28,7 @@ const Speedtest = lazy(() => import('./views/Speedtest'));
 const ProcManager = lazy(() => import('./views/ProcManager'));
 const AiGateway = lazy(() => import('./views/AiGateway'));
 const ApiTester = lazy(() => import('./views/ApiTester'));
+const Cleanup = lazy(() => import('./views/Cleanup'));
 
 export function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -46,6 +47,7 @@ export function App() {
             <Suspense fallback={<Spinner />}>
               <Routes>
                 <Route path="/" element={<Overview />} />
+                <Route path="/cleanup" element={<Cleanup />} />
                 <Route path="/processes" element={<Processes />} />
                 <Route path="/services" element={<Services />} />
                 <Route path="/firewall" element={<Firewall />} />

@@ -1,5 +1,6 @@
 // ZenPanel - Bộ component giao diện dùng chung (Jupiter Style + Dark Glassmorphism)
 import { useEffect, useState, type ButtonHTMLAttributes, type ComponentType, type ReactNode, type SelectHTMLAttributes } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertCircle, Check, Copy, Inbox, Loader2, Search, X } from 'lucide-react';
 import { levelColor } from '../lib/format';
 
@@ -288,29 +289,35 @@ export function Modal({ open, onClose, title, children, size = 'md', footer }: {
 }) {
   useEffect(() => {
     if (!open) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKey);
+    };
   }, [open, onClose]);
 
   if (!open) return null;
   const widths = { sm: 'max-w-md', md: 'max-w-xl', lg: 'max-w-3xl', xl: 'max-w-5xl', full: 'max-w-[96vw]' };
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={onClose}>
       <div
-        className={cn('glass flex max-h-[92vh] w-full flex-col rounded-b-none bg-ink-900/95 sm:rounded-b-2xl', widths[size])}
+        className={cn('glass flex max-h-[92vh] w-full flex-col rounded-t-2xl rounded-b-none bg-ink-900/95 shadow-2xl sm:rounded-2xl', widths[size])}
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
         <header className="flex items-center justify-between gap-3 border-b border-slate-700/40 px-5 py-4">
-          <h2 className="text-base font-bold text-white">{title}</h2>
+          <div className="min-w-0 flex-1 text-base font-bold text-white">{title}</div>
           <IconButton icon={X} title="Đóng" onClick={onClose} />
         </header>
         <div className="flex-1 overflow-y-auto p-5">{children}</div>
         {footer && <footer className="flex flex-wrap justify-end gap-2 border-t border-slate-700/40 px-5 py-3">{footer}</footer>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

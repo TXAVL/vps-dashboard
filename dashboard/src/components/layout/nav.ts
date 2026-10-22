@@ -17,6 +17,7 @@ import {
   Sparkles,
   ShieldCheck,
   SquareTerminal,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -32,6 +33,7 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     title: 'Admin Master',
     items: [
       { to: '/', label: 'Tổng quan', icon: Gauge, description: 'CPU, RAM, Disk, Network realtime' },
+      { to: '/cleanup', label: 'Dọn dẹp', icon: Trash2, description: 'Dọn rác Docker, giải phóng RAM/Cache, dọn log, hạ tải CPU' },
       { to: '/processes', label: 'Tiến trình', icon: Cpu, description: 'Task Manager - xem và dừng tiến trình' },
       { to: '/procs', label: 'Ứng dụng nền', icon: Bot, description: 'Chạy bot / worker 24/24 thay PM2' },
       { to: '/services', label: 'Dịch vụ', icon: ListTree, description: 'Windows Services / systemd' },

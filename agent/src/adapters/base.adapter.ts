@@ -125,6 +125,26 @@ export interface ScheduledTask {
   lastExitCode: number | null;
 }
 
+export interface SystemCleanScan {
+  systemLogsBytes: number;
+  packageCacheBytes: number;
+  tempFilesBytes: number;
+  pageCacheBytes: number;
+  details?: Record<string, string>;
+}
+
+export interface CleanExecutionOptions {
+  cleanDockerContainers?: boolean;
+  cleanDockerImages?: boolean;
+  cleanDockerAllImages?: boolean;
+  cleanDockerBuildCache?: boolean;
+  cleanDockerVolumes?: boolean;
+  cleanSystemLogs?: boolean;
+  cleanPackageCache?: boolean;
+  cleanTempFiles?: boolean;
+  cleanRamCache?: boolean;
+}
+
 /** Gói cập nhật: chạy installer tách rời khỏi agent (installer sẽ khởi động lại agent) */
 export interface DetachedInstall {
   scriptPath: string;
@@ -213,4 +233,8 @@ export interface OSAdapter {
   archiveFormat(): 'tar.gz' | 'zip';
   /** Chạy installer ở tiến trình riêng, không bị dừng khi agent khởi động lại */
   launchDetachedInstall(install: DetachedInstall): Promise<void>;
+
+  // --- Dọn dẹp hệ thống ---
+  cleanScan(): Promise<SystemCleanScan>;
+  cleanSystem(options: CleanExecutionOptions, onLog: (msg: string) => void): Promise<void>;
 }

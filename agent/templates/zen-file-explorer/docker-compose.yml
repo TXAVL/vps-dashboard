@@ -1,0 +1,20 @@
+# ZenFile Explorer Pro - Bản nâng cấp File Explorer cao cấp cho ZenPanel
+# Cài đặt qua App Store trên ZenPanel (1-Click) hoặc chạy bằng docker compose:
+# docker compose up -d
+
+services:
+  app:
+    image: filebrowser/filebrowser:latest
+    container_name: zen-filebrowser
+    restart: unless-stopped
+    ports:
+      - "8084:80"
+    volumes:
+      - data:/database
+      - /:/srv
+    environment:
+      - FB_BASEURL=
+    # Tài khoản mặc định: admin / admin (Đổi ngay trong Settings -> Profile)
+
+volumes:
+  data:

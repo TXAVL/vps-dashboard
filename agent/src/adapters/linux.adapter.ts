@@ -6,6 +6,8 @@ import path from 'node:path';
 import { chmod, readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import type {
+  CleanExecutionOptions,
+  SystemCleanScan,
   DiskUsage,
   FirewallPersistence,
   FirewallRule,
@@ -784,6 +786,106 @@ export class LinuxAdapter implements OSAdapter {
         await writeFile(file, save.stdout);
         return;
       }
+    }
+  }
+
+  async cleanScan(): Promise<SystemCleanScan> {
+    let systemLogsBytes = 0;
+    let packageCacheBytes = 0;
+    let tempFilesBytes = 0;
+    let pageCacheBytes = 0;
+
+    // 1. System logs (journalctl)
+    if (await this.findExecutable('journalctl')) {
+      const res = await exec('journalctl', ['--disk-usage']).catch(() => null);
+      if (res && res.code === 0) {
+        const match = /(\d+(?:\.\d+)?)\s*([KMGTP]?B?)/i.exec(res.stdout);
+        if (match) {
+          const val = parseFloat(match[1]);
+          const unit = (match[2] || 'B').toUpperCase();
+          const mult = unit.startsWith('K') ? 1024 : unit.startsWith('M') ? 1048576 : unit.startsWith('G') ? 1073741824 : unit.startsWith('T') ? 1099511627776 : 1;
+          systemLogsBytes = Math.round(val * mult);
+        }
+      }
+    }
+
+    // 2. Package cache
+    const aptRes = await exec('sh', ['-c', 'du -sb /var/cache/apt/archives 2>/dev/null']).catch(() => null);
+    if (aptRes && aptRes.code === 0) {
+      const b = parseInt(aptRes.stdout.split(/\s+/)[0], 10);
+      if (!isNaN(b) && b > 0) packageCacheBytes = b;
+    } else {
+      const yumRes = await exec('sh', ['-c', 'du -sb /var/cache/yum /var/cache/dnf 2>/dev/null']).catch(() => null);
+      if (yumRes && yumRes.code === 0) {
+        const total = yumRes.stdout.trim().split('\n').reduce((acc, line) => {
+          const num = parseInt(line.split(/\s+/)[0], 10);
+          return acc + (isNaN(num) ? 0 : num);
+        }, 0);
+        if (total > 0) packageCacheBytes = total;
+      }
+    }
+
+    // 3. Temp files
+    const tmpRes = await exec('sh', ['-c', 'du -sb /tmp /var/tmp 2>/dev/null']).catch(() => null);
+    if (tmpRes && tmpRes.code === 0) {
+      const total = tmpRes.stdout.trim().split('\n').reduce((acc, line) => {
+        const num = parseInt(line.split(/\s+/)[0], 10);
+        return acc + (isNaN(num) ? 0 : num);
+      }, 0);
+      if (total > 0) tempFilesBytes = total;
+    }
+
+    // 4. PageCache / Buffers from /proc/meminfo
+    try {
+      const meminfo = await readFile('/proc/meminfo', 'utf8');
+      let cached = 0;
+      let buffers = 0;
+      for (const line of meminfo.split('\n')) {
+        if (line.startsWith('Cached:')) cached = parseInt(line.replace(/\D+/g, ''), 10) * 1024;
+        else if (line.startsWith('Buffers:')) buffers = parseInt(line.replace(/\D+/g, ''), 10) * 1024;
+      }
+      pageCacheBytes = cached + buffers;
+    } catch {
+      // Bỏ qua nếu không đọc được /proc/meminfo
+    }
+
+    return { systemLogsBytes, packageCacheBytes, tempFilesBytes, pageCacheBytes };
+  }
+
+  async cleanSystem(options: CleanExecutionOptions, onLog: (msg: string) => void): Promise<void> {
+    if (options.cleanSystemLogs && (await this.findExecutable('journalctl'))) {
+      onLog('Đang dọn log hệ thống journalctl (--vacuum-time=2d)...');
+      const res = await exec('journalctl', ['--vacuum-time=2d', '--vacuum-size=50M']);
+      onLog(res.stdout || 'Đã dọn log hệ thống journalctl.');
+    }
+
+    if (options.cleanPackageCache) {
+      if (await this.findExecutable('apt-get')) {
+        onLog('Đang xoá cache apt-get (apt-get clean)...');
+        await exec('apt-get', ['clean']);
+        await exec('apt-get', ['autoremove', '-y', '-q']);
+        onLog('Đã dọn sạch cache apt và gỡ các gói không còn dùng.');
+      } else if (await this.findExecutable('dnf')) {
+        onLog('Đang dọn cache dnf (dnf clean all)...');
+        await exec('dnf', ['clean', 'all']);
+        onLog('Đã dọn sạch cache dnf.');
+      } else if (await this.findExecutable('yum')) {
+        onLog('Đang dọn cache yum (yum clean all)...');
+        await exec('yum', ['clean', 'all']);
+        onLog('Đã dọn sạch cache yum.');
+      }
+    }
+
+    if (options.cleanTempFiles) {
+      onLog('Đang dọn các file tạm cũ trong /tmp và /var/tmp...');
+      await exec('sh', ['-c', 'find /tmp /var/tmp -mindepth 1 -maxdepth 2 -type f -atime +1 -delete 2>/dev/null || true']);
+      onLog('Đã dọn dẹp thư mục tạm.');
+    }
+
+    if (options.cleanRamCache) {
+      onLog('Đang giải phóng bộ nhớ đệm PageCache/Dentries/Inodes (drop_caches)...');
+      await exec('sh', ['-c', 'sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true']);
+      onLog('Đã gửi tín hiệu giải phóng RAM cache thành công.');
     }
   }
 }

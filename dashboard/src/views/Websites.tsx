@@ -4,19 +4,25 @@ import { Link } from 'react-router';
 import {
   AlertTriangle,
   ArrowRightLeft,
+  CheckCircle2,
+  Code2,
   Download,
   ExternalLink,
   FileCode,
   FolderOpen,
   Globe,
   HardDrive,
+  Layers,
   Lock,
   LockOpen,
   MemoryStick,
   Plus,
   RefreshCw,
+  RotateCw,
+  Search,
   Server,
   Settings2,
+  Sliders,
   Trash2,
   Waypoints,
 } from 'lucide-react';
@@ -26,7 +32,7 @@ import { del, post, put } from '../lib/api';
 import { formatBytes, formatDate } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
-import type { Job, Site, SiteStats, WebServerInfo } from '../lib/types';
+import type { Job, PhpConfigInput, PhpStatus, Site, SiteStats, WebServerInfo } from '../lib/types';
 import { useJobs } from '../components/jobs';
 
 interface SitesResponse {
@@ -37,10 +43,195 @@ interface SitesResponse {
 
 const typeLabel: Record<Site['type'], string> = { static: 'HTML tĩnh', php: 'PHP', proxy: 'Reverse Proxy' };
 
-function SiteForm({ initial, webServers, defaultRoot, onSubmit, submitLabel }: {
+function PhpConfigModal({
+  open,
+  onClose,
+  php,
+  onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  php: PhpStatus | null;
+  onSave: (cfg: PhpConfigInput) => Promise<void>;
+}) {
+  const [form, setForm] = useState<PhpConfigInput>({
+    memoryLimit: php?.memoryLimit || '256M',
+    uploadMaxFilesize: php?.uploadMaxFilesize || '64M',
+    postMaxSize: php?.postMaxSize || '64M',
+    maxExecutionTime: php?.maxExecutionTime?.replace('s', '') || '60',
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (php) {
+      setForm({
+        memoryLimit: php.memoryLimit || '256M',
+        uploadMaxFilesize: php.uploadMaxFilesize || '64M',
+        postMaxSize: php.postMaxSize || '64M',
+        maxExecutionTime: php.maxExecutionTime?.replace('s', '') || '60',
+      });
+    }
+  }, [php]);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    await onSave(form);
+    setSaving(false);
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="md"
+      title={
+        <div className="flex items-center gap-2">
+          <Sliders className="size-5 text-indigo-400" />
+          <span>Tùy chỉnh thông số PHP (php.ini)</span>
+        </div>
+      }
+    >
+      <form onSubmit={submit} className="space-y-4">
+        {php?.iniPath && (
+          <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 p-3 text-xs text-slate-400">
+            <span className="font-semibold text-slate-300">File php.ini nạp:</span>
+            <code className="mono block mt-1 text-cyan-300 break-all">{php.iniPath}</code>
+          </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Bộ nhớ tối đa (memory_limit)" hint="Ví dụ: 128M, 256M, 512M, 1G">
+            <input
+              className="input mono"
+              required
+              value={form.memoryLimit}
+              onChange={(e) => setForm({ ...form, memoryLimit: e.target.value })}
+            />
+          </Field>
+          <Field label="Upload tối đa (upload_max_filesize)" hint="Ví dụ: 32M, 64M, 128M">
+            <input
+              className="input mono"
+              required
+              value={form.uploadMaxFilesize}
+              onChange={(e) => setForm({ ...form, uploadMaxFilesize: e.target.value })}
+            />
+          </Field>
+          <Field label="POST tối đa (post_max_size)" hint="Nên >= upload_max_filesize">
+            <input
+              className="input mono"
+              required
+              value={form.postMaxSize}
+              onChange={(e) => setForm({ ...form, postMaxSize: e.target.value })}
+            />
+          </Field>
+          <Field label="Thời gian thực thi (giây)" hint="max_execution_time (vd: 30, 60, 120)">
+            <input
+              className="input mono"
+              type="number"
+              required
+              value={form.maxExecutionTime}
+              onChange={(e) => setForm({ ...form, maxExecutionTime: e.target.value })}
+            />
+          </Field>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
+            Hủy
+          </Button>
+          <Button type="submit" variant="primary" loading={saving}>
+            Lưu & Khởi động lại FPM
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function PhpExtensionsModal({
+  open,
+  onClose,
+  extensions,
+}: {
+  open: boolean;
+  onClose: () => void;
+  extensions: string[];
+}) {
+  const [filter, setFilter] = useState('');
+  const filtered = extensions.filter((ext) => ext.toLowerCase().includes(filter.toLowerCase()));
+  const essentials = ['curl', 'mbstring', 'mysqli', 'pdo', 'pdo_mysql', 'zip', 'gd', 'xml', 'opcache', 'bcmath', 'intl', 'soap'];
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      title={
+        <div className="flex items-center gap-2">
+          <Layers className="size-5 text-indigo-400" />
+          <span>Danh sách phần mở rộng PHP ({extensions.length})</span>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-2.5 size-4 text-slate-500" />
+          <input
+            className="input pl-9"
+            placeholder="Tìm kiếm extension (vd: mysql, curl, gd, zip)..."
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+        </div>
+
+        <div className="rounded-xl border border-slate-800/80 bg-slate-900/50 p-3">
+          <div className="mb-2 text-xs font-semibold text-slate-400">Các module phổ biến cho ứng dụng web:</div>
+          <div className="flex flex-wrap gap-1.5">
+            {essentials.map((item) => {
+              const has = extensions.some((e) => e.toLowerCase() === item.toLowerCase());
+              return (
+                <span
+                  key={item}
+                  className={cn(
+                    'rounded-full px-2 py-0.5 text-xs font-mono font-medium ring-1',
+                    has
+                      ? 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/30'
+                      : 'bg-slate-800 text-slate-500 ring-white/5 opacity-60',
+                  )}
+                >
+                  {has ? '✓ ' : '✕ '} {item}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="max-h-[50vh] overflow-auto rounded-xl border border-slate-800/80 bg-[#080c14] p-3">
+          <div className="flex flex-wrap gap-2">
+            {filtered.map((ext) => (
+              <span
+                key={ext}
+                className="mono rounded-lg border border-slate-800/80 bg-slate-900/80 px-2.5 py-1 text-xs text-slate-300 hover:border-slate-700 hover:text-white transition"
+              >
+                {ext}
+              </span>
+            ))}
+            {filtered.length === 0 && (
+              <div className="py-8 text-center text-xs text-slate-500 w-full">
+                Không tìm thấy extension phù hợp với từ khóa &quot;{filter}&quot;
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SiteForm({ initial, webServers, defaultRoot, phpStatus, onSubmit, submitLabel }: {
   initial?: Site;
   webServers: WebServerInfo[];
   defaultRoot: string;
+  phpStatus?: PhpStatus | null;
   onSubmit: (data: Record<string, unknown>) => Promise<void>;
   submitLabel: string;
 }) {
@@ -112,6 +303,23 @@ function SiteForm({ initial, webServers, defaultRoot, onSubmit, submitLabel }: {
       <Field label="Hạn mức dung lượng (MB)" hint="0 = không giới hạn, ZenPanel cảnh báo khi vượt">
         <input className="input mono" type="number" min={0} value={form.quotaMB} onChange={(e) => setForm({ ...form, quotaMB: e.target.value })} />
       </Field>
+      {form.type === 'php' && (
+        <div className="sm:col-span-2">
+          {phpStatus?.installed && phpStatus.fpmRunning ? (
+            <Notice tone="green" icon={CheckCircle2}>
+              Máy chủ PHP-FPM ({phpStatus.version || 'Active'}) sẵn sàng phục vụ website PHP qua socket FastCGI <code className="mono">{phpStatus.socketPath || '127.0.0.1:9000'}</code>.
+            </Notice>
+          ) : phpStatus?.installed && !phpStatus.fpmRunning ? (
+            <Notice tone="amber" icon={AlertTriangle}>
+              Đã phát hiện PHP ({phpStatus.version}) nhưng dịch vụ PHP-FPM đang tắt. Hãy bấm <b>Khởi động lại</b> ở thẻ Máy chủ PHP phía trên để website hoạt động.
+            </Notice>
+          ) : (
+            <Notice tone="amber" icon={AlertTriangle}>
+              Máy chủ chưa cài đặt PHP & PHP-FPM. Bạn cần bấm <b>Cài PHP & PHP-FPM</b> ở thẻ Máy chủ PHP phía trên để chạy được website này.
+            </Notice>
+          )}
+        </div>
+      )}
       {unsupported && (
         <div className="sm:col-span-2">
           <Notice tone="amber" icon={AlertTriangle}>
@@ -166,6 +374,7 @@ function ResourceColumn({ site }: { site: Site | null }) {
 
 export default function Websites() {
   const { data, error, reload } = useApi<SitesResponse>('/api/sites');
+  const { data: php, reload: reloadPhp } = useApi<PhpStatus>('/api/php/status');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -173,6 +382,10 @@ export default function Websites() {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [installing, setInstalling] = useState<string | null>(null);
+  const [installingPhp, setInstallingPhp] = useState(false);
+  const [restartingPhp, setRestartingPhp] = useState(false);
+  const [phpConfigOpen, setPhpConfigOpen] = useState(false);
+  const [phpExtOpen, setPhpExtOpen] = useState(false);
   const { confirm, run, toast } = useFeedback();
   const { runJob } = useJobs();
   const { refreshInfo } = usePanel();
@@ -246,6 +459,26 @@ export default function Websites() {
     await Promise.all([reload(), refreshInfo()]);
   };
 
+  const installPhp = async (version?: string) => {
+    setInstallingPhp(true);
+    await runJob(() => post<Job>('/api/php/install', { version }));
+    setInstallingPhp(false);
+    await Promise.all([reload(), reloadPhp(), refreshInfo()]);
+  };
+
+  const restartPhp = async () => {
+    setRestartingPhp(true);
+    await run(() => post('/api/php/restart'), 'Đã khởi động lại dịch vụ PHP-FPM');
+    setRestartingPhp(false);
+    await reloadPhp();
+  };
+
+  const savePhpConfig = async (cfg: PhpConfigInput) => {
+    await run(() => put('/api/php/config', cfg), 'Đã cập nhật cấu hình php.ini và áp dụng vào PHP-FPM');
+    setPhpConfigOpen(false);
+    await reloadPhp();
+  };
+
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!data) return <Spinner />;
 
@@ -259,7 +492,7 @@ export default function Websites() {
         icon={Globe}
         actions={
           <>
-            <Button icon={RefreshCw} onClick={() => void reload()}>
+            <Button icon={RefreshCw} onClick={() => void Promise.all([reload(), reloadPhp()])}>
               Làm mới
             </Button>
             <Button icon={Plus} variant="primary" onClick={() => setCreating(true)}>
@@ -269,25 +502,111 @@ export default function Websites() {
         }
       />
 
-      <div className="mb-4 grid gap-3 md:grid-cols-2">
+      {/* Danh sách Web Server & Máy chủ PHP */}
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {data.webServers.map((server) => (
-          <div key={server.kind} className="glass flex flex-wrap items-center gap-3 p-4">
-            <Server className={cn('size-5', server.installed ? 'text-zen-green' : 'text-slate-500')} />
-            <div className="flex-1">
-              <div className="font-bold text-white">{server.label}</div>
-              <div className="text-xs text-slate-500">
-                {[server.supports.php && 'PHP', server.supports.proxy && 'Proxy', server.supports.ssl && 'SSL'].filter(Boolean).join(' · ') || 'Site tĩnh'}
+          <div key={server.kind} className="glass flex flex-col justify-between p-4">
+            <div>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className={cn('flex size-9 items-center justify-center rounded-xl ring-1', server.installed ? 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20' : 'bg-slate-800 text-slate-500 ring-white/5')}>
+                    <Server className="size-5" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-white">{server.label}</div>
+                    <div className="text-xs text-slate-400">Web Server</div>
+                  </div>
+                </div>
+                {server.installed ? <Badge tone="green">Đã cài</Badge> : <Badge tone="slate">Chưa cài</Badge>}
+              </div>
+
+              <div className="mt-3 text-xs text-slate-400">
+                Hỗ trợ: <span className="text-slate-300">{[server.supports.php && 'PHP', server.supports.proxy && 'Proxy', server.supports.ssl && 'SSL'].filter(Boolean).join(' · ') || 'Site tĩnh'}</span>
               </div>
             </div>
-            {server.installed ? (
-              <Badge tone="green">Đã cài</Badge>
+
+            <div className="mt-3 pt-3 border-t border-slate-800/60 flex items-center justify-end">
+              {server.installed ? (
+                <span className="text-[11px] text-emerald-400 flex items-center gap-1 font-medium">
+                  <CheckCircle2 className="size-3.5" /> Sẵn sàng
+                </span>
+              ) : (
+                <Button size="sm" variant="soft" icon={Download} loading={installing === server.kind} onClick={() => void installServer(server)}>
+                  Cài {server.label}
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* Khối quản trị Máy chủ PHP / PHP-FPM */}
+        <div className="glass flex flex-col justify-between p-4 border-indigo-500/20 bg-gradient-to-br from-indigo-950/20 via-slate-900/60 to-slate-900/40">
+          <div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className={cn(
+                  'flex size-9 items-center justify-center rounded-xl ring-1',
+                  php?.installed && php.fpmRunning
+                    ? 'bg-indigo-500/20 text-indigo-300 ring-indigo-500/30'
+                    : php?.installed
+                    ? 'bg-amber-500/20 text-amber-300 ring-amber-500/30'
+                    : 'bg-slate-800 text-slate-500 ring-white/5'
+                )}>
+                  <Code2 className="size-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-white flex items-center gap-1.5">
+                    <span>Máy chủ PHP</span>
+                    {php?.version && <span className="mono rounded bg-indigo-500/20 px-1.5 py-0.5 text-[10px] text-indigo-300">{php.version}</span>}
+                  </div>
+                  <div className="text-xs text-slate-400">PHP-FPM Runtime & Modules</div>
+                </div>
+              </div>
+              {php?.installed && php.fpmRunning ? (
+                <Badge tone="green">FPM Active</Badge>
+              ) : php?.installed ? (
+                <Badge tone="amber">FPM Dừng</Badge>
+              ) : (
+                <Badge tone="slate">Chưa cài</Badge>
+              )}
+            </div>
+
+            <div className="mt-3 space-y-1 text-xs text-slate-400">
+              <div className="flex items-center justify-between">
+                <span>FastCGI Socket:</span>
+                <code className="mono text-[11px] text-slate-300 truncate max-w-[150px]">{php?.socketPath || (php?.installed ? '127.0.0.1:9000' : 'Chưa có')}</code>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Bộ nhớ & Upload:</span>
+                <span className="text-slate-300">{php?.memoryLimit || '128M'} / {php?.uploadMaxFilesize || '64M'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Phần mở rộng:</span>
+                <span className="text-indigo-300 font-medium">{php?.extensions.length ?? 0} modules đã nạp</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-slate-800/60 flex flex-wrap items-center justify-end gap-1.5">
+            {php?.installed ? (
+              <>
+                <Button size="sm" variant="ghost" icon={RotateCw} loading={restartingPhp} onClick={() => void restartPhp()} title="Khởi động lại PHP-FPM">
+                  Khởi động lại
+                </Button>
+                <Button size="sm" variant="ghost" icon={Sliders} onClick={() => setPhpConfigOpen(true)} title="Tùy chỉnh php.ini">
+                  php.ini
+                </Button>
+                <Button size="sm" variant="soft" icon={Layers} onClick={() => setPhpExtOpen(true)} title="Xem danh sách extension">
+                  Extensions
+                </Button>
+              </>
             ) : (
-              <Button size="sm" variant="soft" icon={Download} loading={installing === server.kind} onClick={() => void installServer(server)}>
-                Cài {server.label}
+              <Button size="sm" variant="primary" icon={Download} loading={installingPhp} onClick={() => void installPhp()}>
+                Cài PHP & PHP-FPM
               </Button>
             )}
           </div>
-        ))}
+        </div>
       </div>
 
       {noServer && (
@@ -406,11 +725,11 @@ export default function Websites() {
       )}
 
       <Modal open={creating} onClose={() => setCreating(false)} title="Thêm website mới" size="lg">
-        <SiteForm webServers={data.webServers} defaultRoot={data.defaultRoot} onSubmit={create} submitLabel="Tạo website" />
+        <SiteForm webServers={data.webServers} defaultRoot={data.defaultRoot} phpStatus={php} onSubmit={create} submitLabel="Tạo website" />
       </Modal>
 
       <Modal open={editing && Boolean(selected)} onClose={() => setEditing(false)} title={`Cấu hình ${selected?.domain ?? ''}`} size="lg">
-        {selected && <SiteForm initial={selected} webServers={data.webServers} defaultRoot={data.defaultRoot} onSubmit={update} submitLabel="Lưu cấu hình" />}
+        {selected && <SiteForm initial={selected} webServers={data.webServers} defaultRoot={data.defaultRoot} phpStatus={php} onSubmit={update} submitLabel="Lưu cấu hình" />}
       </Modal>
 
       <Modal open={sslModal} onClose={() => setSslModal(false)} title="Bật HTTPS miễn phí" size="sm">
@@ -428,6 +747,21 @@ export default function Websites() {
           </div>
         </div>
       </Modal>
+
+      {/* Modal Tùy chỉnh php.ini */}
+      <PhpConfigModal
+        open={phpConfigOpen}
+        onClose={() => setPhpConfigOpen(false)}
+        php={php ?? null}
+        onSave={savePhpConfig}
+      />
+
+      {/* Modal Danh sách Extension PHP */}
+      <PhpExtensionsModal
+        open={phpExtOpen}
+        onClose={() => setPhpExtOpen(false)}
+        extensions={php?.extensions ?? []}
+      />
     </>
   );
 }
