@@ -25,10 +25,18 @@ function hashPassword(password: string, salt: string): string {
   return scryptSync(password, salt, 64).toString('hex');
 }
 
+/** Sinh mật khẩu ngẫu nhiên luôn có đủ chữ hoa, chữ thường, số và ký tự đặc biệt */
 export function generatePassword(length = 16): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  const bytes = randomBytes(length);
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+  const groups = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', '!@#%^*-_=+'];
+  const all = groups.join('');
+  const pick = (set: string) => set[randomBytes(1)[0] % set.length];
+  const chars = [...groups.map(pick), ...Array.from({ length: Math.max(0, length - groups.length) }, () => pick(all))];
+  // Xáo trộn Fisher-Yates để nhóm bắt buộc không luôn đứng đầu
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = randomBytes(1)[0] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
 }
 
 export function getSettings(): PanelSettings | null {
@@ -58,13 +66,12 @@ export function ensureAdminAccount(): { username: string; password: string } | n
   return { username: 'admin', password };
 }
 
-export function setPassword(newPassword: string, username?: string): void {
+export function setPassword(newPassword: string): void {
   const settings = getSettings();
   if (!settings) throw new Error('Chưa khởi tạo tài khoản admin');
   const salt = randomBytes(16).toString('hex');
   saveSettings({
     ...settings,
-    username: username ?? settings.username,
     passwordSalt: salt,
     passwordHash: hashPassword(newPassword, salt),
     passwordVersion: settings.passwordVersion + 1,

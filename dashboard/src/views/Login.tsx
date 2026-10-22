@@ -1,12 +1,11 @@
 // ZenPanel - Màn hình đăng nhập
 import { useState, type FormEvent } from 'react';
-import { KeyRound, LogIn, User } from 'lucide-react';
+import { KeyRound, Lock, LogIn, User } from 'lucide-react';
 import { post, setToken } from '../lib/api';
 import { Button, ErrorBox } from '../components/ui';
 import { WindowMockup } from '../components/layout/WindowMockup';
 
 export function Login() {
-  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -16,7 +15,7 @@ export function Login() {
     setLoading(true);
     setError(null);
     try {
-      const { token } = await post<{ token: string }>('/api/auth/login', { username, password });
+      const { token } = await post<{ token: string }>('/api/auth/login', { password });
       setToken(token);
     } catch (err) {
       setError((err as Error).message);
@@ -40,7 +39,8 @@ export function Login() {
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tên đăng nhập</span>
               <div className="relative">
                 <User className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
-                <input className="input pl-9" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required />
+                <input className="input mono pl-9 pr-9 text-slate-400" value="admin" name="username" autoComplete="username" readOnly tabIndex={-1} aria-readonly="true" />
+                <Lock className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
               </div>
             </label>
             <label className="block space-y-1.5">
