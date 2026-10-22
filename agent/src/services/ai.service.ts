@@ -32,7 +32,33 @@ export const AI_PROVIDERS: ProviderDef[] = [
     baseUrl: 'https://api.anthropic.com/v1',
     keyUrl: 'https://console.anthropic.com/settings/keys',
     keyHint: 'sk-ant-...',
-    test: (key) => fetch('https://api.anthropic.com/v1/models', { headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' }, signal: timeout() }),
+    test: async (key) => {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-haiku-20241022',
+          max_tokens: 1,
+          messages: [{ role: 'user', content: 'hi' }],
+        }),
+        signal: timeout(),
+      });
+      if (res.ok) return res;
+      // Nếu lỗi là model not found, fallback sang kiểm tra /v1/models
+      const clone = res.clone();
+      const text = await clone.text().catch(() => '');
+      if (text.includes('not_found_error') || text.includes('model')) {
+        return fetch('https://api.anthropic.com/v1/models?limit=1', {
+          headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+          signal: timeout(),
+        });
+      }
+      return res;
+    },
   },
   {
     id: 'gemini',
@@ -63,6 +89,92 @@ export const AI_PROVIDERS: ProviderDef[] = [
     test: (key) => fetch('https://integrate.api.nvidia.com/v1/models', { headers: { Authorization: `Bearer ${key}` }, signal: timeout() }),
   },
 ];
+
+/**
+ * Làm sạch và chuyển đổi phản hồi lỗi dạng thô (JSON, Array, Error object) từ các nhà cung cấp AI
+ * thành thông báo tiếng Việt trực quan, thân thiện cho người dùng cuối.
+ */
+export function cleanErrorMessage(rawText: string, status = 500, provider?: string): string {
+  if (!rawText) return `Lỗi HTTP ${status}`;
+  let message = '';
+  try {
+    const parsed = JSON.parse(rawText) as unknown;
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      const first = parsed[0] as { error?: { message?: string; status?: string; code?: number } | string; message?: string };
+      if (typeof first?.error === 'string') message = first.error;
+      else if (first?.error?.message) message = first.error.message;
+      else if (first?.message) message = first.message;
+    } else if (parsed && typeof parsed === 'object') {
+      const obj = parsed as { error?: { message?: string; type?: string; code?: string | number } | string; message?: string; detail?: string };
+      if (typeof obj.error === 'string') message = obj.error;
+      else if (obj.error?.message) message = obj.error.message;
+      else if (obj.message) message = obj.message;
+      else if (obj.detail) message = obj.detail;
+    }
+  } catch {
+    message = rawText.trim();
+  }
+
+  if (!message) message = rawText.trim();
+
+  // 1. Model 404 / Không còn tồn tại / Đã bị nhà cung cấp khai tử
+  if (
+    message.includes('is no longer available') ||
+    message.includes('NOT_FOUND') ||
+    (status === 404 && (message.toLowerCase().includes('model') || rawText.includes('models/')))
+  ) {
+    const modelMatch = message.match(/models\/([a-zA-Z0-9.-]+)/);
+    const modelName = modelMatch ? modelMatch[1] : 'yêu cầu';
+    return `Model "${modelName}" không còn khả dụng hoặc đã bị nhà cung cấp ngừng hỗ trợ. Vui lòng chọn model mới hơn (như gemini-2.5-flash) trong cấu hình.`;
+  }
+
+  // 2. Hết credit / Số dư tài khoản không đủ (Anthropic Claude, OpenAI, OpenRouter)
+  if (
+    message.includes('credit balance is too low') ||
+    message.includes('insufficient_quota') ||
+    message.includes('insufficient credits') ||
+    message.includes('purchase credits') ||
+    status === 402
+  ) {
+    return 'Số dư tài khoản không đủ để gọi API (Credit balance is too low). Vui lòng nâng cấp gói hoặc nạp thêm credits tại trang quản trị nhà cung cấp.';
+  }
+
+  // 3. API Key sai, không hợp lệ hoặc đã bị thu hồi
+  if (
+    status === 401 ||
+    status === 403 ||
+    message.includes('API key not valid') ||
+    message.includes('invalid x-api-key') ||
+    message.includes('Incorrect API key') ||
+    message.includes('authentication_error')
+  ) {
+    return 'API Key không hợp lệ, sai cú pháp hoặc đã bị nhà cung cấp thu hồi.';
+  }
+
+  // 4. Rate Limit (429)
+  if (
+    status === 429 ||
+    message.includes('Resource has been exhausted') ||
+    message.includes('rate limit')
+  ) {
+    return 'Tài khoản vượt quá hạn mức yêu cầu (429 Rate Limit / Quota Exceeded). Hệ thống sẽ tự động tạm dừng hoặc chuyển sang tài khoản khác.';
+  }
+
+  // 5. Chuẩn hóa nếu chuỗi vẫn còn format json thô
+  if (message.startsWith('{') || message.startsWith('[')) {
+    try {
+      const j = JSON.parse(message);
+      if (j && typeof j === 'object') {
+        const inner = j.message || j.error?.message || j.error;
+        if (typeof inner === 'string') message = inner;
+      }
+    } catch {
+      // bỏ qua
+    }
+  }
+
+  return message.slice(0, 350);
+}
 
 export interface AiAccountKey {
   id: string;
@@ -351,6 +463,75 @@ export class AiService {
     writeJson(FILE, stored);
   }
 
+  /** Đánh dấu account bị lỗi (sai key, hết credit, model không tồn tại...) và đồng bộ trạng thái lỗi nhà cung cấp */
+  markAccountError(id: string, accountId: string, errorMsg: string): void {
+    const def = provider(id);
+    const stored = load();
+    const item = stored[def.id];
+    if (!item) return;
+
+    const accounts = this.getAccounts(def.id).map((a) =>
+      a.id === accountId
+        ? {
+            ...a,
+            status: 'error' as const,
+            errorMsg,
+          }
+        : a,
+    );
+
+    stored[def.id] = {
+      ...item,
+      keys: accounts,
+      lastTest: {
+        ok: false,
+        at: new Date().toISOString(),
+        message: errorMsg,
+      },
+    };
+    writeJson(FILE, stored);
+  }
+
+  /** Đánh dấu account thành công và phục hồi trạng thái hoạt động nếu trước đó bị lỗi */
+  markAccountSuccess(id: string, accountId: string): void {
+    const def = provider(id);
+    const stored = load();
+    const item = stored[def.id];
+    if (!item) return;
+
+    let needSave = false;
+    const accounts = this.getAccounts(def.id).map((a) => {
+      if (a.id === accountId && (a.status !== 'active' || a.errorMsg)) {
+        needSave = true;
+        return {
+          ...a,
+          status: 'active' as const,
+          errorMsg: undefined,
+          rateLimitedUntil: undefined,
+          lastUsedAt: new Date().toISOString(),
+        };
+      }
+      return a;
+    });
+
+    if (item.lastTest?.ok === false) {
+      needSave = true;
+      item.lastTest = {
+        ok: true,
+        at: new Date().toISOString(),
+        message: 'Hoạt động tốt',
+      };
+    }
+
+    if (needSave) {
+      stored[def.id] = {
+        ...item,
+        keys: accounts,
+      };
+      writeJson(FILE, stored);
+    }
+  }
+
   remove(id: string): void {
     const def = provider(id);
     const stored = load();
@@ -364,14 +545,23 @@ export class AiService {
     const item = stored[def.id];
     if (!item) throw badRequest('Chưa lưu API key cho nhà cung cấp này');
     const keyToTest = item.key;
+    const primaryAccId = item.keys?.[0]?.id ?? 'acc_default';
     let result: { ok: boolean; message: string };
     try {
       const res = await def.test(keyToTest);
-      result = res.ok
-        ? { ok: true, message: 'API key hợp lệ' }
-        : { ok: false, message: res.status === 401 || res.status === 403 ? 'API key sai hoặc đã bị thu hồi' : `Nhà cung cấp trả về lỗi ${res.status}` };
+      if (res.ok) {
+        result = { ok: true, message: 'API key hợp lệ & Kết nối tốt' };
+        this.markAccountSuccess(def.id, primaryAccId);
+      } else {
+        const text = await res.text().catch(() => '');
+        const clean = cleanErrorMessage(text, res.status, def.id);
+        result = { ok: false, message: clean };
+        this.markAccountError(def.id, primaryAccId, clean);
+      }
     } catch (err) {
-      result = { ok: false, message: `Không kết nối được: ${(err as Error).message}` };
+      const clean = `Không kết nối được: ${(err as Error).message}`;
+      result = { ok: false, message: clean };
+      this.markAccountError(def.id, primaryAccId, clean);
     }
     stored[def.id] = { ...item, lastTest: { ...result, at: new Date().toISOString() } };
     writeJson(FILE, stored);

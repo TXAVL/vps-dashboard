@@ -3,7 +3,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readJson, writeJson } from '../core/store.js';
 import { badRequest, HttpError } from '../core/validate.js';
-import { AI_PROVIDERS, type AiProviderId, type AiService } from './ai.service.js';
+import { AI_PROVIDERS, cleanErrorMessage, type AiProviderId, type AiService } from './ai.service.js';
 
 const SETTINGS_FILE = 'ai-gateway.json';
 const LOG_FILE = 'ai-requests.json';
@@ -354,22 +354,41 @@ export class AiGatewayService {
     return [...agentModels, ...models];
   }
 
+  /** Lấy model mặc định đang cấu hình trong hệ thống */
+  getDefaultModel(): string | null {
+    const s = settings();
+    if (s.defaultModel) {
+      return s.defaultModel.includes('gemini-2.0-flash')
+        ? s.defaultModel.replace('gemini-2.0-flash', 'gemini-2.5-flash')
+        : s.defaultModel;
+    }
+    for (const p of this.ai.list()) {
+      if (p.configured && p.defaultModel) {
+        const m = p.defaultModel.includes('gemini-2.0-flash') ? 'gemini-2.5-flash' : p.defaultModel;
+        return `${p.id}/${m}`;
+      }
+    }
+    return null;
+  }
+
   /** Model sẽ dùng: model trong request > model mặc định của gateway > model mặc định của nhà cung cấp đầu tiên */
   private resolveModel(requested: unknown): string {
     if (typeof requested === 'string' && requested && requested !== 'auto') {
-      // Cho phép gọi tắt "anthropic" -> model mặc định của Anthropic
-      if (PROVIDER_IDS.includes(requested)) {
-        const cred = this.ai.credentials(requested);
-        if (!cred?.defaultModel) throw badRequest(`Chưa chọn model mặc định cho ${requested}`);
-        return `${requested}/${cred.defaultModel}`;
+      let reqStr = requested;
+      // Tự động chuyển đổi nếu yêu cầu model gemini-2.0-flash đã bị khai tử
+      if (reqStr.includes('gemini-2.0-flash')) {
+        reqStr = reqStr.replace('gemini-2.0-flash', 'gemini-2.5-flash');
       }
-      return requested;
+      // Cho phép gọi tắt "anthropic" -> model mặc định của Anthropic
+      if (PROVIDER_IDS.includes(reqStr)) {
+        const cred = this.ai.credentials(reqStr);
+        if (!cred?.defaultModel) throw badRequest(`Chưa chọn model mặc định cho ${reqStr}`);
+        return `${reqStr}/${cred.defaultModel}`;
+      }
+      return reqStr;
     }
-    const s = settings();
-    if (s.defaultModel) return s.defaultModel;
-    for (const p of this.ai.list()) {
-      if (p.configured && p.defaultModel) return `${p.id}/${p.defaultModel}`;
-    }
+    const def = this.getDefaultModel();
+    if (def) return def;
     throw badRequest('Chưa có model mặc định. Chọn model mặc định trong trang AI Gateway.');
   }
 
@@ -598,23 +617,20 @@ export class AiGatewayService {
 
         if (!res.ok) {
           const text = await res.text().catch(() => '');
-          const message = (() => {
-            try {
-              const j = JSON.parse(text) as { error?: { message?: string } | string };
-              return typeof j.error === 'string' ? j.error : (j.error?.message ?? text);
-            } catch {
-              return text;
-            }
-          })().slice(0, 500);
+          const cleanMsg = cleanErrorMessage(text, res.status, provider);
+          // Trong logs lưu đầy đủ mã lỗi, thông điệp tiếng Việt sạch kèm chuỗi phản hồi gốc
+          const detailedError = `[HTTP ${res.status}] ${cleanMsg} (Phản hồi gốc: ${text.slice(0, 400)})`;
 
-          lastError = new HttpError(res.status, `${provider} [${account.name}]: ${message || res.statusText}`);
+          lastError = new HttpError(res.status, `${provider} [${account.name}]: ${cleanMsg}`);
 
-          // Nếu bị Rate Limit (429): đánh dấu phạt account này 60 giây và tự động xoay sang account tiếp theo!
+          // Cập nhật trạng thái tài khoản vào hệ thống
           if (isRateLimit) {
-            this.ai.markAccountRateLimited(provider, account.id, 60_000, message);
+            this.ai.markAccountRateLimited(provider, account.id, 60_000, cleanMsg);
+          } else {
+            this.ai.markAccountError(provider, account.id, cleanMsg);
           }
 
-          this.record({ ...base, status: res.status, ms: Date.now() - started, error: lastError.message });
+          this.record({ ...base, status: res.status, ms: Date.now() - started, error: detailedError });
 
           if (retryable && accIdx < accounts.length - 1) {
             // Còn account khác trong pool: tự động xoay vòng sang account kế tiếp!
@@ -624,7 +640,8 @@ export class AiGatewayService {
           break;
         }
 
-        // Thành công!
+        // Thành công! Phục hồi trạng thái hoạt động nếu trước đó tài khoản từng gặp lỗi
+        this.ai.markAccountSuccess(provider, account.id);
         providerSucceeded = true;
         if (stream) {
           this.record({ ...base, status: res.status, ms: Date.now() - started });

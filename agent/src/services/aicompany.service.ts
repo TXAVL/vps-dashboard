@@ -4,7 +4,7 @@
 
 import { readJson, writeJson } from '../core/store.js';
 import { badRequest } from '../core/validate.js';
-import type { AiService } from './ai.service.js';
+import { cleanErrorMessage, type AiService } from './ai.service.js';
 import type { AiGatewayService } from './aigateway.service.js';
 
 export interface CompanyWorker {
@@ -189,31 +189,71 @@ export class AiCompanyService {
 
   /**
    * Xác định model thực thi tốt nhất cho từng worker:
-   * - Nếu worker chỉ định model cụ thể và provider của nó đã có key -> Dùng model đó.
-   * - Nếu có nhiều provider kết nối, phân chia model thông minh theo vai trò.
-   * - Nếu chỉ có 1 provider / 1 key kết nối: Tất cả đều dùng model duy nhất đó (1 con làm nhiều việc).
+   * 1. Nếu worker chỉ định model cụ thể và provider của nó đã có key -> Dùng model đó (tự động chuyển gemini-2.0-flash -> 2.5).
+   * 2. Nếu người dùng đã chọn Model Mặc định trong AI Gateway hoặc cho từng Provider -> ƯU TIÊN TUYỆT ĐỐI!
+   * 3. Nếu có nhiều provider kết nối, phân chia model thông minh theo vai trò dựa trên model mặc định của nhà cung cấp.
+   * 4. Tuyệt đối không hardcode gemini-2.0-flash (đã bị Google khai tử với mã 404).
    */
   private pickModelForWorker(worker: CompanyWorker, configuredProviders: string[]): string {
+    // 1. Nếu worker chỉ định model cụ thể và provider của nó có key
     if (worker.targetModel && worker.targetModel !== 'auto') {
-      const slash = worker.targetModel.indexOf('/');
-      const provider = slash > 0 ? worker.targetModel.slice(0, slash) : '';
+      let target = worker.targetModel;
+      if (target.includes('gemini-2.0-flash')) {
+        target = target.replace('gemini-2.0-flash', 'gemini-2.5-flash');
+      }
+      const slash = target.indexOf('/');
+      const provider = slash > 0 ? target.slice(0, slash) : '';
       if (configuredProviders.includes(provider)) {
-        return worker.targetModel;
+        return target;
       }
     }
 
-    // Nếu chỉ có 1 provider kết nối: dùng 'auto' (chính provider đó)
-    if (configuredProviders.length <= 1) {
-      return 'auto';
+    // 2. Lấy model mặc định của Gateway do người dùng chọn (nếu có và provider đã kết nối)
+    const gatewayDefault = this.gateway.getDefaultModel();
+    if (gatewayDefault && gatewayDefault !== 'auto') {
+      let def = gatewayDefault;
+      if (def.includes('gemini-2.0-flash')) {
+        def = def.replace('gemini-2.0-flash', 'gemini-2.5-flash');
+      }
+      const slash = def.indexOf('/');
+      const p = slash > 0 ? def.slice(0, slash) : '';
+      if (configuredProviders.includes(p)) {
+        // Nếu chỉ có 1 provider hoặc worker để 'auto', ưu tiên dùng chính model người dùng đã chọn làm default
+        if (configuredProviders.length <= 1) {
+          return def;
+        }
+      }
     }
 
-    // Nếu có nhiều provider kết nối: phân chia thông minh theo vai trò
-    if (worker.id === 'dev' && configuredProviders.includes('anthropic')) return 'anthropic/claude-3-5-sonnet-20241022';
-    if (worker.id === 'dev' && configuredProviders.includes('openai')) return 'openai/gpt-4o';
-    if (worker.id === 'content' && configuredProviders.includes('gemini')) return 'gemini/gemini-2.0-flash';
-    if (worker.id === 'qa' && configuredProviders.includes('openai')) return 'openai/gpt-4o-mini';
+    // 3. Nếu chỉ có 1 provider kết nối: dùng model mặc định hoặc 'auto'
+    if (configuredProviders.length <= 1) {
+      return gatewayDefault || 'auto';
+    }
 
-    return 'auto';
+    // 4. Nếu có nhiều provider kết nối: phân chia thông minh theo vai trò, nhưng luôn tôn trọng defaultModel của provider nếu user đã đặt
+    const getProviderModel = (pId: string, fallback: string): string => {
+      const p = this.ai.list().find((x) => x.id === pId);
+      if (p?.defaultModel && !p.defaultModel.includes('gemini-2.0-flash')) {
+        return `${pId}/${p.defaultModel}`;
+      }
+      return `${pId}/${fallback}`;
+    };
+
+    if (worker.id === 'dev' && configuredProviders.includes('anthropic')) {
+      return getProviderModel('anthropic', 'claude-3-7-sonnet');
+    }
+    if (worker.id === 'dev' && configuredProviders.includes('openai')) {
+      return getProviderModel('openai', 'gpt-4o');
+    }
+    if (worker.id === 'content' && configuredProviders.includes('gemini')) {
+      return getProviderModel('gemini', 'gemini-2.5-flash');
+    }
+    if (worker.id === 'qa' && configuredProviders.includes('openai')) {
+      return getProviderModel('openai', 'gpt-4o-mini');
+    }
+
+    // Nếu không khớp phân vai ở trên, ưu tiên dùng model mặc định của gateway
+    return gatewayDefault || 'auto';
   }
 
   /**
@@ -371,11 +411,16 @@ Hãy chọn từ 1 đến ${Math.min(activeWorkers.length, 4)} phòng ban thực
           const resJson = (await res.json()) as { choices?: { message?: { content?: string } }[] };
           workerResult = resJson.choices?.[0]?.message?.content?.trim() || 'Đã hoàn thành phân tích chuyên môn.';
         } else {
-          workerResult = `(Phòng ban phản hồi lỗi HTTP ${res.status})`;
+          const errText = await res.text().catch(() => '');
+          workerResult = `(Phòng ban phản hồi lỗi HTTP ${res.status}: ${cleanErrorMessage(errText, res.status)})`;
         }
       } catch (err) {
-        workerResult = `(Phòng ban gặp sự cố: ${(err as Error).message})`;
+        const rawErr = (err as Error).message || '';
+        const cleanMsg = cleanErrorMessage(rawErr, 500);
+        workerResult = `(Phòng ban gặp sự cố: ${cleanMsg})`;
       }
+
+      const isError = workerResult.startsWith('(Phòng ban');
 
       workerOutputs.push({
         workerId: worker.id,
@@ -385,13 +430,24 @@ Hãy chọn từ 1 đến ${Math.min(activeWorkers.length, 4)} phòng ban thực
         result: workerResult,
       });
 
-      yield {
-        type: 'worker_done',
-        workerId: worker.id,
-        workerName: worker.name,
-        result: workerResult,
-        message: `✅ ${worker.avatar} [${worker.name}] đã nộp kết quả công việc lên Sếp.`,
-      };
+      if (isError) {
+        yield {
+          type: 'worker_error',
+          workerId: worker.id,
+          workerName: worker.name,
+          error: workerResult,
+          result: workerResult,
+          message: `❌ ${worker.avatar} [${worker.name}] gặp sự cố: ${workerResult.replace(/^\(|\)$/g, '')}`,
+        };
+      } else {
+        yield {
+          type: 'worker_done',
+          workerId: worker.id,
+          workerName: worker.name,
+          result: workerResult,
+          message: `✅ ${worker.avatar} [${worker.name}] đã nộp kết quả công việc lên Sếp.`,
+        };
+      }
     }
 
     // =========================================================================

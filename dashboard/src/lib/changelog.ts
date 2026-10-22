@@ -9,23 +9,43 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.1',
+    date: '2026-10-23',
+    highlights: [
+      {
+        title: '🎯 Tôn Trọng Model Mặc Định & Khai Tử Gemini 2.0 Flash',
+        items: [
+          'Ưu tiên Model mặc định của người dùng: Toàn bộ hệ thống AI Gateway và các phòng ban AI Company giờ đây tôn trọng tuyệt đối Model mặc định do bạn lựa chọn, loại bỏ hoàn toàn tình trạng bị gọi model khác ngoài ý muốn.',
+          'Tự động chuyển đổi Gemini 2.0 Flash sang Gemini 2.5 Flash: Model gemini-2.0-flash cũ đã bị Google ngừng cung cấp (báo lỗi 404 NOT_FOUND). ZenPanel tự động chuyển đổi sang phiên bản mới gemini-2.5-flash siêu tốc độ, ổn định và thông minh hơn.',
+        ],
+      },
+      {
+        title: '💬 Thông Báo Lỗi Tiếng Việt Thân Thiện & Giữ Trọn Vẹn Nhật Ký Gốc',
+        items: [
+          'Chấm dứt in JSON thô lên màn hình: Toàn bộ phản hồi lỗi kỹ thuật từ Google Gemini, Anthropic Claude, OpenAI... được tự động chuẩn hóa và giải thích bằng tiếng Việt rõ ràng, dễ hiểu (báo rõ hết credit, model không khả dụng, sai key, hết hạn mức).',
+          'Lưu giữ đầy đủ chi tiết trong Logs: Giao diện hiển thị thông điệp tiếng Việt thân thiện, trong khi tab Nhật ký & Logs (Activity) vẫn lưu giữ trọn vẹn toàn bộ mã lỗi và chuỗi phản hồi gốc của nhà cung cấp để quản trị viên dễ dàng tra cứu chuyên sâu.',
+        ],
+      },
+      {
+        title: '🚨 Báo Lỗi Chuẩn Xác & 1-Click Kiểm Tra Lại Kết Nối',
+        items: [
+          'Hiển thị trạng thái lỗi thực tế: Khắc phục triệt để tình trạng tài khoản hết tiền (như Claude balance too low) hoặc lỗi kết nối nhưng giao diện vẫn hiện màu xanh "Đang bật / Hoạt động". Thẻ nhà cung cấp và tài khoản sẽ chuyển sang huy hiệu Đỏ (Lỗi kết nối / Hết hạn) kèm hộp cảnh báo nguyên nhân chi tiết.',
+          'Nút "Kiểm tra lại kết nối" tức thì: Bổ sung nút kiểm tra nhanh ngay trên thẻ nhà cung cấp và trong hộp thoại cảnh báo để bạn bấm test lại trạng thái API key bất kỳ lúc nào.',
+          'Trực quan hóa sự cố phòng ban trong AI Company: Khi có phòng ban gặp trục trặc, thẻ phòng ban sẽ chuyển sang viền đỏ kèm icon cảnh báo và nút "Xem chi tiết sự cố", giúp bạn nắm bắt ngay vấn đề mà không bị nhầm lẫn.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.6.0',
     date: '2026-10-23',
     highlights: [
       {
-        title: '⚡ Sao Chép cURL AI Nhanh & Đếm Ngược Hạn Dùng Realtime Với txaformat',
+        title: '⚡ Sao Chép cURL AI Nhanh & Đếm Ngược Hạn Dùng Realtime',
         items: [
           'Nút sao chép mã nhanh trong AI Gateway: Tự động điền Default API Key và câu lệnh kiểm tra mẫu hữu ích, kèm hiệu ứng phản hồi sống động (chuyển đổi icon Copy -> Check xanh, hiệu ứng nảy nhẹ và thông báo toast).',
           'Đếm ngược hạn dùng Realtime: Hạn sử dụng VPS và hạn sử dụng API Key trong AI Gateway được cập nhật từng giây theo thời gian thực.',
-          'Bộ đếm chi tiết chuẩn txaformat khi hover: Di chuột vào badge hạn sử dụng sẽ hiển thị tooltip đếm ngược đầy đủ số ngày, giờ, phút, giây kèm ngày giờ hết hạn chuẩn xác.',
-        ],
-      },
-      {
-        title: '🔒 Bảo Vệ Khóa Gateway Mặc Định & Chuẩn Hóa Trải Nghiệm Giao Diện',
-        items: [
-          'Bảo vệ Default Gateway Key: Khóa API mặc định của AI Gateway được bảo vệ tuyệt đối, nút xóa được làm mờ và vô hiệu hóa. Khi di chuột vào nút xóa sẽ có thông báo giải thích rõ ràng lý do không thể xóa để giữ kết nối ổn định cho toàn hệ thống.',
-          'Triệt tiêu 100% tooltip mặc định của trình duyệt: Tự động phát hiện và chuyển đổi tất cả thuộc tính title của trình duyệt sang hệ thống Tooltip tùy chỉnh cao cấp của ZenPanel (bo góc, viền kính mờ, hiển thị tức thì, đúng màu sắc chủ đề).',
-          'Loại bỏ hoàn toàn hộp thoại gốc (alert/confirm): Mọi thông báo hay yêu cầu xác nhận trong ZenPanel đều được xử lý qua Modal và Toast hiện đại, tuyệt đối không xuất hiện các popup xám thô sơ của trình duyệt.',
+          'Bộ đếm chi tiết chuẩn khi hover: Di chuột vào badge hạn sử dụng sẽ hiển thị tooltip đếm ngược đầy đủ số ngày, giờ, phút, giây kèm ngày giờ hết hạn chuẩn xác.',
         ],
       },
       {

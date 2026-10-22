@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import {
   Activity,
+  AlertTriangle,
   ArrowDown,
   ArrowUp,
   Bot,
@@ -268,6 +269,7 @@ function ProviderLogo({ id, size = 'md', className }: { id: string; size?: 'sm' 
 function ProviderCard({ p, onChanged }: { p: AiProvider; onChanged: (list: AiProvider[]) => void }) {
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [showAccounts, setShowAccounts] = useState(false);
   const [addingAcc, setAddingAcc] = useState(false);
   const [newKey, setNewKey] = useState('');
@@ -278,6 +280,23 @@ function ProviderCard({ p, onChanged }: { p: AiProvider; onChanged: (list: AiPro
 
   const accounts = p.accounts ?? [];
   const hasMultipleAccounts = accounts.length > 1;
+
+  const testConnection = async () => {
+    setTesting(true);
+    try {
+      const res = await post<{ ok: boolean; message: string }>(`/api/ai/providers/${p.id}/test`);
+      toast(res.ok ? `${p.label}: Kết nối thành công!` : `${p.label}: ${res.message}`, res.ok ? 'success' : 'error');
+      const updated = await get<AiProvider[]>('/api/ai/providers');
+      if (updated) onChanged(updated);
+    } catch (err) {
+      toast(`${p.label}: ${(err as Error).message}`, 'error');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const hasError = p.configured && (p.lastTest?.ok === false || accounts.some((a) => a.status === 'error'));
+  const isOk = p.configured && !hasError && p.lastTest?.ok;
 
   const save = async () => {
     setBusy(true);
@@ -328,7 +347,13 @@ function ProviderCard({ p, onChanged }: { p: AiProvider; onChanged: (list: AiPro
   const filtered = (models.data ?? []).filter((m) => !query || m.id.toLowerCase().includes(query.toLowerCase()) || m.name.toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <div className={cn('glass flex flex-col gap-4 p-5', p.configured && p.lastTest?.ok && 'border-zen-green/30')}>
+    <div
+      className={cn(
+        'glass flex flex-col gap-4 p-5 transition-all duration-200',
+        isOk && 'border-zen-green/40 bg-emerald-950/10',
+        hasError && 'border-red-500/50 bg-red-950/20 shadow-xl shadow-red-950/25',
+      )}
+    >
       <div className="flex items-start gap-3">
         <ProviderLogo id={p.id} />
         <div className="min-w-0 flex-1">
@@ -342,7 +367,9 @@ function ProviderCard({ p, onChanged }: { p: AiProvider; onChanged: (list: AiPro
                 </Badge>
               )}
               {p.configured ? (
-                <Badge tone={p.lastTest?.ok ? 'green' : 'red'}>{p.lastTest?.ok ? 'Đã kết nối' : 'Lỗi key'}</Badge>
+                <Badge tone={hasError ? 'red' : p.lastTest?.ok ? 'green' : 'amber'}>
+                  {hasError ? 'Lỗi kết nối / Hết hạn' : p.lastTest?.ok ? 'Đã kết nối' : 'Chưa kiểm tra'}
+                </Badge>
               ) : (
                 <Badge>Chưa kết nối</Badge>
               )}
@@ -351,6 +378,30 @@ function ProviderCard({ p, onChanged }: { p: AiProvider; onChanged: (list: AiPro
           <div className="mono truncate text-xs text-slate-500">{p.baseUrl}</div>
         </div>
       </div>
+
+      {/* Cảnh báo lỗi chi tiết */}
+      {hasError && (
+        <div className="rounded-2xl border border-red-500/40 bg-red-950/40 p-3 text-xs text-red-200 flex items-start gap-2.5 shadow-inner">
+          <AlertTriangle className="size-4 shrink-0 text-red-400 mt-0.5" />
+          <div className="space-y-1 min-w-0 flex-1">
+            <div className="font-bold text-red-300">Nhà cung cấp đang gặp sự cố:</div>
+            <div className="text-[11px] leading-relaxed break-words text-red-200/90">
+              {p.lastTest?.message || accounts.find((a) => a.errorMsg)?.errorMsg || 'Không thể kết nối đến API hoặc hết hạn'}
+            </div>
+            <div className="pt-1 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void testConnection()}
+                disabled={testing}
+                className="text-[11px] font-semibold text-red-300 hover:text-white underline cursor-pointer flex items-center gap-1"
+              >
+                <RefreshCw className={cn('size-3', testing && 'animate-spin')} />
+                {testing ? 'Đang kiểm tra...' : 'Kiểm tra lại kết nối ngay'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hiển thị Pool tài khoản / API keys */}
       {p.configured && (
@@ -424,14 +475,23 @@ function ProviderCard({ p, onChanged }: { p: AiProvider; onChanged: (list: AiPro
                           429 Tạm dừng
                         </Badge>
                       )}
-                      {acc.status === 'error' && <Badge tone="red">Lỗi</Badge>}
+                      {acc.status === 'error' && (
+                        <Badge tone="red" className="flex items-center gap-1">
+                          <AlertTriangle className="size-3" />
+                          Lỗi
+                        </Badge>
+                      )}
                     </div>
                     <div className="mono text-[11px] text-slate-400">{acc.masked}</div>
-                    {acc.errorMsg && <div className="truncate text-[10px] text-amber-300">{acc.errorMsg}</div>}
+                    {acc.errorMsg && (
+                      <div className="mt-1 rounded-lg border border-red-500/30 bg-red-950/40 px-2 py-1 text-[11px] font-medium text-red-200 break-words">
+                        ⚠️ {acc.errorMsg}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
-                    {acc.status === 'rate_limited' && (
-                      <IconButton icon={RotateCw} title="Kích hoạt lại ngay" onClick={() => void resetAccount(acc)} />
+                    {(acc.status === 'rate_limited' || acc.status === 'error') && (
+                      <IconButton icon={RotateCw} title="Kích hoạt lại / Reset trạng thái" onClick={() => void resetAccount(acc)} />
                     )}
                     <IconButton
                       icon={Trash2}
@@ -444,19 +504,25 @@ function ProviderCard({ p, onChanged }: { p: AiProvider; onChanged: (list: AiPro
               ))}
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="mono truncate text-slate-300">{p.masked}</span>
-              {hasMultipleAccounts && (
-                <span className="text-[11px] text-purple-300">
-                  (+{accounts.length - 1} acc khác đang tự xoay vòng)
-                </span>
+            <div className="space-y-1 text-xs text-slate-400">
+              <div className="flex items-center gap-2">
+                <span className="mono truncate text-slate-300">{p.masked}</span>
+                {hasMultipleAccounts && (
+                  <span className="text-[11px] text-purple-300">
+                    (+{accounts.length - 1} acc khác đang tự xoay vòng)
+                  </span>
+                )}
+              </div>
+              {hasError && (
+                <div className="text-[11px] font-semibold text-red-300 flex items-center gap-1">
+                  <AlertTriangle className="size-3 shrink-0 text-red-400" />
+                  <span>Phát hiện tài khoản gặp lỗi. Bấm "Xem danh sách" để kiểm tra.</span>
+                </div>
               )}
             </div>
           )}
         </div>
       )}
-
-      {p.lastTest && !p.lastTest.ok && <p className="text-xs text-red-300">{p.lastTest.message}</p>}
 
       {/* Nhập key thay thế hoặc dán nhiều key cùng lúc */}
       <div className="space-y-1.5">
@@ -517,15 +583,29 @@ function ProviderCard({ p, onChanged }: { p: AiProvider; onChanged: (list: AiPro
           )}
         </div>
       )}
-      <div className="mt-auto flex items-center justify-between text-xs">
+      <div className="mt-auto flex items-center justify-between text-xs pt-1">
         <a href={p.keyUrl} target="_blank" rel="noreferrer" className="font-semibold text-blue-300 hover:underline">
           Lấy API key {p.label} →
         </a>
-        {p.configured && (
-          <button type="button" className="text-red-400/80 hover:text-red-300 hover:underline" onClick={() => void remove()}>
-            Ngắt kết nối
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {p.configured && (
+            <Button
+              size="xs"
+              variant="ghost"
+              icon={RefreshCw}
+              loading={testing}
+              onClick={() => void testConnection()}
+              className="text-slate-400 hover:text-white"
+            >
+              Kiểm tra
+            </Button>
+          )}
+          {p.configured && (
+            <button type="button" className="text-red-400/80 hover:text-red-300 hover:underline" onClick={() => void remove()}>
+              Ngắt kết nối
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1273,6 +1353,12 @@ function CompanyTab({ models, providers }: { models: AiModel[]; providers: AiPro
                 [ev.workerId!]: { status: 'done', result: ev.result },
               }));
               if (ev.message) setStatusMessage(ev.message);
+            } else if (ev.type === 'worker_error' && ev.workerId) {
+              setWorkerProgress((prev) => ({
+                ...prev,
+                [ev.workerId!]: { status: 'error', result: ev.result || ev.error, model: prev[ev.workerId!]?.model },
+              }));
+              if (ev.message) setStatusMessage(ev.message);
             } else if (ev.type === 'boss_chunk' && ev.delta) {
               setCurrentPhase('synthesizing');
               setBossReport((prev) => prev + ev.delta);
@@ -1529,16 +1615,25 @@ function CompanyTab({ models, providers }: { models: AiModel[]; providers: AiPro
                       Giai đoạn 2: Các Phòng Ban AI Đồng Loạt Xử Lý
                     </span>
                   </div>
-                  <Badge tone="blue" className="text-[10px]">
-                    {Object.values(workerProgress).filter((p) => p.status === 'done').length}/{plan.subtasks.length} Hoàn thành
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge tone="blue" className="text-[10px]">
+                      {Object.values(workerProgress).filter((p) => p.status === 'done' && !p.result?.startsWith('(Phòng ban')).length}/{plan.subtasks.length} Hoàn thành
+                    </Badge>
+                    {Object.values(workerProgress).some((p) => p.status === 'error' || p.result?.startsWith('(Phòng ban')) && (
+                      <Badge tone="red" className="text-[10px] flex items-center gap-1 font-bold">
+                        <AlertTriangle className="size-3" />
+                        {Object.values(workerProgress).filter((p) => p.status === 'error' || p.result?.startsWith('(Phòng ban')).length} Sự cố
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   {plan.subtasks.map((st, idx) => {
                     const w = workers.find((item) => item.id === st.workerId);
                     const prog = workerProgress[st.workerId];
-                    const isDone = prog?.status === 'done';
+                    const isError = prog?.status === 'error' || Boolean(prog?.result?.startsWith('(Phòng ban'));
+                    const isDone = prog?.status === 'done' && !isError;
                     const isRunning = prog?.status === 'running';
 
                     return (
@@ -1548,9 +1643,11 @@ function CompanyTab({ models, providers }: { models: AiModel[]; providers: AiPro
                           'rounded-xl border p-3 text-xs space-y-2 transition shadow-sm',
                           isDone
                             ? 'border-emerald-500/40 bg-emerald-950/20'
-                            : isRunning
-                              ? 'border-blue-500/50 bg-blue-950/30 ring-1 ring-blue-500/30'
-                              : 'border-slate-800 bg-black/30 opacity-60',
+                            : isError
+                              ? 'border-red-500/50 bg-red-950/30 ring-1 ring-red-500/40 shadow-md shadow-red-950/30'
+                              : isRunning
+                                ? 'border-blue-500/50 bg-blue-950/30 ring-1 ring-blue-500/30'
+                                : 'border-slate-800 bg-black/30 opacity-60',
                         )}
                       >
                         <div className="flex items-center justify-between">
@@ -1560,6 +1657,8 @@ function CompanyTab({ models, providers }: { models: AiModel[]; providers: AiPro
                           </div>
                           {isDone ? (
                             <CheckCircle2 className="size-4 text-emerald-400" />
+                          ) : isError ? (
+                            <AlertTriangle className="size-4 text-red-400" />
                           ) : isRunning ? (
                             <RefreshCw className="size-3.5 animate-spin text-blue-400" />
                           ) : (
@@ -1573,7 +1672,19 @@ function CompanyTab({ models, providers }: { models: AiModel[]; providers: AiPro
                           <div className="mono text-[10px] text-indigo-300 truncate">Model: {prog.model}</div>
                         )}
 
-                        {isDone && prog?.result && (
+                        {isError && prog?.result && (
+                          <div className="rounded-lg border border-red-500/30 bg-red-950/50 p-2 text-[11px] text-red-200">
+                            <div className="font-semibold text-red-300 flex items-center gap-1">
+                              <AlertTriangle className="size-3 shrink-0" />
+                              Sự cố phòng ban:
+                            </div>
+                            <div className="line-clamp-2 mt-0.5 text-red-200/90 leading-tight">
+                              {prog.result.replace(/^\(|\)$/g, '')}
+                            </div>
+                          </div>
+                        )}
+
+                        {(isDone || isError) && prog?.result && (
                           <button
                             type="button"
                             onClick={() =>
@@ -1583,9 +1694,14 @@ function CompanyTab({ models, providers }: { models: AiModel[]; providers: AiPro
                                 result: prog.result!,
                               })
                             }
-                            className="w-full text-center rounded-lg bg-emerald-900/40 hover:bg-emerald-900/70 py-1 text-[11px] font-semibold text-emerald-300 transition"
+                            className={cn(
+                              'w-full text-center rounded-lg py-1 text-[11px] font-semibold transition cursor-pointer',
+                              isError
+                                ? 'bg-red-900/40 hover:bg-red-900/70 text-red-300 border border-red-500/30'
+                                : 'bg-emerald-900/40 hover:bg-emerald-900/70 text-emerald-300',
+                            )}
                           >
-                            Xem bài làm phòng ban →
+                            {isError ? 'Xem chi tiết sự cố →' : 'Xem bài làm phòng ban →'}
                           </button>
                         )}
                       </div>
