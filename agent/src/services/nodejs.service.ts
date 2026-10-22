@@ -30,6 +30,8 @@ export interface NodeVersionInfo {
 export interface NodeStatusResponse {
   installed: {
     version: string;
+    systemVersion?: string;
+    pendingRestart?: boolean;
     major: number;
     execPath: string;
     arch: string;
@@ -52,15 +54,31 @@ export interface NodeStatusResponse {
 
 let cachedStatus: { at: number; data: NodeStatusResponse } | null = null;
 
-// Danh sách các CVEs và lỗ hổng bảo mật tiêu biểu của các dòng Node.js (đặc biệt là dòng Node 21.x và bản cũ)
-const KNOWN_ADVISORIES: NodeSecurityAdvisory[] = [
+// Danh sách fallback các CVEs nếu không có mạng
+const FALLBACK_ADVISORIES: NodeSecurityAdvisory[] = [
   {
-    cve: 'CVE-2024-21892',
-    title: 'Code Execution through Speculative Execution / OpenSSL Engine',
+    cve: 'CVE-2026-105482',
+    title: 'dns.resolve truncates names containing NUL char',
     severity: 'high',
-    description: 'Lỗ hổng thực thi mã tùy ý khi tải module OpenSSL do thiếu cơ chế kiểm tra an toàn trong luồng engine.',
-    affectedVersions: 'Node.js v21.x, v20.x (< 20.11.1), v18.x (< 18.19.1)',
-    recommendation: 'Nâng cấp ngay lên phiên bản Node.js Active LTS mới nhất.',
+    description: 'Lỗ hổng xử lý chuỗi trong dns.resolve khi gặp ký tự NUL, có thể dẫn đến việc giả mạo phân giải tên miền.',
+    affectedVersions: 'Node.js 26.x, 24.x, 22.x',
+    recommendation: 'Nâng cấp lên bản vá bảo mật Node.js LTS mới nhất.',
+  },
+  {
+    cve: 'CVE-2026-105483',
+    title: 'TLS certificate hostname bypass when the IP is written fullwidth digits',
+    severity: 'high',
+    description: 'Vượt qua cơ chế xác thực chứng chỉ TLS khi IP được nhập ở dạng ký tự fullwidth.',
+    affectedVersions: 'Node.js 26.x, 24.x, 22.x',
+    recommendation: 'Cập nhật bản vá LTS chính thức từ nodejs.org.',
+  },
+  {
+    cve: 'CVE-2026-111497',
+    title: 'Node.js Brotli decoder out-of-bounds write permits remote code execution',
+    severity: 'high',
+    description: 'Lỗ hổng ghi đè bộ nhớ đệm giải nén Brotli dẫn đến nguy cơ thực thi mã tùy ý từ xa.',
+    affectedVersions: 'Node.js 26.x, 24.x, 22.x',
+    recommendation: 'Bắt buộc nâng cấp lên phiên bản vá bảo mật khẩn cấp.',
   },
   {
     cve: 'CVE-2024-22019',
@@ -69,22 +87,6 @@ const KNOWN_ADVISORIES: NodeSecurityAdvisory[] = [
     description: 'Kẻ tấn công có thể chế tạo các request HTTP chunked đặc biệt để vượt qua xác thực của Reverse Proxy (Nginx, Cloudflare) và giả mạo phiên người dùng.',
     affectedVersions: 'Node.js v21.x (đặc biệt v21.10 và cũ hơn), v20.x (< 20.12.0)',
     recommendation: 'Bắt buộc nâng cấp lên Node.js LTS có bản vá bảo mật để bảo vệ các ứng dụng web và API.',
-  },
-  {
-    cve: 'CVE-2024-22025',
-    title: 'Denial of Service (DoS) qua xử lý chuỗi và bộ nhớ đệm Buffer',
-    severity: 'medium',
-    description: 'Tấn công từ chối dịch vụ làm sập máy chủ Node.js khi xử lý các chuỗi nhập liệu kích thước lớn vượt giới hạn heap.',
-    affectedVersions: 'Node.js v21.x, v20.x (< 20.12.1)',
-    recommendation: 'Cập nhật bản vá LTS chính thức để khắc phục rò rỉ bộ nhớ.',
-  },
-  {
-    cve: 'CVE-2024-21896',
-    title: 'Path Traversal trong Permission Model của Node.js',
-    severity: 'high',
-    description: 'Cho phép tiến trình truy cập vượt quyền ra ngoài thư mục được cấp phép thông qua đường dẫn tương đối.',
-    affectedVersions: 'Node.js v21.x, v20.x (< 20.11.1)',
-    recommendation: 'Nâng cấp lên bản LTS đã vá Permission Model.',
   },
   {
     cve: 'CVE-2024-27980',
@@ -96,10 +98,64 @@ const KNOWN_ADVISORIES: NodeSecurityAdvisory[] = [
   },
 ];
 
+/** Lấy danh sách lỗ hổng bảo mật trực tiếp từ feed và blog bảo mật chính thức của nodejs.org */
+async function fetchLiveNodeAdvisories(): Promise<NodeSecurityAdvisory[]> {
+  try {
+    const feedRes = await fetch('https://nodejs.org/en/feed/vulnerability.xml', {
+      headers: { 'User-Agent': 'ZenPanel' },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!feedRes.ok) return FALLBACK_ADVISORIES;
+    const xml = await feedRes.text();
+    const linkMatch = xml.match(/<link>(https:\/\/nodejs\.org\/en\/blog\/vulnerability\/[^<]+)<\/link>/);
+    if (!linkMatch) return FALLBACK_ADVISORIES;
+
+    const postUrl = linkMatch[1];
+    const postRes = await fetch(postUrl, {
+      headers: { 'User-Agent': 'ZenPanel' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!postRes.ok) return FALLBACK_ADVISORIES;
+    const html = await postRes.text();
+
+    const regex = /<h2[^>]*>[\s\S]*?<a[^>]*>(.*?)\s*\((CVE-[\d-]+)\)\s*-\s*\((high|medium|low|critical)\)<\/a><\/h2>([\s\S]*?)(?=<h2|$)/gi;
+    const advisories: NodeSecurityAdvisory[] = [];
+    let m;
+    while ((m = regex.exec(html)) !== null && advisories.length < 8) {
+      const rawTitle = m[1].replace(/<[^>]+>/g, '').trim();
+      const cve = m[2].toUpperCase();
+      const severity = m[3].toLowerCase() as 'critical' | 'high' | 'medium' | 'low';
+      const sectionBody = m[4];
+
+      const affMatch = sectionBody.match(/affects Node\.js\s*([\s\S]*?)(?=\.|\n|<\/p>)/i);
+      const affectedVersions = affMatch
+        ? `Node.js ${affMatch[1].replace(/<[^>]+>/g, '').trim()}`
+        : 'Node.js các phiên bản liên quan';
+
+      advisories.push({
+        cve,
+        title: rawTitle,
+        severity,
+        description: `Lỗ hổng bảo mật được công bố trên blog chính thức của Node.js Security Team (${postUrl.split('/').pop()}).`,
+        affectedVersions,
+        recommendation: 'Nâng cấp lên phiên bản Node.js Active LTS mới nhất từ trang chủ nodejs.org.',
+      });
+    }
+
+    return advisories.length > 0 ? advisories : FALLBACK_ADVISORIES;
+  } catch {
+    return FALLBACK_ADVISORIES;
+  }
+}
+
 export class NodeService {
+  clearCache(): void {
+    cachedStatus = null;
+  }
+
   /** Lấy thông tin phiên bản Node hiện tại, so sánh với bản phát hành chính thức từ nodejs.org */
   async getStatus(forceRefresh = false): Promise<NodeStatusResponse> {
-    if (!forceRefresh && cachedStatus && Date.now() - cachedStatus.at < 15 * 60_000) {
+    if (!forceRefresh && cachedStatus && Date.now() - cachedStatus.at < 3 * 60_000) {
       return cachedStatus.data;
     }
 
@@ -108,6 +164,20 @@ export class NodeService {
     const isOdd = major % 2 !== 0;
     // Dòng số lẻ (17, 19, 21, 23...) có vòng đời 6 tháng và đã hoặc sẽ sớm EOL
     const isEol = isOdd || major < 20;
+
+    // Kiểm tra phiên bản thực tế của lệnh node trên hệ thống đĩa
+    let systemVersion = currentVer;
+    try {
+      const { stdout } = await execAsync(process.platform === 'win32' ? 'powershell -NoProfile -Command "& node -v"' : 'node -v', { timeout: 4000 });
+      const trimmed = stdout.trim();
+      if (/^v?\d+\.\d+\.\d+/.test(trimmed)) {
+        systemVersion = trimmed.startsWith('v') ? trimmed : `v${trimmed}`;
+      }
+    } catch {
+      systemVersion = currentVer;
+    }
+
+    const pendingRestart = systemVersion !== currentVer;
 
     let allReleases: any[] = [];
     try {
@@ -151,11 +221,9 @@ export class NodeService {
     // Đánh giá nguy cơ bảo mật của phiên bản hiện tại
     const hasSecurityRisk = Boolean(isEol || (latestLts && currentVer !== latestLts.version));
 
-    // Lọc danh sách cảnh báo bảo mật phù hợp
-    let securityAdvisories = KNOWN_ADVISORIES;
-    if (!isEol && major >= 22) {
-      securityAdvisories = KNOWN_ADVISORIES.filter((a) => a.severity === 'critical');
-    }
+    // Lấy lỗ hổng bảo mật trực tiếp từ nodejs.org
+    const liveAdvisories = await fetchLiveNodeAdvisories();
+    const securityAdvisories = liveAdvisories.length > 0 ? liveAdvisories : FALLBACK_ADVISORIES;
 
     const changelogSummary = [
       {
@@ -182,6 +250,8 @@ export class NodeService {
     const data: NodeStatusResponse = {
       installed: {
         version: currentVer,
+        systemVersion,
+        pendingRestart,
         major,
         execPath: process.execPath,
         arch: process.arch,

@@ -53,14 +53,18 @@ export function isNewerVersion(currentVer: string | null, latestVer: string | nu
 }
 
 export class SystemToolsService {
+  clearCache(): void {
+    cachedToolsStatus = null;
+  }
+
   /** Lấy danh sách các công cụ hệ thống, phiên bản hiện tại và phiên bản mới nhất */
   async getStatus(forceRefresh = false): Promise<SystemToolsStatusResponse> {
-    if (!forceRefresh && cachedToolsStatus && Date.now() - cachedToolsStatus.at < 10 * 60_000) {
+    if (!forceRefresh && cachedToolsStatus && Date.now() - cachedToolsStatus.at < 2 * 60_000) {
       return cachedToolsStatus.data;
     }
 
     const [nodeTool, npmTool, gitTool, cloudflaredTool, dockerTool] = await Promise.all([
-      this.checkNode(),
+      this.checkNode(forceRefresh),
       this.checkNpm(),
       this.checkGit(),
       this.checkCloudflared(),
@@ -81,14 +85,23 @@ export class SystemToolsService {
   }
 
   // 1. Kiểm tra Node.js Runtime
-  private async checkNode(): Promise<SystemToolItem> {
-    const current = process.version; // vd: v24.19.0
-    const nodeStatus = await nodeService.getStatus().catch(() => null);
+  private async checkNode(forceRefresh = false): Promise<SystemToolItem> {
+    const runningVer = process.version; // vd: v21.10.0
+    const nodeStatus = await nodeService.getStatus(forceRefresh).catch(() => null);
 
+    const systemVer = nodeStatus?.installed?.systemVersion || runningVer;
     const latest = nodeStatus?.latestLts?.version || nodeStatus?.latestCurrent?.version || null;
     const isEol = nodeStatus?.installed?.isEol ?? false;
     const hasSec = nodeStatus?.installed?.hasSecurityRisk ?? false;
-    const hasUpdate = isEol || isNewerVersion(current, latest);
+    const pendingRestart = nodeStatus?.installed?.pendingRestart ?? false;
+
+    // Nếu trên máy đã cài bản mới (systemVer >= latest), hasUpdate là false
+    const hasUpdate = (isEol || isNewerVersion(systemVer, latest)) && !pendingRestart;
+
+    let notes: string | undefined;
+    if (pendingRestart) {
+      notes = `Đã cài đặt ${systemVer} trên hệ thống (tiến trình đang chạy ${runningVer}). Khởi động lại ZenPanel để kích hoạt runtime mới.`;
+    }
 
     return {
       id: 'node',
@@ -96,7 +109,7 @@ export class SystemToolsService {
       category: 'runtime',
       description: 'Môi trường thực thi JavaScript/TypeScript cốt lõi cho ZenPanel Agent và các dịch vụ nền',
       installed: true,
-      currentVersion: current,
+      currentVersion: pendingRestart ? `${systemVer} (cần khởi động lại)` : runningVer,
       latestVersion: latest,
       hasUpdate,
       isCrucialForZenPanel: true,
@@ -105,6 +118,7 @@ export class SystemToolsService {
       securityNotes: hasSec
         ? 'Phiên bản hiện tại có cảnh báo bảo mật hoặc thuộc nhánh EOL (như 21.x). Khuyên dùng nâng cấp lên LTS mới nhất.'
         : undefined,
+      notes,
     };
   }
 
@@ -273,6 +287,8 @@ export class SystemToolsService {
 
     switch (id) {
       case 'node':
+        cachedToolsStatus = null;
+        nodeService.clearCache();
         return nodeService.upgrade(item.latestVersion || undefined);
 
       case 'npm':

@@ -484,8 +484,31 @@ function NodeRuntimeCard() {
       }
     >
       <div className="space-y-4">
+        {/* BANNER THÔNG BÁO ĐÃ CÀI BẢN MỚI, CHỜ KHỞI ĐỘNG LẠI AGENT */}
+        {installed.pendingRestart && (
+          <div className="rounded-2xl border-2 border-emerald-500/50 bg-gradient-to-r from-emerald-950/80 via-slate-900 to-emerald-950/40 p-4 shadow-xl">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600/30 text-xl ring-1 ring-emerald-400/40">
+                <CheckCircle2 className="size-6 text-emerald-400" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-sm font-extrabold text-white">
+                    Đã cài đặt thành công Node.js {installed.systemVersion} trên hệ thống!
+                  </h4>
+                  <Badge tone="green" className="text-[10px]">Đã cài trên đĩa</Badge>
+                  <Badge tone="amber" className="text-[10px]">Cần khởi động lại ZenPanel</Badge>
+                </div>
+                <p className="text-xs text-emerald-200/90 leading-relaxed">
+                  Bản cài đặt mới đã được thiết lập vào hệ điều hành. Do tiến trình ZenPanel Agent hiện tại đang chạy runtime cũ ({installed.version}) trong bộ nhớ RAM, vui lòng khởi động lại dịch vụ ZenPanel (restart service / chạy lại script khởi động) để runtime mới có hiệu lực.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* BANNER CẢNH BÁO NẾU ĐANG CHẠY BẢN EOL / LỖI HỔNG (VÍ DỤ V21.10) */}
-        {installed.hasSecurityRisk ? (
+        {!installed.pendingRestart && installed.hasSecurityRisk ? (
           <div className="rounded-2xl border-2 border-red-500/50 bg-gradient-to-r from-red-950/70 via-slate-900 to-red-950/40 p-4 shadow-xl">
             <div className="flex items-start gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-600/30 text-xl ring-1 ring-red-400/40">
@@ -690,9 +713,18 @@ function SystemToolsCard() {
     try {
       await runJob(
         () => post<Job>(`/api/system/tools/${tool.id}/upgrade`),
-        () => {
-          void toolsApi.reload();
-          toast(`Đã hoàn tất nâng cấp ${tool.name} lên ${tool.latestVersion}`, 'success');
+        async () => {
+          try {
+            const res = await post<SystemToolsStatusResponse>('/api/system/tools/check');
+            if (res) toolsApi.setData(res);
+          } catch {
+            void toolsApi.reload();
+          }
+          if (tool.id === 'node') {
+            toast(`Đã nâng cấp Node.js lên ${tool.latestVersion}! Vui lòng khởi động lại ZenPanel để runtime mới có hiệu lực.`, 'success');
+          } else {
+            toast(`Đã hoàn tất nâng cấp ${tool.name} lên ${tool.latestVersion}`, 'success');
+          }
         },
       );
     } catch (err: any) {
@@ -1024,7 +1056,6 @@ function UpdateCard() {
 
   return (
     <div className="space-y-4">
-      <NodeRuntimeCard />
       <Card
         title="Cập nhật ZenPanel"
         icon={Sparkles}
@@ -1565,7 +1596,6 @@ export default function Settings() {
       {tab === 'update' && (
         <div className="space-y-5">
           <UpdateCard />
-          <SystemToolsCard />
         </div>
       )}
       {tab === 'sessions' && <SessionsCard />}

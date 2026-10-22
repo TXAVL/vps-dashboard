@@ -493,6 +493,8 @@ export interface NodeVersionInfo {
 export interface NodeStatusResponse {
   installed: {
     version: string;
+    systemVersion?: string;
+    pendingRestart?: boolean;
     major: number;
     execPath: string;
     arch: string;
