@@ -8,6 +8,37 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.0',
+    date: '2026-10-22',
+    highlights: [
+      {
+        title: 'API Tester: Tối ưu Toàn diện Responsive & Phóng to Response Full View',
+        items: [
+          'Khắc phục triệt để lỗi tràn màn hình của trình soạn thảo Monaco / VS Code Theme trên giao diện di động và màn hình nhỏ.',
+          'Bổ sung nút Phóng to / Thu nhỏ Response (Toàn màn hình) cho phép xem trọn vẹn kết quả JSON, HTML, Headers mà không bị khuất.',
+          'Giới hạn khung nhìn 100dvh và tích hợp thanh cuộn độc lập mượt mà, cuộn response thoải mái trên mọi độ phân giải.',
+        ],
+      },
+      {
+        title: 'Dọn dẹp Hệ thống Chuyên sâu & Giải phóng RAM Win32 Thực tế',
+        items: [
+          'Tách riêng Modal Dọn dẹp độc lập (CleanRunnerModal) với thanh tiến trình % thời gian thực và Step Tracker 4 bước.',
+          'Bảng so sánh Before & After: hiển thị chính xác dung lượng Ổ đĩa và RAM thực tế đã được giải phóng.',
+          'Windows: Quét sạch Thùng rác, SoftwareDistribution, Temp, CrashDumps và giải phóng Working Set RAM nhàn rỗi qua Win32 API psapi.dll.',
+          'Linux: Quét sạch log nén cũ, crash dump, apt cache và drop pagecache.',
+        ],
+      },
+      {
+        title: 'Kho Ứng dụng Thích ứng (OS Adaptive App Store) & Tối ưu n8n',
+        items: [
+          'Tự động nhận diện hệ điều hành (Windows / Linux) và môi trường đồ họa (Desktop GUI vs Server Headless).',
+          'Bổ sung các ứng dụng Native thiết thực: T-Drop TXAVL 1-Click, UniKey tiếng Việt, 7-Zip, Notepad++, Cốc Cốc Browser, IBus-Bamboo.',
+          'Tối ưu hóa n8n: khống chế RAM ở mức 512MB, tự động prune execution cũ, dọn sạch SQLite DB khi khởi động, chạy mượt mà ngay cả trên VPS 4GB.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.5.3',
     date: '2026-10-22',
     highlights: [

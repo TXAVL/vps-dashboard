@@ -12,6 +12,8 @@ import {
   FolderPlus,
   Globe2,
   History,
+  Maximize2,
+  Minimize2,
   PanelLeft,
   Pencil,
   Plus,
@@ -265,6 +267,7 @@ export default function ApiTester() {
   const [reqTab, setReqTab] = useState<'params' | 'auth' | 'headers' | 'body' | 'code'>('params');
   const [resTab, setResTab] = useState<'pretty' | 'raw' | 'preview' | 'headers'>('pretty');
   const [envOpen, setEnvOpen] = useState(false);
+  const [resExpanded, setResExpanded] = useState(false);
   const [mobileView, setMobileView] = useState<'sidebar' | 'editor'>('sidebar');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { confirm, prompt, run, toast } = useFeedback();
@@ -415,7 +418,7 @@ export default function ApiTester() {
   const totalRequests = ws.collections.reduce((sum, c) => sum + c.requests.length, 0);
 
   return (
-    <div className="-m-3 flex h-[calc(100vh-4rem)] min-h-[560px] flex-col sm:-m-6">
+    <div className="-m-3 flex h-[calc(100dvh-5.25rem)] max-h-[calc(100dvh-5.25rem)] min-h-[500px] flex-col overflow-hidden sm:-m-6">
       {/* Thanh trên: tiêu đề + môi trường */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-ink-950/80 px-3 py-2 sm:px-4">
         <div className="flex items-center gap-2">
@@ -678,9 +681,14 @@ export default function ApiTester() {
                 )}
               </div>
 
-              <div className="grid min-h-0 flex-1 grid-rows-[minmax(180px,45%)_minmax(0,1fr)]">
+              <div
+                className={cn(
+                  'grid min-h-0 flex-1 transition-all duration-200',
+                  resExpanded ? 'grid-rows-[0px_minmax(0,1fr)]' : 'grid-rows-[minmax(130px,36%)_minmax(0,1fr)]',
+                )}
+              >
                 {/* Cấu hình request */}
-                <div className="flex min-h-0 flex-col border-b border-slate-800">
+                <div className={cn('flex min-h-0 flex-col border-b border-slate-800 overflow-hidden', resExpanded && 'hidden')}>
                   <div className="flex gap-1 overflow-x-auto px-3 pt-2">
                     {(
                       [
@@ -753,15 +761,18 @@ export default function ApiTester() {
                           )}
                         </div>
                         {(tab.request.body.mode === 'json' || tab.request.body.mode === 'text') && (
-                          <div className="min-h-[140px] flex-1 overflow-hidden rounded-xl border border-slate-700/50">
-                            <Editor
-                              height="100%"
-                              theme="vs-dark"
-                              language={tab.request.body.mode === 'json' ? 'json' : 'plaintext'}
-                              value={tab.request.body.raw}
-                              onChange={(v) => editRequest({ body: { ...tab.request.body, raw: v ?? '' } })}
-                              options={{ fontFamily: "'JetBrains Mono', Consolas, monospace", fontSize: 12, minimap: { enabled: false }, automaticLayout: true, scrollBeyondLastLine: false, tabSize: 2 }}
-                            />
+                          <div className="relative min-h-[140px] flex-1 overflow-hidden rounded-xl border border-slate-700/50">
+                            <div className="absolute inset-0">
+                              <Editor
+                                height="100%"
+                                width="100%"
+                                theme="vs-dark"
+                                language={tab.request.body.mode === 'json' ? 'json' : 'plaintext'}
+                                value={tab.request.body.raw}
+                                onChange={(v) => editRequest({ body: { ...tab.request.body, raw: v ?? '' } })}
+                                options={{ fontFamily: "'JetBrains Mono', Consolas, monospace", fontSize: 12, minimap: { enabled: false }, automaticLayout: true, scrollBeyondLastLine: false, tabSize: 2 }}
+                              />
+                            </div>
                           </div>
                         )}
                         {(tab.request.body.mode === 'urlencoded' || tab.request.body.mode === 'form') && (
@@ -785,8 +796,8 @@ export default function ApiTester() {
                 </div>
 
                 {/* Response */}
-                <div className="flex min-h-0 flex-col">
-                  <div className="flex flex-wrap items-center gap-3 border-b border-slate-800 px-3 py-1.5 text-xs">
+                <div className="flex min-h-0 flex-col overflow-hidden">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-1.5 text-xs bg-ink-950/60">
                     <span className="font-semibold text-slate-300">Response</span>
                     {res && (
                       <>
@@ -800,55 +811,93 @@ export default function ApiTester() {
                         {res.truncated && <span className="text-amber-300">đã cắt ở 10MB</span>}
                       </>
                     )}
-                    <div className="ml-auto flex gap-1">
+                    <div className="ml-auto flex items-center gap-1">
                       {(['pretty', 'raw', 'preview', 'headers'] as const).map((t) => (
                         <button key={t} onClick={() => setResTab(t)} className={cn('rounded-md px-2 py-0.5 font-semibold', resTab === t ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-white')}>
                           {t === 'pretty' ? 'Pretty' : t === 'raw' ? 'Raw' : t === 'preview' ? 'Preview' : `Headers${res ? ` (${res.headers.length})` : ''}`}
                         </button>
                       ))}
                       {res && (
-                        <button className="ml-1 text-slate-500 hover:text-white" data-tip="Sao chép body" onClick={() => void navigator.clipboard?.writeText(prettyBody).then(() => toast('Đã sao chép body'))}>
+                        <button className="rounded-md p-1 text-slate-400 hover:text-white hover:bg-slate-800" data-tip="Sao chép body" onClick={() => void navigator.clipboard?.writeText(prettyBody).then(() => toast('Đã sao chép body'))}>
                           <Copy className="size-3.5" />
                         </button>
                       )}
+                      <button
+                        onClick={() => setResExpanded(!resExpanded)}
+                        className={cn(
+                          'flex items-center gap-1 rounded-md px-2 py-0.5 font-semibold text-xs transition border',
+                          resExpanded ? 'border-zen-blue/60 bg-zen-blue/20 text-blue-300' : 'border-slate-700/60 text-slate-400 hover:text-white hover:bg-slate-800',
+                        )}
+                        data-tip={resExpanded ? 'Thu nhỏ Response (hiện lại Request)' : 'Phóng to xem toàn màn hình Response'}
+                      >
+                        {resExpanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
+                        <span className="hidden sm:inline">{resExpanded ? 'Thu nhỏ' : 'Toàn màn hình'}</span>
+                      </button>
                     </div>
                   </div>
-                  <div className="min-h-0 flex-1 overflow-auto">
+                  <div className="relative min-h-0 flex-1 w-full overflow-hidden">
                     {tab.sending ? (
-                      <Spinner label="Đang gửi request..." />
+                      <div className="flex h-full items-center justify-center p-6">
+                        <Spinner label="Đang gửi request..." />
+                      </div>
                     ) : tab.error ? (
-                      <div className="p-4 text-sm text-red-300">{tab.error}</div>
+                      <div className="h-full overflow-auto p-4 text-sm text-red-300">{tab.error}</div>
                     ) : !res ? (
-                      <p className="p-6 text-center text-sm text-slate-600">Bấm Send (Ctrl+Enter) để xem response.</p>
+                      <div className="flex h-full items-center justify-center p-6 text-sm text-slate-600">
+                        Bấm Send (Ctrl+Enter) để xem response.
+                      </div>
                     ) : resTab === 'headers' ? (
-                      <table className="w-full text-xs">
-                        <tbody>
-                          {res.headers.map(([k, v]) => (
-                            <tr key={k} className="border-b border-slate-800">
-                              <td className="mono w-1/3 px-3 py-1.5 font-semibold text-slate-300">{k}</td>
-                              <td className="mono break-all px-3 py-1.5 text-slate-400">{v}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <div className="h-full overflow-auto">
+                        <table className="w-full text-xs">
+                          <tbody>
+                            {res.headers.map(([k, v]) => (
+                              <tr key={k} className="border-b border-slate-800">
+                                <td className="mono w-1/3 px-3 py-1.5 font-semibold text-slate-300">{k}</td>
+                                <td className="mono break-all px-3 py-1.5 text-slate-400">{v}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     ) : resTab === 'preview' ? (
-                      /html/.test(resType) ? (
-                        <iframe title="Preview" sandbox="" srcDoc={res.body} className="h-full w-full bg-white" />
-                      ) : /image\//.test(resType) && res.encoding === 'base64' ? (
-                        <img src={`data:${resType};base64,${res.body}`} alt="Response" className="max-w-full p-3" />
-                      ) : (
-                        <p className="p-4 text-sm text-slate-500">Preview chỉ hỗ trợ HTML và ảnh.</p>
-                      )
+                      <div className="h-full overflow-auto">
+                        {/html/.test(resType) ? (
+                          <iframe title="Preview" sandbox="" srcDoc={res.body} className="h-full w-full bg-white" />
+                        ) : /image\//.test(resType) && res.encoding === 'base64' ? (
+                          <img src={`data:${resType};base64,${res.body}`} alt="Response" className="max-w-full p-3" />
+                        ) : (
+                          <p className="p-4 text-sm text-slate-500">Preview chỉ hỗ trợ HTML và ảnh.</p>
+                        )}
+                      </div>
                     ) : resTab === 'pretty' && res.encoding === 'text' ? (
-                      <Editor
-                        height="100%"
-                        theme="vs-dark"
-                        language={lang}
-                        value={prettyBody}
-                        options={{ readOnly: true, fontFamily: "'JetBrains Mono', Consolas, monospace", fontSize: 12, minimap: { enabled: false }, automaticLayout: true, scrollBeyondLastLine: false, wordWrap: 'on' }}
-                      />
+                      <div className="absolute inset-0">
+                        <Editor
+                          height="100%"
+                          width="100%"
+                          theme="vs-dark"
+                          language={lang}
+                          value={prettyBody}
+                          options={{
+                            readOnly: true,
+                            fontFamily: "'JetBrains Mono', Consolas, monospace",
+                            fontSize: 12,
+                            minimap: { enabled: true, maxColumn: 40 },
+                            automaticLayout: true,
+                            scrollBeyondLastLine: false,
+                            wordWrap: 'on',
+                            scrollbar: {
+                              vertical: 'auto',
+                              horizontal: 'auto',
+                              verticalScrollbarSize: 10,
+                              horizontalScrollbarSize: 10,
+                            },
+                          }}
+                        />
+                      </div>
                     ) : (
-                      <pre className="mono whitespace-pre-wrap break-all p-3 text-xs text-slate-300">{res.encoding === 'base64' ? `[Dữ liệu nhị phân ${formatBytes(res.size)} — base64]\n${res.body.slice(0, 5000)}` : res.body}</pre>
+                      <div className="h-full overflow-auto">
+                        <pre className="mono whitespace-pre-wrap break-all p-3 text-xs text-slate-300">{res.encoding === 'base64' ? `[Dữ liệu nhị phân ${formatBytes(res.size)} — base64]\n${res.body.slice(0, 5000)}` : res.body}</pre>
+                      </div>
                     )}
                   </div>
                 </div>
