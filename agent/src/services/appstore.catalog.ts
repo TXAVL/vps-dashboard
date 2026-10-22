@@ -41,8 +41,8 @@ export interface AppDefinition {
   webScheme?: 'http' | 'https';
   /** Dùng API key AI đã lưu: đổi key thì cần "Cấu hình lại" */
   usesAiKeys?: boolean;
-  /** Nền tảng hệ điều hành hỗ trợ: 'all' | 'windows' | 'linux' (mặc định 'all') */
-  platform?: 'all' | 'windows' | 'linux';
+  /** Nền tảng hệ điều hành hỗ trợ: 'all' | 'windows' | 'linux' | 'darwin' | 'bsd' (mặc định 'all') */
+  platform?: 'all' | 'windows' | 'linux' | 'darwin' | 'bsd';
   /** Yêu cầu môi trường Desktop có màn hình đồ họa (GUI) */
   requiresGui?: boolean;
   /** Loại ứng dụng: 'docker' | 'native' (mặc định 'docker') */
@@ -906,6 +906,163 @@ export const APP_CATALOG: AppDefinition[] = [
     params: [],
     nativeInstall: {
       command: 'add-apt-repository ppa:bamboo-engine/ibus-bamboo -y && apt-get update && apt-get install ibus-bamboo -y',
+    },
+  },
+  // --- Các ứng dụng nâng cao mới bổ sung ---
+  {
+    id: 'qdrant',
+    name: 'Qdrant Vector DB',
+    description: 'Cơ sở dữ liệu Vector siêu nhanh viết bằng Rust dành cho AI Search, RAG, Embeddings & Semantic Search.',
+    category: 'ai',
+    icon: 'BrainCircuit',
+    website: 'https://qdrant.tech',
+    platform: 'all',
+    appType: 'docker',
+    params: [portParam('port', 'Cổng HTTP REST API', 6333), portParam('grpcPort', 'Cổng gRPC', 6334)],
+    webPort: 'port',
+    compose: (p, c) =>
+      service({
+        container: c,
+        image: 'qdrant/qdrant:latest',
+        ports: [`${p.port}:6333`, `${p.grpcPort}:6334`],
+        volumes: { storage: '/qdrant/storage' },
+      }),
+  },
+  {
+    id: 'rustdesk-server',
+    name: 'RustDesk Relay Server',
+    description: 'Máy chủ điều khiển máy tính từ xa tự host, thay thế TeamViewer & AnyDesk. Bảo mật mã hóa E2E, không giới hạn băng thông.',
+    category: 'tools',
+    icon: 'Share2',
+    website: 'https://rustdesk.com',
+    platform: 'all',
+    appType: 'docker',
+    params: [portParam('hbbsPort', 'Cổng ID Server (HBBS)', 21115), portParam('hbbrPort', 'Cổng Relay Server (HBBR)', 21117)],
+    compose: (p, c) =>
+      [
+        'services:',
+        '  hbbs:',
+        '    image: rustdesk/rustdesk-server:latest',
+        `    container_name: ${c}-hbbs`,
+        '    command: hbbs',
+        '    restart: unless-stopped',
+        '    ports:',
+        `      - "${p.hbbsPort}:21115"`,
+        '      - "21116:21116"',
+        '      - "21116:21116/udp"',
+        '    volumes:',
+        '      - data:/root',
+        '  hbbr:',
+        '    image: rustdesk/rustdesk-server:latest',
+        `    container_name: ${c}-hbbr`,
+        '    command: hbbr',
+        '    restart: unless-stopped',
+        '    ports:',
+        `      - "${p.hbbrPort}:21117"`,
+        '    volumes:',
+        '      - data:/root',
+        'volumes:',
+        '  data:',
+      ].join('\n'),
+  },
+  {
+    id: 'searxng',
+    name: 'SearXNG Privacy Metasearch',
+    description: 'Bộ máy tìm kiếm tổng hợp Internet bảo mật, không lưu cookie, không theo dõi, làm Web Search API cực chuẩn cho AI Agents.',
+    category: 'ai',
+    icon: 'Globe',
+    website: 'https://searx.github.io/searxng',
+    platform: 'all',
+    appType: 'docker',
+    params: [portParam('port', 'Cổng Web UI & API', 8092)],
+    webPort: 'port',
+    compose: (p, c) =>
+      service({
+        container: c,
+        image: 'searxng/searxng:latest',
+        ports: [`${p.port}:8080`],
+        volumes: { searxng: '/etc/searxng' },
+      }),
+  },
+  {
+    id: 'adguard-home',
+    name: 'AdGuard Home',
+    description: 'Máy chủ DNS Sinkhole bảo vệ toàn bộ mạng: tự động lọc quảng cáo, chống mã độc & theo dõi, kiểm soát truy cập gia đình & công ty.',
+    category: 'network',
+    icon: 'Shield',
+    website: 'https://adguard.com/adguard-home.html',
+    platform: 'all',
+    appType: 'docker',
+    params: [portParam('port', 'Cổng Web UI', 3000), portParam('dnsPort', 'Cổng DNS', 53)],
+    webPort: 'port',
+    compose: (p, c) =>
+      service({
+        container: c,
+        image: 'adguard/adguardhome:latest',
+        ports: [`${p.port}:3000`, `${p.dnsPort}:53/udp`, `${p.dnsPort}:53`],
+        volumes: { work: '/opt/adguardhome/work', conf: '/opt/adguardhome/conf' },
+      }),
+  },
+  {
+    id: 'glances',
+    name: 'Glances System Monitor',
+    description: 'Giám sát chi tiết thông số hệ thống, nhiệt độ CPU, GPU, I/O và Container theo thời gian thực qua giao diện Web hiện đại.',
+    category: 'devops',
+    icon: 'Activity',
+    website: 'https://nicolargo.github.io/glances',
+    platform: 'all',
+    appType: 'docker',
+    params: [portParam('port', 'Cổng Web UI', 61208)],
+    webPort: 'port',
+    compose: (p, c) =>
+      service({
+        container: c,
+        image: 'nicolargo/glances:latest-full',
+        ports: [`${p.port}:61208`],
+        env: { GLANCES_OPT: '-w' },
+        volumes: { run: '/var/run/docker.sock:ro' },
+      }),
+  },
+  {
+    id: 'git-win',
+    name: 'Git for Windows & Git Bash',
+    description: 'Bộ công cụ quản lý mã nguồn Git CLI chính thức cùng môi trường Git Bash Unix tiện lợi trên hệ thống Windows.',
+    category: 'devops',
+    icon: 'GitBranch',
+    website: 'https://git-scm.com',
+    platform: 'windows',
+    appType: 'native',
+    params: [],
+    nativeInstall: {
+      command: 'winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements --silent',
+    },
+  },
+  {
+    id: 'homebrew-darwin',
+    name: 'Homebrew (Darwin / macOS)',
+    description: 'Trình quản lý gói phần mềm chuẩn của hệ điều hành macOS (Darwin Kernel), cài đặt mọi công cụ CLI chỉ với 1 lệnh.',
+    category: 'tools',
+    icon: 'Package',
+    website: 'https://brew.sh',
+    platform: 'darwin',
+    appType: 'native',
+    params: [],
+    nativeInstall: {
+      command: '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+    },
+  },
+  {
+    id: 'wireguard-bsd',
+    name: 'WireGuard (FreeBSD Kernel)',
+    description: 'Công cụ mạng riêng ảo VPN WireGuard kernel module native cho FreeBSD / OpenBSD / pfSense.',
+    category: 'network',
+    icon: 'Shield',
+    website: 'https://www.wireguard.com',
+    platform: 'bsd',
+    appType: 'native',
+    params: [],
+    nativeInstall: {
+      command: 'pkg install -y wireguard wireguard-tools',
     },
   },
 ];

@@ -156,7 +156,7 @@ export interface AppView {
   status: 'running' | 'stopped' | 'partial' | 'not-installed';
   containers: DockerContainer[];
   isCompatible?: boolean;
-  platform?: 'all' | 'windows' | 'linux';
+  platform?: 'all' | 'windows' | 'linux' | 'darwin' | 'bsd';
   requiresGui?: boolean;
   appType?: 'docker' | 'native';
   isCustom?: boolean;

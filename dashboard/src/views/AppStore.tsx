@@ -70,13 +70,16 @@ const ICONS: Record<string, LucideIcon> = {
   Archive, Keyboard, Share2, Shield, Layers,
 };
 
-export type KernelStore = 'all' | 'windows' | 'linux' | 'docker';
+export type KernelStore = 'all' | 'windows' | 'linux' | 'darwin' | 'bsd' | 'docker' | 'ai';
 
 export const KERNEL_STORES = [
   { id: 'all', label: 'Tất cả kho', icon: '🌐', desc: 'Toàn bộ ứng dụng từ mọi kho nền tảng' },
   { id: 'windows', label: 'Kho Windows NT', icon: '🪟', desc: 'Ứng dụng & Dịch vụ Native Windows Server / 10 / 11' },
   { id: 'linux', label: 'Kho Linux Kernel', icon: '🐧', desc: 'Gói công cụ & Daemon tối ưu cho Debian / Ubuntu / CentOS / Alpine' },
+  { id: 'darwin', label: 'Kho Darwin / macOS', icon: '🍎', desc: 'Ứng dụng Native cho macOS Cloud & Apple Silicon' },
+  { id: 'bsd', label: 'Kho BSD / Unix', icon: '😈', desc: 'Gói dịch vụ mạng tối ưu cho FreeBSD / OpenBSD / pfSense' },
   { id: 'docker', label: 'Kho Docker Container', icon: '🐳', desc: 'Ứng dụng Container hóa đa nhân hệ điều hành' },
+  { id: 'ai', label: 'Kho AI & Neural Core', icon: '🧠', desc: 'Hệ sinh thái Local LLM, Vector Database & AI Agent Studio' },
 ] as const;
 
 const CATEGORIES = [
@@ -630,8 +633,14 @@ export default function AppStore() {
           if (a.platform !== 'windows') return false;
         } else if (kernelStore === 'linux') {
           if (a.platform !== 'linux') return false;
+        } else if (kernelStore === 'darwin') {
+          if (a.platform !== 'darwin') return false;
+        } else if (kernelStore === 'bsd') {
+          if (a.platform !== 'bsd') return false;
         } else if (kernelStore === 'docker') {
           if (a.appType === 'native') return false;
+        } else if (kernelStore === 'ai') {
+          if (a.category !== 'ai') return false;
         }
 
         // 2. Lọc theo Danh mục chức năng (Category)
@@ -725,11 +734,14 @@ export default function AppStore() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7">
               {KERNEL_STORES.map((ks) => {
                 const isSelected = kernelStore === ks.id;
                 const isCurrentHostKernel =
-                  (ks.id === 'windows' && isWindowsHost) || (ks.id === 'linux' && isLinuxHost);
+                  (ks.id === 'windows' && isWindowsHost) ||
+                  (ks.id === 'linux' && isLinuxHost) ||
+                  (ks.id === 'darwin' && info?.os.family === ('darwin' as any)) ||
+                  (ks.id === 'bsd' && info?.os.family === ('bsd' as any));
                 const count =
                   ks.id === 'all'
                     ? (apps.data ?? []).length
@@ -737,7 +749,13 @@ export default function AppStore() {
                       ? (apps.data ?? []).filter((a) => a.platform === 'windows').length
                       : ks.id === 'linux'
                         ? (apps.data ?? []).filter((a) => a.platform === 'linux').length
-                        : (apps.data ?? []).filter((a) => a.appType !== 'native').length;
+                        : ks.id === 'darwin'
+                          ? (apps.data ?? []).filter((a) => a.platform === 'darwin').length
+                          : ks.id === 'bsd'
+                            ? (apps.data ?? []).filter((a) => a.platform === 'bsd').length
+                            : ks.id === 'docker'
+                              ? (apps.data ?? []).filter((a) => a.appType !== 'native').length
+                              : (apps.data ?? []).filter((a) => a.category === 'ai').length;
 
                 return (
                   <button
@@ -830,9 +848,19 @@ export default function AppStore() {
                               'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold border',
                               app.platform === 'windows'
                                 ? 'bg-blue-500/10 text-blue-300 border-blue-500/20'
-                                : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                                : app.platform === 'darwin'
+                                  ? 'bg-rose-500/10 text-rose-300 border-rose-500/20'
+                                  : app.platform === 'bsd'
+                                    ? 'bg-red-500/10 text-red-300 border-red-500/20'
+                                    : 'bg-amber-500/10 text-amber-300 border-amber-500/20'
                             )}>
-                              {app.platform === 'windows' ? '🪟 Windows Native' : '🐧 Linux Native'}
+                              {app.platform === 'windows'
+                                ? '🪟 Windows Native'
+                                : app.platform === 'darwin'
+                                  ? '🍎 macOS Native'
+                                  : app.platform === 'bsd'
+                                    ? '😈 BSD Native'
+                                    : '🐧 Linux Native'}
                               {app.requiresGui ? ' (GUI)' : ''}
                             </span>
                           ) : (

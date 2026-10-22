@@ -36,7 +36,7 @@ export function CustomAppModal({ open, onClose, onCreated }: { open: boolean; on
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('tools');
   const [icon, setIcon] = useState('Package');
-  const [platform, setPlatform] = useState<'all' | 'windows' | 'linux'>('all');
+  const [platform, setPlatform] = useState<'all' | 'windows' | 'linux' | 'darwin' | 'bsd'>('all');
   const [appType, setAppType] = useState<'docker' | 'native'>('docker');
   const [defaultPort, setDefaultPort] = useState('8080');
   const [website, setWebsite] = useState('');
@@ -152,6 +152,8 @@ export function CustomAppModal({ open, onClose, onCreated }: { open: boolean; on
               <option value="all">🌐 Đa nền tảng (Tất cả)</option>
               <option value="windows">🪟 Windows NT</option>
               <option value="linux">🐧 Linux Kernel</option>
+              <option value="darwin">🍎 Darwin / macOS</option>
+              <option value="bsd">😈 BSD / Unix (FreeBSD)</option>
             </select>
           </Field>
         </div>

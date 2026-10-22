@@ -26,7 +26,7 @@ export interface CustomAppDefinition {
   category: AppCategory;
   icon: string;
   website: string;
-  platform?: 'all' | 'windows' | 'linux';
+  platform?: 'all' | 'windows' | 'linux' | 'darwin' | 'bsd';
   appType: 'docker' | 'native';
   webPort?: string;
   defaultPort?: number;
@@ -43,7 +43,7 @@ export interface AppView extends Omit<AppDefinition, 'compose' | 'files'> {
   guide: AppGuide | null;
   publicLink: (TunnelState & { enabled: boolean }) | null;
   isCompatible: boolean;
-  platform: 'all' | 'windows' | 'linux';
+  platform: 'all' | 'windows' | 'linux' | 'darwin' | 'bsd';
   requiresGui: boolean;
   appType: 'docker' | 'native';
   isCustom?: boolean;
@@ -114,10 +114,13 @@ export class AppStoreService {
     return installed.all();
   }
 
-  systemInfo(): { platform: 'windows' | 'linux'; hasGui: boolean } {
+  systemInfo(): { platform: 'windows' | 'linux' | 'darwin' | 'bsd'; hasGui: boolean } {
     const isWindows = process.platform === 'win32';
-    const hasGui = isWindows ? true : Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
-    return { platform: isWindows ? 'windows' : 'linux', hasGui };
+    const isDarwin = process.platform === 'darwin';
+    const isBsd = process.platform === 'freebsd' || process.platform === 'openbsd';
+    const platform = isWindows ? 'windows' : isDarwin ? 'darwin' : isBsd ? 'bsd' : 'linux';
+    const hasGui = isWindows || isDarwin ? true : Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+    return { platform, hasGui };
   }
 
   async list(): Promise<AppView[]> {
@@ -495,6 +498,23 @@ export class AppStoreService {
         `;
         await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
         jobLog('✓ OpenSSH Server đã được kích hoạt thành công trên Windows (port 22)');
+      } else if (app.id === 'git-win') {
+        jobLog('Đang cài đặt Git for Windows & Git Bash...');
+        try {
+          await execAsync('powershell -NoProfile -Command "winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements --silent"');
+          jobLog('✓ Git for Windows đã được cài đặt qua winget');
+        } catch {
+          jobLog('Thử tải bộ cài Git x64 độc lập...');
+          const installerPath = path.join(dir, 'Git-Installer.exe');
+          const script = `
+            $url = "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe"
+            Invoke-WebRequest -Uri $url -OutFile "${installerPath}" -UseBasicParsing
+            Start-Process -FilePath "${installerPath}" -ArgumentList "/VERYSILENT /NORESTART" -Wait
+            Remove-Item -Path "${installerPath}" -Force -ErrorAction SilentlyContinue
+          `;
+          await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
+          jobLog('✓ Git for Windows đã được cài đặt thành công');
+        }
       }
     } else {
       // Linux
