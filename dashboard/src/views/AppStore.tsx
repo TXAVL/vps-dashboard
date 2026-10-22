@@ -3,6 +3,8 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import {
   Activity,
+  ChartLine,
+  Clapperboard,
   Cloud,
   Code,
   Container,
@@ -17,16 +19,19 @@ import {
   KeyRound,
   LayoutGrid,
   Leaf,
+  NotebookPen,
   Newspaper,
   Package,
   Play,
   RefreshCw,
   RotateCw,
+  ScrollText,
   Square,
   Table,
   Table2,
   Trash2,
   Workflow,
+  Wrench,
   Zap,
   type LucideIcon,
 } from 'lucide-react';
@@ -34,15 +39,18 @@ import { useFeedback } from '../components/feedback';
 import { Badge, Button, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, SearchInput, Spinner, Tabs, Toggle, cn, type Tone } from '../components/ui';
 import { get, post } from '../lib/api';
 import { useApi } from '../lib/hooks';
-import type { AppView, DockerInfo } from '../lib/types';
+import type { AppView, DockerInfo, Job } from '../lib/types';
+import { useJobs } from '../components/jobs';
 import { DockerMissing } from './Docker';
 
 const ICONS: Record<string, LucideIcon> = {
   Globe, Newspaper, Database, Zap, Leaf, Table, Table2, Container, Activity, Workflow, GitBranch, HardDrive, FolderOpen, Code, KeyRound, Cloud,
+  Clapperboard, ChartLine, ScrollText, Download, RefreshCw, NotebookPen, Wrench,
 };
 
 const CATEGORIES = [
   { id: 'all', label: 'Tất cả' },
+  { id: 'installed', label: 'Đã cài' },
   { id: 'web', label: 'Web' },
   { id: 'database', label: 'Database' },
   { id: 'tools', label: 'Công cụ' },
@@ -61,16 +69,22 @@ const statusInfo: Record<AppView['status'], { tone: Tone; label: string }> = {
 function InstallModal({ app, onClose, onDone }: { app: AppView; onClose: () => void; onDone: () => void }) {
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(app.params.map((p) => [p.key, p.default !== undefined ? String(p.default) : ''])));
   const [installing, setInstalling] = useState(false);
-  const { run } = useFeedback();
+  const [error, setError] = useState<string | null>(null);
+  const { runJob } = useJobs();
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setInstalling(true);
-    const ok = await run(() => post(`/api/apps/${app.id}/install`, values), `Đã cài ${app.name}`);
-    setInstalling(false);
-    if (ok) {
-      onDone();
+    setError(null);
+    try {
+      // Lỗi nhập liệu trả về ngay; cài đặt thật chạy nền và mở cửa sổ log
+      const job = await post<Job>(`/api/apps/${app.id}/install`, values);
       onClose();
+      void runJob(() => Promise.resolve(job), onDone);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setInstalling(false);
     }
   };
 
@@ -93,7 +107,8 @@ function InstallModal({ app, onClose, onDone }: { app: AppView; onClose: () => v
             />
           </Field>
         ))}
-        {installing && <Notice>Đang tải image và khởi động container. Lần đầu có thể mất vài phút tùy tốc độ mạng...</Notice>}
+        {error && <ErrorBox message={error} />}
+        <Notice>Sau khi bấm cài đặt, cửa sổ log sẽ hiện tiến trình tải image và khởi động container theo thời gian thực.</Notice>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={installing}>
             Hủy
@@ -116,18 +131,26 @@ export default function AppStore() {
   const [busy, setBusy] = useState<string | null>(null);
   const [uninstall, setUninstall] = useState<{ app: AppView; removeData: boolean } | null>(null);
   const { run } = useFeedback();
+  const { runJob } = useJobs();
   const navigate = useNavigate();
 
   const list = useMemo(() => {
     const q = query.toLowerCase();
-    return (apps.data ?? []).filter((a) => (category === 'all' || a.category === category) && (!q || a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q)));
+    return (apps.data ?? [])
+      .filter(
+        (a) =>
+          (category === 'all' || (category === 'installed' ? Boolean(a.installed) : a.category === category)) &&
+          (!q || a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q)),
+      )
+      .sort((a, b) => Number(Boolean(b.installed)) - Number(Boolean(a.installed)) || a.name.localeCompare(b.name));
   }, [apps.data, category, query]);
 
   const installedCount = (apps.data ?? []).filter((a) => a.installed).length;
 
   const act = async (app: AppView, action: string, label: string) => {
     setBusy(app.id);
-    await run(() => post(`/api/apps/${app.id}/${action}`), `${label}: ${app.name}`);
+    if (action === 'update') await runJob(() => post<Job>(`/api/apps/${app.id}/update`));
+    else await run(() => post(`/api/apps/${app.id}/${action}`), `${label}: ${app.name}`);
     setBusy(null);
     await apps.reload();
   };
@@ -137,7 +160,7 @@ export default function AppStore() {
     const { app, removeData } = uninstall;
     setUninstall(null);
     setBusy(app.id);
-    await run(() => post(`/api/apps/${app.id}/uninstall`, { removeData }), `Đã gỡ ${app.name}`);
+    await runJob(() => post<Job>(`/api/apps/${app.id}/uninstall`, { removeData }));
     setBusy(null);
     await apps.reload();
   };

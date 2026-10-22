@@ -1,6 +1,7 @@
 // ZenPanel - API Docker, App Store và Databases
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../core/context.js';
+import { startJob } from '../core/jobs.js';
 import { badRequest } from '../core/validate.js';
 import type { AppStoreService } from '../services/appstore.service.js';
 import type { DatabaseService } from '../services/database.service.js';
@@ -38,10 +39,9 @@ export async function dockerRoutes(app: FastifyInstance, ctx: AppContext, deps: 
   });
 
   app.post('/api/docker/images/pull', async (req) => {
-    const image = (req.body as { image?: string } | undefined)?.image;
+    const image = (req.body as { image?: string } | undefined)?.image?.trim();
     if (!image) throw badRequest('Thiếu tên image');
-    await docker.pull(image);
-    return { ok: true };
+    return startJob(`Pull image ${image}`, 'docker', () => docker.pull(image));
   });
 
   app.delete('/api/docker/images/:id', async (req) => {
@@ -52,19 +52,22 @@ export async function dockerRoutes(app: FastifyInstance, ctx: AppContext, deps: 
   // ------------------------------------------------------------ App Store
   app.get('/api/apps', async () => apps.list());
 
+  // Cài / cập nhật / gỡ chạy dưới dạng job để dashboard xem log realtime
   app.post('/api/apps/:id/install', async (req) => {
-    await apps.install((req.params as { id: string }).id, (req.body ?? {}) as Record<string, unknown>);
-    return { ok: true };
+    const id = (req.params as { id: string }).id;
+    const params = apps.prepareInstall(id, (req.body ?? {}) as Record<string, unknown>);
+    return startJob(`Cài đặt ${id}`, 'app', () => apps.install(id, params));
   });
 
   app.post('/api/apps/:id/:action', async (req) => {
     const { id, action } = req.params as { id: string; action: string };
     if (action === 'uninstall') {
-      await apps.uninstall(id, Boolean((req.body as { removeData?: boolean } | undefined)?.removeData));
-      return { ok: true };
+      const removeData = Boolean((req.body as { removeData?: boolean } | undefined)?.removeData);
+      return startJob(`Gỡ cài đặt ${id}`, 'app', () => apps.uninstall(id, removeData));
     }
     if (!['start', 'stop', 'restart', 'update'].includes(action)) throw badRequest('Thao tác không hợp lệ');
-    await apps.action(id, action as 'start' | 'stop' | 'restart' | 'update');
+    if (action === 'update') return startJob(`Cập nhật ${id}`, 'app', () => apps.action(id, 'update'));
+    await apps.action(id, action as 'start' | 'stop' | 'restart');
     return { ok: true };
   });
 

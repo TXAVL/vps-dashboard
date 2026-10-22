@@ -1,14 +1,35 @@
 // ZenPanel - API hệ thống: thông tin máy, metrics, tiến trình, dịch vụ, tường lửa, cổng mạng
 import type { FastifyInstance } from 'fastify';
-import type { FirewallRuleInput, ServiceAction } from '../adapters/base.adapter.js';
+import type { FirewallRuleInput, ServiceAction, ServiceInfo } from '../adapters/base.adapter.js';
 import type { AppContext } from '../core/context.js';
 import { config } from '../config.js';
-import { badRequest, isIpOrCidr, isPortSpec, isServiceName } from '../core/validate.js';
+import { badRequest, HttpError, isIpOrCidr, isPortSpec, isServiceName } from '../core/validate.js';
 
 const SERVICE_ACTIONS: ServiceAction[] = ['start', 'stop', 'restart', 'enable', 'disable'];
 
 export async function systemRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   const { adapter } = ctx;
+
+  const expected: Record<ServiceAction, (s: ServiceInfo) => boolean> = {
+    start: (s) => s.state === 'running',
+    restart: (s) => s.state === 'running',
+    stop: (s) => s.state === 'stopped',
+    enable: (s) => s.startup === 'auto',
+    disable: (s) => s.startup === 'disabled',
+  };
+  const stateLabel: Record<string, string> = { running: 'đang chạy', stopped: 'đã dừng', starting: 'đang khởi động', stopping: 'đang dừng', failed: 'lỗi' };
+
+  async function waitForService(name: string, action: ServiceAction): Promise<ServiceInfo> {
+    let last: ServiceInfo | null = null;
+    for (let i = 0; i < 20; i++) {
+      last = await adapter.getService(name);
+      if (last && expected[action](last)) return last;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+    if (!last) throw new HttpError(404, `Không tìm thấy dịch vụ ${name}`);
+    const now = action === 'enable' || action === 'disable' ? `kiểu khởi động: ${last.startup}` : `trạng thái: ${stateLabel[last.state] ?? last.state}`;
+    throw new HttpError(500, `Đã gửi lệnh nhưng dịch vụ "${last.displayName}" không đổi như mong muốn (${now}). Dịch vụ có thể tự dừng ngay, bị hệ thống khởi động lại, hoặc bị chặn bởi dịch vụ phụ thuộc.`);
+  }
 
   app.get('/api/system/info', async () => ({
     os: ctx.osInfo,
@@ -43,7 +64,9 @@ export async function systemRoutes(app: FastifyInstance, ctx: AppContext): Promi
     if (!isServiceName(name)) throw badRequest('Tên dịch vụ không hợp lệ');
     if (!SERVICE_ACTIONS.includes(action)) throw badRequest('Thao tác không hợp lệ');
     await adapter.controlService(name, action);
-    return { ok: true };
+    // Lệnh trả về OK chưa chắc dịch vụ đã đổi trạng thái (tự dừng ngay, bị khởi động lại...) -> xác minh thật
+    const service = await waitForService(name, action);
+    return { ok: true, service };
   });
 
   app.get('/api/services/:name/logs', async (req) => {

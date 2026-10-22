@@ -1,6 +1,7 @@
 // ZenPanel - API Website, Cloudflare và Cài đặt panel
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../core/context.js';
+import { startJob } from '../core/jobs.js';
 import { requireString } from '../core/validate.js';
 import type { CloudflareService } from '../services/cloudflare.service.js';
 import type { SiteInput, SiteService } from '../services/site.service.js';
@@ -34,8 +35,8 @@ export async function siteRoutes(app: FastifyInstance, ctx: AppContext, deps: { 
   });
 
   app.post('/api/webservers/:kind/install', async (req) => {
-    await sites.installWebServer((req.params as { kind: string }).kind);
-    return { ok: true };
+    const kind = (req.params as { kind: string }).kind;
+    return startJob(`Cài web server ${kind}`, 'webserver', () => sites.installWebServer(kind));
   });
 
   // ------------------------------------------------------------ Cloudflare

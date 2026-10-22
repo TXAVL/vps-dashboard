@@ -209,3 +209,88 @@ export interface DnsRecord {
   proxied: boolean;
   ttl: number;
 }
+
+export interface PanelPrefs {
+  networkUnit: 'bytes' | 'bits';
+  theme: 'zen' | 'emerald' | 'violet' | 'amber' | 'rose' | 'cyan';
+  base: 'slate' | 'oled' | 'navy';
+  vpsExpiry: string | null;
+  vpsProvider: string;
+  vpsRenewUrl: string;
+  vpsPrice: string;
+  expiryWarnDays: number;
+  autoCheckUpdate: boolean;
+  autoDownloadUpdate: boolean;
+}
+
+export interface RemoteVersion {
+  ref: string;
+  label: string;
+  version: string;
+  sha: string;
+  message: string;
+  date: string | null;
+}
+
+export interface UpdateState {
+  current: string;
+  latest: RemoteVersion | null;
+  available: boolean;
+  checkedAt: string | null;
+  error: string | null;
+  downloadedLatest: boolean;
+}
+
+export interface VersionPackage {
+  id: string;
+  ref: string;
+  version: string;
+  sha: string;
+  file: string;
+  size: number;
+  downloadedAt: string;
+  current: boolean;
+}
+
+export interface Job {
+  id: string;
+  title: string;
+  kind: string;
+  status: 'running' | 'success' | 'error';
+  startedAt: string;
+  endedAt: string | null;
+  error: string | null;
+  log: string;
+}
+
+export type TaskSchedule =
+  | { type: 'minutes'; every: number }
+  | { type: 'hourly'; minute: number }
+  | { type: 'daily'; time: string }
+  | { type: 'weekly'; day: number; time: string }
+  | { type: 'startup' };
+
+export interface ScheduledTask {
+  id: string;
+  name: string;
+  command: string;
+  schedule: TaskSchedule;
+  enabled: boolean;
+  createdAt: string;
+  lastRunAt: string | null;
+  lastExitCode: number | null;
+}
+
+export interface NetworkInfo {
+  publicIpv4: string | null;
+  publicIpv6: string | null;
+  hostname: string;
+  interfaces: { name: string; mac: string | null; internal: boolean; addresses: { address: string; family: string; cidr: string | null }[] }[];
+}
+
+export interface LoginRecord {
+  at: string;
+  ip: string;
+  ok: boolean;
+  userAgent: string;
+}

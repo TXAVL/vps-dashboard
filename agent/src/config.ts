@@ -13,6 +13,10 @@ function envFlag(name: string, fallback: boolean): boolean {
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export const config = {
+  repoRoot,
+  // Repo GitHub dùng để kiểm tra & tải bản cập nhật
+  updateRepo: process.env.ZENPANEL_REPO || 'TXAVL/vps-dashboard',
+  updateBranch: process.env.ZENPANEL_BRANCH || 'main',
   host: process.env.ZENPANEL_HOST ?? '0.0.0.0',
   port: Number(process.env.ZENPANEL_PORT ?? 2083),
   // Mỗi lần chạy tự mở Cloudflare Quick Tunnel để có domain *.trycloudflare.com

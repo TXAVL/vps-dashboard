@@ -16,6 +16,7 @@ import { HttpError } from './core/validate.js';
 import { authRoutes } from './routes/auth.routes.js';
 import { dockerRoutes } from './routes/docker.routes.js';
 import { fileDownloadRoute, fileRoutes } from './routes/files.routes.js';
+import { panelRoutes } from './routes/panel.routes.js';
 import { siteRoutes } from './routes/sites.routes.js';
 import { systemRoutes } from './routes/system.routes.js';
 import { AppStoreService } from './services/appstore.service.js';
@@ -23,6 +24,8 @@ import { CloudflareService } from './services/cloudflare.service.js';
 import { DatabaseService } from './services/database.service.js';
 import { DockerService } from './services/docker.service.js';
 import { SiteService } from './services/site.service.js';
+import { TaskService } from './services/task.service.js';
+import { UpdateService } from './services/update.service.js';
 import { TunnelService } from './services/tunnel.service.js';
 import { realtimeRoutes } from './ws/realtime.js';
 
@@ -42,6 +45,8 @@ async function main() {
   const apps = new AppStoreService(docker);
   const databases = new DatabaseService(docker, apps);
   const sites = new SiteService(adapter);
+  const tasks = new TaskService(adapter);
+  const updates = new UpdateService(adapter, pkg.version);
   const cloudflare = new CloudflareService();
 
   const app = Fastify({ logger: { level: process.env.ZENPANEL_LOG_LEVEL ?? 'warn' }, bodyLimit: 10 * 1024 * 1024 });
@@ -71,6 +76,7 @@ async function main() {
     await fileRoutes(secured, ctx);
     await dockerRoutes(secured, ctx, { docker, apps, databases });
     await siteRoutes(secured, ctx, { sites, cloudflare });
+    await panelRoutes(secured, ctx, { updates, tasks });
   });
   // WebSocket tự xác thực bằng ?token= (trình duyệt không gửi được header Authorization)
   await app.register(async (wsScope) => realtimeRoutes(wsScope, ctx));
@@ -94,6 +100,7 @@ async function main() {
 
   await app.listen({ host: config.host, port: config.port });
   void sites.bootstrap();
+  updates.startAuto();
 
   let publicUrl: string | null = null;
   let tunnelNote: string | undefined;
@@ -122,6 +129,7 @@ async function main() {
   const shutdown = async () => {
     tunnel?.stop();
     metrics.stop();
+    updates.stop();
     await app.close();
     process.exit(0);
   };

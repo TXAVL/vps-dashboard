@@ -6,7 +6,8 @@ import { Badge, Button, Card, EmptyState, ErrorBox, Field, IconButton, Modal, Pa
 import { del, get, post } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
-import type { DockerContainer, DockerImage, DockerInfo } from '../lib/types';
+import type { DockerContainer, DockerImage, DockerInfo, Job } from '../lib/types';
+import { useJobs } from '../components/jobs';
 
 type Tab = 'containers' | 'images' | 'volumes' | 'networks';
 type Stats = Record<string, { cpu: string; memory: string; memPerc: string; net: string }>;
@@ -116,6 +117,7 @@ export default function Docker() {
   const [pulling, setPulling] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const { confirm, prompt, run } = useFeedback();
+  const { runJob } = useJobs();
 
   const act = async (c: DockerContainer, action: string, label: string) => {
     if (action === 'remove' || action === 'stop') {
@@ -138,7 +140,7 @@ export default function Docker() {
     const image = await prompt({ title: 'Pull image', label: 'Tên image', placeholder: 'nginx:alpine', confirmLabel: 'Tải về' });
     if (!image) return;
     setPulling(true);
-    await run(() => post('/api/docker/images/pull', { image }), `Đã tải ${image}`);
+    await runJob(() => post<Job>('/api/docker/images/pull', { image }));
     setPulling(false);
     await images.reload();
   };
@@ -233,7 +235,7 @@ export default function Docker() {
                             <Badge tone={stateTone(c.state)}>{c.state}</Badge>
                             <div className="mt-1 text-xs text-slate-500">{c.status}</div>
                           </td>
-                          <td className={cn(td, 'mono max-w-[220px] truncate text-xs text-slate-400')} title={c.ports}>
+                          <td className={cn(td, 'mono max-w-[220px] truncate text-xs text-slate-400')} data-tip={c.ports}>
                             {c.ports || '—'}
                           </td>
                           <td className={cn(td, 'mono text-xs text-slate-400')}>{s ? `${s.cpu} · ${s.memory.split('/')[0].trim()}` : c.state === 'running' ? '...' : '—'}</td>

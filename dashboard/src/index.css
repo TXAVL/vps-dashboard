@@ -24,7 +24,7 @@
   body {
     @apply bg-ink-950 text-slate-200 antialiased font-sans;
     background-image:
-      radial-gradient(ellipse 80% 50% at 10% -10%, rgb(59 130 246 / 0.14), transparent),
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgb(var(--zen-glow) / 0.14), transparent),
       radial-gradient(ellipse 60% 40% at 100% 0%, rgb(16 185 129 / 0.08), transparent);
     background-attachment: fixed;
   }
@@ -59,4 +59,68 @@
 }
 .xterm-viewport {
   background-color: transparent !important;
+}
+
+/* ------------------------------------------------------------------ Giao diện (Cài đặt → Giao diện)
+   Tailwind v4 dùng biến CSS cho màu, nên đổi biến là toàn bộ panel đổi màu nhấn / màu nền. */
+:root {
+  --zen-glow: 59 130 246;
+}
+
+:root[data-theme='emerald'] {
+  --color-zen-blue: #10b981;
+  --color-blue-300: #6ee7b7;
+  --color-blue-400: #34d399;
+  --color-blue-500: #10b981;
+  --color-blue-600: #059669;
+  --zen-glow: 16 185 129;
+}
+:root[data-theme='violet'] {
+  --color-zen-blue: #8b5cf6;
+  --color-blue-300: #c4b5fd;
+  --color-blue-400: #a78bfa;
+  --color-blue-500: #8b5cf6;
+  --color-blue-600: #7c3aed;
+  --zen-glow: 139 92 246;
+}
+:root[data-theme='amber'] {
+  --color-zen-blue: #f59e0b;
+  --color-blue-300: #fcd34d;
+  --color-blue-400: #fbbf24;
+  --color-blue-500: #f59e0b;
+  --color-blue-600: #d97706;
+  --zen-glow: 245 158 11;
+}
+:root[data-theme='rose'] {
+  --color-zen-blue: #f43f5e;
+  --color-blue-300: #fda4af;
+  --color-blue-400: #fb7185;
+  --color-blue-500: #f43f5e;
+  --color-blue-600: #e11d48;
+  --zen-glow: 244 63 94;
+}
+:root[data-theme='cyan'] {
+  --color-zen-blue: #06b6d4;
+  --color-blue-300: #67e8f9;
+  --color-blue-400: #22d3ee;
+  --color-blue-500: #06b6d4;
+  --color-blue-600: #0891b2;
+  --zen-glow: 6 182 212;
+}
+
+:root[data-base='oled'] {
+  --color-ink-950: #000000;
+  --color-ink-900: #0a0a0a;
+  --color-ink-800: #171717;
+}
+:root[data-base='navy'] {
+  --color-ink-950: #060b1f;
+  --color-ink-900: #0c1530;
+  --color-ink-800: #16224a;
+}
+
+html,
+body {
+  /* Chặn tràn ngang trên mobile do phần tử con quá rộng */
+  overflow-x: hidden;
 }

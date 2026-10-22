@@ -96,6 +96,35 @@ export interface ShellCommand {
   label: string;
 }
 
+export type PowerAction = 'reboot' | 'shutdown';
+
+/** Lịch chạy tác vụ thống nhất cho cron (Linux) và Task Scheduler (Windows) */
+export type TaskSchedule =
+  | { type: 'minutes'; every: number }
+  | { type: 'hourly'; minute: number }
+  | { type: 'daily'; time: string }
+  | { type: 'weekly'; day: number; time: string }
+  | { type: 'startup' };
+
+export interface ScheduledTask {
+  id: string;
+  name: string;
+  command: string;
+  schedule: TaskSchedule;
+  enabled: boolean;
+  createdAt: string;
+  lastRunAt: string | null;
+  lastExitCode: number | null;
+}
+
+/** Gói cập nhật: chạy installer tách rời khỏi agent (installer sẽ khởi động lại agent) */
+export interface DetachedInstall {
+  scriptPath: string;
+  /** Biến môi trường cho installer: ZENPANEL_ARCHIVE, ZENPANEL_PORT, ZENPANEL_TUNNEL... */
+  env: Record<string, string>;
+  logFile: string;
+}
+
 export interface OSAdapter {
   readonly family: OSFamily;
   getInfo(): Promise<OSInfo>;
@@ -127,6 +156,8 @@ export interface OSAdapter {
 
   // --- Dịch vụ hệ thống (Windows Services / systemd / OpenRC) ---
   listServices(): Promise<ServiceInfo[]>;
+  /** Đọc trạng thái 1 dịch vụ (dùng để xác minh sau khi điều khiển) */
+  getService(name: string): Promise<ServiceInfo | null>;
   controlService(name: string, action: ServiceAction): Promise<void>;
   serviceLogs(name: string, lines: number): Promise<string>;
 
@@ -151,4 +182,19 @@ export interface OSAdapter {
   webServers(): WebServerDriver[];
   /** Cài web server bằng trình quản lý gói của OS */
   installWebServer(kind: string): Promise<void>;
+
+  // --- Nguồn & tác vụ định kỳ ---
+  power(action: PowerAction): Promise<void>;
+  /** Ghi toàn bộ tác vụ của ZenPanel vào cron / Task Scheduler (nguồn dữ liệu là tasks.json) */
+  syncScheduledTasks(tasks: ScheduledTask[]): Promise<void>;
+  /** Chạy 1 lệnh người dùng bằng shell mặc định (bash -c / powershell -Command) */
+  runShell(command: string, opts?: ExecOptions): Promise<ExecResult>;
+
+  // --- Cập nhật panel ---
+  /** "install.sh" hoặc "install.ps1" */
+  installerScript(): string;
+  /** Định dạng gói mã nguồn tải từ GitHub: tar.gz (Linux) hoặc zip (Windows) */
+  archiveFormat(): 'tar.gz' | 'zip';
+  /** Chạy installer ở tiến trình riêng, không bị dừng khi agent khởi động lại */
+  launchDetachedInstall(install: DetachedInstall): Promise<void>;
 }

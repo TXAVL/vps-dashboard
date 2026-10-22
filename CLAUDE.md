@@ -77,6 +77,9 @@ vps-dashboard/ (ZenPanel)
 │   │   │   ├── store.ts           # Lưu JSON trong ZENPANEL_DATA_DIR
 │   │   │   ├── download.ts        # Tìm/tải binary (cloudflared, caddy)
 │   │   │   ├── validate.ts        # Kiểm tra input, HttpError
+│   │   │   ├── jobs.ts            # Tác vụ nền có log realtime (exec trong job tự ghi log)
+│   │   │   ├── prefs.ts           # Tuỳ chọn panel: đơn vị mạng, giao diện, hạn VPS, tự cập nhật
+│   │   │   ├── password.ts        # Quy tắc độ mạnh mật khẩu (dashboard có bản giống hệt)
 │   │   │   └── context.ts         # AppContext dùng chung cho routes
 │   │   ├── adapters/
 │   │   │   ├── base.adapter.ts    # Interface quy chuẩn chung
@@ -90,13 +93,16 @@ vps-dashboard/ (ZenPanel)
 │   │   │   ├── appstore.catalog.ts / appstore.service.ts # App Store 1-click (compose)
 │   │   │   ├── database.service.ts# Database trong container App Store
 │   │   │   ├── cloudflare.service.ts # Cloudflare API (Anti-DDoS, DNS)
+│   │   │   ├── update.service.ts  # Kiểm tra GitHub, tải/xoá/cài các gói phiên bản
+│   │   │   ├── task.service.ts    # Lịch tác vụ (cron / Task Scheduler)
 │   │   │   └── tunnel.service.ts  # Cloudflare Quick Tunnel -> *.trycloudflare.com
-│   │   ├── routes/                # auth, system, files, docker, sites (REST API)
+│   │   ├── routes/                # auth, system, files, docker, sites, panel (REST API)
 │   │   ├── ws/realtime.ts         # WebSocket metrics + Web Terminal (node-pty)
 │   │   └── cli/reset-password.ts  # npm run reset-password
 │   └── scripts/
-│       ├── install.sh             # Cài 1 dòng cho Linux (systemd/OpenRC)
-│       └── install.ps1            # Cài 1 dòng cho Windows (Scheduled Task SYSTEM)
+│       ├── install.sh             # Cài 1 dòng cho Linux (systemd/OpenRC), hỗ trợ ZENPANEL_ARCHIVE
+│       ├── install.ps1            # Cài 1 dòng cho Windows (Scheduled Task SYSTEM), hỗ trợ ZENPANEL_ARCHIVE
+│       └── zenpanel.sh / .cmd     # Lệnh tắt: zenpanel status|restart|logs|url|reset-password|update
 │
 ├── dashboard/                     # Web UI (React + Vite + Tailwind v4 + Lucide)
 │   └── src/
@@ -104,10 +110,12 @@ vps-dashboard/ (ZenPanel)
 │       ├── lib/                   # api.ts, types.ts, hooks.ts, format.ts, panel.tsx (WS metrics)
 │       ├── components/
 │       │   ├── ui.tsx, charts.tsx, feedback.tsx (toast/confirm/prompt), TerminalPanel.tsx
+│       │   ├── jobs.tsx           # Cửa sổ log tác vụ nền + nút tác vụ trên header
+│       │   ├── TooltipLayer.tsx   # Tooltip tuỳ chỉnh cho mọi phần tử có data-tip
 │       │   └── layout/            # Shell, nav, WindowMockup
 │       └── views/                 # Login, Overview, Processes, Services, Firewall, Docker,
 │                                  # AppStore, Terminal, Websites, FileManager, Databases,
-│                                  # Security, Settings
+│                                  # Security, Settings, Tasks
 ├── CLAUDE.md
 └── README.md
 ```
@@ -118,4 +126,5 @@ vps-dashboard/ (ZenPanel)
 1. **Dự án tên là `ZenPanel`**. Luôn sử dụng thương hiệu này trên toàn bộ UI, API, comment và tài liệu.
 2. **Quy tắc OS Agnostic**: Mọi thao tác hệ thống (đọc RAM, CPU, danh sách tiến trình, mở port tường lửa, chạy service) **bắt buộc** phải thông qua `base.adapter.ts`, phân nhánh thực thi sang `windows.adapter.ts` hoặc `linux.adapter.ts`. Không bao giờ gọi trực tiếp lệnh OS độc lập trong controller hay view.
 3. **Truy cập công khai qua Cloudflare Tunnel**: Mỗi lần agent khởi động, `tunnel.service.ts` chạy `cloudflared tunnel --url http://127.0.0.1:<port>` để lấy domain `https://<random>.trycloudflare.com` (không cần tài khoản Cloudflare, không cần mở port). URL **phải được in nổi bật ra console** qua `banner.ts`; nếu tunnel rớt và được cấp domain mới thì in lại. Tìm `cloudflared` theo thứ tự: `ZENPANEL_CLOUDFLARED` → PATH → `~/.zenpanel/bin` → tự tải từ GitHub Releases (tên file theo OS do adapter quyết định). Tắt bằng `ZENPANEL_TUNNEL=0`.
-4. **Phong cách giao diện**: Giữ vững ngôn ngữ thiết kế **Jupiter Style** kết hợp **Dark Glassmorphism** (tone nền Dark Slate, bo góc `rounded-2xl`, hiển thị tài nguyên thời gian thực dạng thanh progress bar, hỗ trợ cả Desktop lẫn Mobile).
+4. **Không dùng hộp thoại / tooltip của trình duyệt**: dùng `useFeedback()` (toast, confirm, prompt), `<Modal>` và thuộc tính `data-tip` thay cho `alert/confirm/prompt/title`. Thao tác lâu (cài app, pull image, cài web server, tải phiên bản) phải chạy bằng `startJob()` để dashboard xem log realtime.
+5. **Phong cách giao diện**: Giữ vững ngôn ngữ thiết kế **Jupiter Style** kết hợp **Dark Glassmorphism** (tone nền Dark Slate, bo góc `rounded-2xl`, hiển thị tài nguyên thời gian thực dạng thanh progress bar, hỗ trợ cả Desktop lẫn Mobile).

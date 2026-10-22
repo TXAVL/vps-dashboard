@@ -52,11 +52,17 @@ if (Test-Node) {
     Ok "Đã cài Node.js $(node -v)"
 }
 
-Step "Tải mã nguồn ZenPanel ($Repo@$Branch)"
 $tmp = Join-Path $env:TEMP "zenpanel-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Force $tmp | Out-Null
 $zip = Join-Path $tmp 'src.zip'
-Invoke-WebRequest "https://codeload.github.com/$Repo/zip/refs/heads/$Branch" -OutFile $zip
+# ZENPANEL_ARCHIVE: gói phiên bản đã tải sẵn (do panel truyền vào khi cập nhật / quay lại bản cũ)
+if ($env:ZENPANEL_ARCHIVE -and (Test-Path $env:ZENPANEL_ARCHIVE)) {
+    Step "Giải nén gói phiên bản $(Split-Path $env:ZENPANEL_ARCHIVE -Leaf)"
+    Copy-Item $env:ZENPANEL_ARCHIVE $zip
+} else {
+    Step "Tải mã nguồn ZenPanel ($Repo@$Branch)"
+    Invoke-WebRequest "https://codeload.github.com/$Repo/zip/refs/heads/$Branch" -OutFile $zip
+}
 Expand-Archive $zip -DestinationPath $tmp -Force
 $src = Get-ChildItem $tmp -Directory | Select-Object -First 1
 

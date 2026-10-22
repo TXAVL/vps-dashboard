@@ -1,5 +1,8 @@
 // ZenPanel - Adapter cho Linux (Ubuntu, Debian, CentOS, Alpine...): procfs, systemd/OpenRC, ufw/firewalld/iptables
+import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
 import { chmod, readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import type {
@@ -7,16 +10,20 @@ import type {
   FirewallRule,
   FirewallRuleInput,
   FirewallStatus,
+  DetachedInstall,
   ListeningPort,
   NetworkTotals,
   OSAdapter,
   OSInfo,
+  PowerAction,
   ProcessInfo,
+  ScheduledTask,
   ServiceAction,
   ServiceInfo,
   ServiceStartup,
   ServiceState,
   ShellCommand,
+  TaskSchedule,
 } from './base.adapter.js';
 import { exec, execOk, type ExecOptions } from '../core/exec.js';
 import { resolveTool } from '../core/download.js';
@@ -28,6 +35,26 @@ import type { WebServerDriver } from './web/types.js';
 const GO_ARCH: Record<string, string> = { x64: 'amd64', arm64: 'arm64', arm: 'arm', ia32: '386' };
 const PAGE_SIZE = 4096;
 const SSH_PORT = 22;
+const CRON_MARK = '# zenpanel:';
+
+function cronExpression(schedule: TaskSchedule): string {
+  const hm = (time: string) => {
+    const [h, m] = time.split(':').map(Number);
+    return `${m} ${h}`;
+  };
+  switch (schedule.type) {
+    case 'minutes':
+      return `*/${schedule.every} * * * *`;
+    case 'hourly':
+      return `${schedule.minute} * * * *`;
+    case 'daily':
+      return `${hm(schedule.time)} * * *`;
+    case 'weekly':
+      return `${hm(schedule.time)} * * ${schedule.day}`;
+    case 'startup':
+      return '@reboot';
+  }
+}
 const IGNORED_FS = /^(tmpfs|devtmpfs|udev|overlay|squashfs|none|shm|efivarfs|cgroup.*)$/;
 const IGNORED_MOUNTS = /^\/(dev|run|sys|proc|snap)(\/|$)/;
 
@@ -316,6 +343,23 @@ export class LinuxAdapter implements OSAdapter {
         state: states.get(name)?.state ?? 'stopped',
         startup: states.get(name)?.startup ?? 'manual',
       }));
+  }
+
+  async getService(name: string): Promise<ServiceInfo | null> {
+    if ((await this.initSystem()) === 'openrc') return (await this.listOpenRC()).find((s) => s.name === name) ?? null;
+    const { stdout, code } = await exec('systemctl', ['show', `${name}.service`, '--property=LoadState,ActiveState,UnitFileState,Description']);
+    if (code !== 0) return null;
+    const prop = (key: string) => new RegExp(`^${key}=(.*)$`, 'm').exec(stdout)?.[1] ?? '';
+    if (prop('LoadState') === 'not-found') return null;
+    const active = prop('ActiveState');
+    const file = prop('UnitFileState');
+    return {
+      name,
+      displayName: name,
+      description: prop('Description'),
+      state: active === 'active' ? 'running' : active === 'activating' ? 'starting' : active === 'deactivating' ? 'stopping' : active === 'failed' ? 'failed' : 'stopped',
+      startup: file === 'enabled' ? 'auto' : file === 'disabled' || file === 'masked' ? 'disabled' : file === 'static' ? 'static' : 'manual',
+    };
   }
 
   async controlService(name: string, action: ServiceAction): Promise<void> {
@@ -609,5 +653,63 @@ export class LinuxAdapter implements OSAdapter {
       await exec('rc-update', ['add', 'nginx', 'default']);
       await exec('rc-service', ['nginx', 'start']);
     }
+  }
+
+  // ---------------------------------------------------------------- Nguồn, cron, cập nhật
+
+  async power(action: PowerAction): Promise<void> {
+    const systemd = await this.findExecutable('systemctl');
+    // Trễ 2 giây để kịp trả response cho dashboard
+    setTimeout(() => {
+      if (systemd) void exec('systemctl', [action === 'reboot' ? 'reboot' : 'poweroff']);
+      else void exec(action === 'reboot' ? 'reboot' : 'poweroff', []);
+    }, 2000);
+  }
+
+  async syncScheduledTasks(tasks: ScheduledTask[]): Promise<void> {
+    if (!(await this.findExecutable('crontab'))) throw new Error('Chưa cài cron. Chạy: apt install cron (hoặc dnf install cronie)');
+    const logDir = dataPath('logs', 'tasks');
+    await mkdir(logDir, { recursive: true });
+    const current = await exec('crontab', ['-l']);
+    const keep = (current.code === 0 ? current.stdout : '').split('\n').filter((line) => line.trim() && !line.includes(CRON_MARK));
+    const managed = tasks
+      .filter((task) => task.enabled)
+      .map((task) => {
+        // % là ký tự đặc biệt trong crontab
+        const command = task.command.replace(/%/g, '\\%').replace(/\n/g, ' ');
+        return `${cronExpression(task.schedule)} ( ${command} ) >> ${path.join(logDir, `${task.id}.log`)} 2>&1 ${CRON_MARK}${task.id}`;
+      });
+    await execOk('crontab', ['-'], { input: `${[...keep, ...managed].join('\n')}\n` });
+  }
+
+  runShell(command: string, opts?: ExecOptions) {
+    const shell = existsSync('/bin/bash') ? '/bin/bash' : '/bin/sh';
+    return exec(shell, ['-c', command], opts);
+  }
+
+  installerScript(): string {
+    return 'install.sh';
+  }
+
+  archiveFormat(): 'tar.gz' {
+    return 'tar.gz';
+  }
+
+  async launchDetachedInstall({ scriptPath, env, logFile }: DetachedInstall): Promise<void> {
+    const command = `bash "${scriptPath}" > "${logFile}" 2>&1`;
+    // systemd-run tách installer khỏi cgroup của zenpanel.service, nếu không installer sẽ bị kill khi restart service
+    if (await this.findExecutable('systemd-run')) {
+      await execOk('systemd-run', [
+        `--unit=zenpanel-update-${Date.now()}`,
+        '--collect',
+        ...Object.entries(env).map(([key, value]) => `--setenv=${key}=${value}`),
+        '/bin/bash',
+        '-c',
+        command,
+      ]);
+      return;
+    }
+    const child = spawn('setsid', ['/bin/bash', '-c', command], { detached: true, stdio: 'ignore', env: { ...process.env, ...env } });
+    child.unref();
   }
 }

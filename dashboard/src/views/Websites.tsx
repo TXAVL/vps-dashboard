@@ -26,7 +26,8 @@ import { del, post, put } from '../lib/api';
 import { formatBytes, formatDate } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
-import type { Site, SiteStats, WebServerInfo } from '../lib/types';
+import type { Job, Site, SiteStats, WebServerInfo } from '../lib/types';
+import { useJobs } from '../components/jobs';
 
 interface SitesResponse {
   sites: Site[];
@@ -173,6 +174,7 @@ export default function Websites() {
   const [busy, setBusy] = useState(false);
   const [installing, setInstalling] = useState<string | null>(null);
   const { confirm, run, toast } = useFeedback();
+  const { runJob } = useJobs();
   const { refreshInfo } = usePanel();
 
   const sites = data?.sites ?? [];
@@ -239,7 +241,7 @@ export default function Websites() {
 
   const installServer = async (server: WebServerInfo) => {
     setInstalling(server.kind);
-    await run(() => post(`/api/webservers/${server.kind}/install`), `Đã cài ${server.label}`);
+    await runJob(() => post<Job>(`/api/webservers/${server.kind}/install`));
     setInstalling(null);
     await Promise.all([reload(), refreshInfo()]);
   };

@@ -1,6 +1,7 @@
 // ZenPanel - Cấu trúc điều hướng 2 tầng: Admin Master & Site Panel
 import {
   Boxes,
+  CalendarClock,
   Cog,
   Cpu,
   Database,
@@ -33,6 +34,7 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
       { to: '/docker', label: 'Docker', icon: Boxes, description: 'Containers, images, volumes' },
       { to: '/apps', label: 'App Store', icon: LayoutGrid, description: 'Cài ứng dụng 1-click' },
       { to: '/terminal', label: 'Terminal', icon: SquareTerminal, description: 'PowerShell / Bash trên web' },
+      { to: '/tasks', label: 'Lịch tác vụ', icon: CalendarClock, description: 'Cron / Task Scheduler - chạy lệnh theo lịch' },
     ],
   },
   {

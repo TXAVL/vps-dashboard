@@ -2,6 +2,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { generatePassword } from '../core/auth.js';
+import { jobLog } from '../core/jobs.js';
 import { dataPath, JsonCollection } from '../core/store.js';
 import { badRequest, HttpError, isPort } from '../core/validate.js';
 import { APP_CATALOG, type AppDefinition } from './appstore.catalog.js';
@@ -59,14 +60,16 @@ export class AppStoreService {
     });
   }
 
-  async install(id: string, input: Record<string, unknown>): Promise<void> {
+  /** Kiểm tra tham số trước khi chạy job cài đặt (lỗi nhập liệu báo ngay cho người dùng) */
+  prepareInstall(id: string, input: Record<string, unknown>): Record<string, string> {
     const app = findApp(id);
     if (installed.get(id)) throw badRequest('Ứng dụng đã được cài đặt');
 
     const params: Record<string, string> = {};
     for (const param of app.params) {
       let value = input[param.key] === undefined || input[param.key] === '' ? param.default : input[param.key];
-      if ((value === undefined || value === '') && param.generate) value = generatePassword(20);
+      // Chỉ chữ + số để không vỡ cú pháp command của docker-compose
+      if ((value === undefined || value === '') && param.generate) value = generatePassword(20, false);
       if (value === undefined || value === '') throw badRequest(`Thiếu "${param.label}"`);
       const text = String(value).trim();
       if (param.type === 'port' && !isPort(Number(text))) throw badRequest(`${param.label} không hợp lệ`);
@@ -75,10 +78,24 @@ export class AppStoreService {
       }
       params[param.key] = text;
     }
+    const used = new Set(installed.all().flatMap((record) => {
+      const def = APP_CATALOG.find((a) => a.id === record.id);
+      return def ? def.params.filter((p) => p.type === 'port').map((p) => record.params[p.key]) : [];
+    }));
+    for (const param of app.params.filter((p) => p.type === 'port')) {
+      if (used.has(params[param.key])) throw badRequest(`Cổng ${params[param.key]} đang được ứng dụng khác của ZenPanel sử dụng`);
+    }
+    return params;
+  }
 
+  async install(id: string, params: Record<string, string>): Promise<void> {
+    const app = findApp(id);
+    jobLog(`Ứng dụng: ${app.name}`);
     const dir = appDir(id);
     await mkdir(dir, { recursive: true });
     await writeFile(path.join(dir, 'docker-compose.yml'), app.compose(params, containerName(id)), { mode: 0o600 });
+    jobLog(`Đã tạo ${path.join(dir, 'docker-compose.yml')}`);
+    jobLog('Đang tải image và khởi động container (lần đầu có thể mất vài phút)...');
     try {
       await this.docker.compose(['-p', projectName(id), 'up', '-d'], dir);
     } catch (err) {

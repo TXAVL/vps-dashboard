@@ -85,7 +85,7 @@ export function CoreGrid({ cores }: { cores: number[] }) {
   return (
     <div className="grid grid-cols-8 gap-1.5 sm:grid-cols-12 lg:grid-cols-16">
       {cores.map((value, i) => (
-        <div key={i} className="group relative h-8 overflow-hidden rounded-md bg-slate-800" title={`Core ${i}: ${value.toFixed(0)}%`}>
+        <div key={i} className="group relative h-8 overflow-hidden rounded-md bg-slate-800" data-tip={`Core ${i}: ${value.toFixed(0)}%`}>
           <div className="absolute inset-x-0 bottom-0 transition-all duration-700" style={{ height: `${value}%`, background: COLORS[levelColor(value)] }} />
         </div>
       ))}

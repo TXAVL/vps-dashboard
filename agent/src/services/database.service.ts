@@ -125,7 +125,7 @@ export class DatabaseService {
     const server = await this.server(appId);
     const name = String(input.name ?? '').trim();
     const username = String(input.username ?? '').trim() || name;
-    const password = String(input.password ?? '').trim() || generatePassword(20);
+    const password = String(input.password ?? '').trim() || generatePassword(20, false);
     if (!isSqlIdentifier(name)) throw badRequest('Tên database chỉ gồm chữ, số, gạch dưới và không bắt đầu bằng số');
     if (!isSqlIdentifier(username)) throw badRequest('Tên user chỉ gồm chữ, số, gạch dưới');
     if (!/^[\w.\-+=@#%^*!]{8,100}$/.test(password)) throw badRequest('Mật khẩu ≥ 8 ký tự, chỉ gồm chữ, số và . - + = @ # % ^ * ! _');

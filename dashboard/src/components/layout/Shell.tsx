@@ -1,11 +1,12 @@
 // ZenPanel - Khung giao diện chính: Sidebar Jupiter + Header (GUI/CLI toggle) + Terminal dock ở chế độ CLI
 import { useEffect, useState, type ReactNode } from 'react';
-import { NavLink, useLocation } from 'react-router';
-import { ChevronDown, Cloud, LogOut, Menu, Monitor, MousePointer2, SquareTerminal, X } from 'lucide-react';
+import { Link, NavLink, useLocation } from 'react-router';
+import { CalendarClock, ChevronDown, Cloud, LogOut, Menu, Monitor, MousePointer2, Sparkles, SquareTerminal, X } from 'lucide-react';
 import { setToken } from '../../lib/api';
 import { formatPercent } from '../../lib/format';
 import { useLocalStorage } from '../../lib/hooks';
 import { usePanel } from '../../lib/panel';
+import { JobsButton } from '../jobs';
 import { TerminalPanel } from '../TerminalPanel';
 import { CopyButton, StatusDot, cn } from '../ui';
 import { ALL_NAV, NAV_SECTIONS } from './nav';
@@ -112,7 +113,7 @@ function ModeToggle({ mode, onChange }: { mode: 'gui' | 'cli'; onChange: (m: 'gu
             'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold transition',
             mode === id ? (id === 'gui' ? 'bg-zen-blue text-white' : 'bg-zen-green text-white') : 'text-slate-400 hover:text-white',
           )}
-          title={id === 'gui' ? 'Giao diện đồ họa cho người không chuyên' : 'Mở terminal song song cho DevOps/SysAdmin'}
+          data-tip={id === 'gui' ? 'Giao diện đồ họa cho người không chuyên' : 'Mở terminal song song cho DevOps/SysAdmin'}
         >
           <Icon className="size-3.5" />
           <span className="hidden sm:inline">{label}</span>
@@ -138,6 +139,51 @@ function TunnelChip() {
         </>
       ) : (
         <span className="pr-2 text-slate-400">{tunnel.status === 'starting' ? 'Đang mở tunnel...' : 'Tunnel lỗi'}</span>
+      )}
+    </div>
+  );
+}
+
+/** Thông báo bản cập nhật mới (agent tự kiểm tra GitHub định kỳ) */
+function UpdateBanner() {
+  const { update } = usePanel();
+  const [hidden, setHidden] = useState(false);
+  if (!update?.available || !update.latest || hidden) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-zen-blue/30 bg-zen-blue/10 px-4 py-2 text-sm sm:px-6">
+      <Sparkles className="size-4 shrink-0 text-blue-300" />
+      <span className="min-w-0 flex-1 text-slate-200">
+        Có bản ZenPanel mới <b className="text-white">v{update.latest.version}</b> (đang dùng v{update.current})
+        {update.downloadedLatest ? ' — đã tải sẵn, sẵn sàng cài đặt.' : '.'}
+      </span>
+      <Link to="/settings?tab=update" className="font-semibold text-blue-300 hover:underline">
+        Xem & cập nhật
+      </Link>
+      <button onClick={() => setHidden(true)} className="rounded p-0.5 text-slate-400 hover:text-white" aria-label="Ẩn thông báo">
+        <X className="size-4" />
+      </button>
+    </div>
+  );
+}
+
+/** Cảnh báo VPS sắp hết hạn (ngày hết hạn do admin nhập trong Cài đặt) */
+function ExpiryBanner() {
+  const { prefs } = usePanel();
+  if (!prefs.vpsExpiry) return null;
+  const days = Math.ceil((new Date(`${prefs.vpsExpiry}T23:59:59`).getTime() - Date.now()) / 86_400_000);
+  if (days > prefs.expiryWarnDays) return null;
+  const expired = days < 0;
+  return (
+    <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-2 text-sm sm:px-6', expired ? 'border-zen-red/40 bg-zen-red/15' : 'border-zen-amber/40 bg-zen-amber/10')}>
+      <CalendarClock className={cn('size-4 shrink-0', expired ? 'text-zen-red' : 'text-zen-amber')} />
+      <span className="min-w-0 flex-1 text-slate-200">
+        {expired ? `VPS đã hết hạn ${-days} ngày trước` : days === 0 ? 'VPS hết hạn hôm nay' : `VPS sẽ hết hạn sau ${days} ngày`}
+        {prefs.vpsProvider && ` (${prefs.vpsProvider})`}.
+      </span>
+      {prefs.vpsRenewUrl && (
+        <a href={prefs.vpsRenewUrl} target="_blank" rel="noreferrer" className="font-semibold text-amber-200 hover:underline">
+          Gia hạn ngay
+        </a>
       )}
     </div>
   );
@@ -176,7 +222,7 @@ export function Shell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-3 border-b border-slate-800/80 bg-ink-950/70 px-4 backdrop-blur-xl sm:px-6">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b border-slate-800/80 bg-ink-950/70 px-3 backdrop-blur-xl sm:gap-3 sm:px-6">
           <button className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Mở menu">
             <Menu className="size-5" />
           </button>
@@ -190,22 +236,26 @@ export function Shell({ children }: { children: ReactNode }) {
               {info.os.family === 'windows' ? '🪟' : '🐧'} {info.os.family === 'windows' ? 'Windows' : 'Linux'}
             </span>
           )}
-          <span className="flex items-center" title={connected ? 'Realtime đang kết nối' : 'Mất kết nối realtime'}>
+          <span className="flex items-center" data-tip={connected ? 'Realtime đang kết nối' : 'Mất kết nối realtime'}>
             <StatusDot tone={connected ? 'green' : 'red'} pulse={connected} />
           </span>
           <ModeToggle mode={mode} onChange={setMode} />
+          <JobsButton />
           <button
             onClick={() => setToken(null)}
             className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-zen-red"
-            title="Đăng xuất"
+            data-tip="Đăng xuất"
             aria-label="Đăng xuất"
           >
             <LogOut className="size-5" />
           </button>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6">{children}</div>
+        <UpdateBanner />
+        <ExpiryBanner />
+
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="mx-auto w-full min-w-0 max-w-[1600px] p-3 sm:p-6">{children}</div>
         </main>
 
         {showDock && (
@@ -214,7 +264,7 @@ export function Shell({ children }: { children: ReactNode }) {
               title="Zen CLI"
               className={cn(dockOpen ? 'h-[38vh]' : 'h-auto')}
               actions={
-                <button onClick={() => setDockOpen(!dockOpen)} className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white" title={dockOpen ? 'Thu gọn' : 'Mở rộng'}>
+                <button onClick={() => setDockOpen(!dockOpen)} className="rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white" data-tip={dockOpen ? 'Thu gọn' : 'Mở rộng'}>
                   <ChevronDown className={cn('size-4 transition', !dockOpen && 'rotate-180')} />
                 </button>
               }

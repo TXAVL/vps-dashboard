@@ -49,7 +49,7 @@ export function Button({ variant = 'secondary', size = 'md', icon: Icon, loading
 export function IconButton({ icon: Icon, title, className, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { icon: IconType; title: string }) {
   return (
     <button
-      title={title}
+      data-tip={title}
       aria-label={title}
       className={cn('inline-flex size-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-700/60 hover:text-white disabled:opacity-40', className)}
       {...rest}
@@ -73,7 +73,7 @@ export function Card({ title, icon: Icon, actions, children, className, bodyClas
     <section className={cn('glass flex flex-col', className)}>
       {(title || actions) && (
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700/40 px-5 py-3.5">
-          <h3 className="flex items-center gap-2 text-sm font-bold text-slate-100">
+          <h3 className="flex min-w-0 max-w-full items-center gap-2 text-sm font-bold text-slate-100">
             {Icon && <Icon className="size-4 text-zen-blue" />}
             {title}
           </h3>
@@ -334,7 +334,7 @@ export function CopyButton({ value, label }: { value: string; label?: string }) 
     setTimeout(() => setCopied(false), 1500);
   };
   return (
-    <button onClick={copy} title="Sao chép" className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-slate-400 transition hover:bg-slate-700/60 hover:text-white">
+    <button onClick={copy} data-tip="Sao chép" className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-slate-400 transition hover:bg-slate-700/60 hover:text-white">
       {copied ? <Check className="size-3.5 text-zen-green" /> : <Copy className="size-3.5" />}
       {label}
     </button>
@@ -345,7 +345,7 @@ export function Secret({ value }: { value: string }) {
   const [shown, setShown] = useState(false);
   return (
     <span className="inline-flex items-center gap-1">
-      <button className="mono text-slate-200 hover:text-white" onClick={() => setShown(!shown)} title={shown ? 'Ẩn' : 'Hiện'}>
+      <button className="mono text-slate-200 hover:text-white" onClick={() => setShown(!shown)} data-tip={shown ? 'Ẩn' : 'Hiện'}>
         {shown ? value : '••••••••••'}
       </button>
       <CopyButton value={value} />

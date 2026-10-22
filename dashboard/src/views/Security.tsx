@@ -77,7 +77,7 @@ function DnsModal({ zone, onClose }: { zone: CloudflareZone; onClose: () => void
                     <Badge tone="blue">{record.type}</Badge>
                   </td>
                   <td className={cn(td, 'mono text-slate-100')}>{record.name}</td>
-                  <td className={cn(td, 'mono max-w-[260px] truncate text-slate-400')} title={record.content}>
+                  <td className={cn(td, 'mono max-w-[260px] truncate text-slate-400')} data-tip={record.content}>
                     {record.content}
                   </td>
                   <td className={td}>{record.proxied ? <Cloud className="size-4 text-orange-400" /> : <span className="text-xs text-slate-500">DNS only</span>}</td>

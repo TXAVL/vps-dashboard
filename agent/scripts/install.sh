@@ -60,10 +60,16 @@ else
   green "Đã cài Node.js $(node -v)"
 fi
 
-step "Tải mã nguồn ZenPanel ($REPO@$BRANCH)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-curl -fsSL "https://codeload.github.com/$REPO/tar.gz/refs/heads/$BRANCH" | tar -xz -C "$TMP"
+# ZENPANEL_ARCHIVE: gói phiên bản đã tải sẵn (do panel truyền vào khi cập nhật / quay lại bản cũ)
+if [ -n "${ZENPANEL_ARCHIVE:-}" ] && [ -f "$ZENPANEL_ARCHIVE" ]; then
+  step "Giải nén gói phiên bản $(basename "$ZENPANEL_ARCHIVE")"
+  tar -xzf "$ZENPANEL_ARCHIVE" -C "$TMP"
+else
+  step "Tải mã nguồn ZenPanel ($REPO@$BRANCH)"
+  curl -fsSL "https://codeload.github.com/$REPO/tar.gz/refs/heads/$BRANCH" | tar -xz -C "$TMP"
+fi
 SRC="$(find "$TMP" -mindepth 1 -maxdepth 1 -type d | head -n1)"
 mkdir -p "$APP_DIR" "$DATA_DIR"
 # Giữ nguyên node_modules cũ để cập nhật nhanh hơn

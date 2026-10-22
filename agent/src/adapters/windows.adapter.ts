@@ -1,23 +1,28 @@
 // ZenPanel - Adapter cho Windows Server / Windows 10/11 (PowerShell, WMI/CIM, Windows Firewall)
-import { statfs } from 'node:fs/promises';
+import { mkdir, statfs, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import os from 'node:os';
 import type {
   DiskUsage,
   FirewallRule,
   FirewallRuleInput,
   FirewallStatus,
+  DetachedInstall,
   ListeningPort,
   NetworkTotals,
   OSAdapter,
   OSInfo,
+  PowerAction,
   ProcessInfo,
+  ScheduledTask,
   ServiceAction,
   ServiceInfo,
   ServiceStartup,
   ServiceState,
   ShellCommand,
+  TaskSchedule,
 } from './base.adapter.js';
-import { exec, execOk, type ExecOptions } from '../core/exec.js';
+import { CommandError, exec, execOk, type ExecOptions } from '../core/exec.js';
 import { resolveTool } from '../core/download.js';
 import { dataPath } from '../core/store.js';
 import { CaddyDriver } from './web/caddy.driver.js';
@@ -26,6 +31,24 @@ import type { WebServerDriver } from './web/types.js';
 
 const RDP_PORT = 3389;
 const FIREWALL_GROUP = 'ZenPanel';
+const TASK_PATH = '\\ZenPanel\\';
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const UTF8_BOM = '\uFEFF';
+
+function triggerScript(schedule: TaskSchedule): string {
+  switch (schedule.type) {
+    case 'minutes':
+      return `New-ScheduledTaskTrigger -Once -At (Get-Date).Date -RepetitionInterval (New-TimeSpan -Minutes ${schedule.every})`;
+    case 'hourly':
+      return `New-ScheduledTaskTrigger -Once -At ((Get-Date).Date.AddMinutes(${schedule.minute})) -RepetitionInterval (New-TimeSpan -Hours 1)`;
+    case 'daily':
+      return `New-ScheduledTaskTrigger -Daily -At '${schedule.time}'`;
+    case 'weekly':
+      return `New-ScheduledTaskTrigger -Weekly -DaysOfWeek ${DAYS[schedule.day]} -At '${schedule.time}'`;
+    case 'startup':
+      return 'New-ScheduledTaskTrigger -AtStartup';
+  }
+}
 
 /** Đặt chuỗi vào nháy đơn an toàn cho PowerShell */
 const psQuote = (value: string) => `'${value.replace(/'/g, "''")}'`;
@@ -46,10 +69,14 @@ export class WindowsAdapter implements OSAdapter {
   /** Chạy script PowerShell, ném lỗi nếu thất bại */
   private async ps(script: string, timeout = 60_000): Promise<string> {
     const prelude = "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.Encoding]::UTF8;";
-    const { stdout } = await execOk('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `${prelude} ${script}`], {
-      timeout,
-    });
-    return stdout;
+    // try/catch để trả về đúng thông báo lỗi (Exception.Message) thay vì dòng vị trí lỗi của PowerShell
+    const wrapped = `${prelude} try { ${script} } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }`;
+    const result = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', wrapped], { timeout });
+    if (result.code !== 0) {
+      const message = result.stderr.trim().split(/\r?\n/).filter(Boolean).pop() ?? `PowerShell thoát với mã ${result.code}`;
+      throw new CommandError(/access is denied|truy cập bị từ chối/i.test(message) ? `${message} (cần chạy ZenPanel với quyền Administrator)` : message, result);
+    }
+    return result.stdout;
   }
 
   /** Chạy script trả về JSON mảng (script phải tự gọi ConvertTo-Json -InputObject @(...)) */
@@ -193,22 +220,26 @@ export class WindowsAdapter implements OSAdapter {
     const list = await this.psJson<{ Name: string; DisplayName: string; State: string; StartMode: string; Description: string | null }[]>(
       'ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Service | Select-Object Name,DisplayName,State,StartMode,Description)',
     );
-    const stateMap: Record<string, ServiceState> = {
-      Running: 'running',
-      Stopped: 'stopped',
-      'Start Pending': 'starting',
-      'Stop Pending': 'stopping',
-    };
+    return list.map((s) => this.toServiceInfo(s)).sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }
+
+  private toServiceInfo(s: { Name: string; DisplayName: string; State: string; StartMode: string; Description: string | null }): ServiceInfo {
+    const stateMap: Record<string, ServiceState> = { Running: 'running', Stopped: 'stopped', 'Start Pending': 'starting', 'Stop Pending': 'stopping' };
     const startupMap: Record<string, ServiceStartup> = { Auto: 'auto', Manual: 'manual', Disabled: 'disabled' };
-    return list
-      .map((s) => ({
-        name: s.Name,
-        displayName: s.DisplayName,
-        description: s.Description ?? '',
-        state: stateMap[s.State] ?? 'unknown',
-        startup: startupMap[s.StartMode] ?? 'unknown',
-      }))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+    return {
+      name: s.Name,
+      displayName: s.DisplayName,
+      description: s.Description ?? '',
+      state: stateMap[s.State] ?? 'unknown',
+      startup: startupMap[s.StartMode] ?? 'unknown',
+    };
+  }
+
+  async getService(name: string): Promise<ServiceInfo | null> {
+    const list = await this.psJson<{ Name: string; DisplayName: string; State: string; StartMode: string; Description: string | null }[]>(
+      `ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Service -Filter ("Name='" + ${psQuote(name)}.Replace("'", "''") + "'") | Select-Object Name,DisplayName,State,StartMode,Description)`,
+    );
+    return list.length ? this.toServiceInfo(list[0]) : null;
   }
 
   async controlService(name: string, action: ServiceAction): Promise<void> {
@@ -340,6 +371,65 @@ export class WindowsAdapter implements OSAdapter {
     await this.ps(
       "if (Get-Command Install-WindowsFeature -ErrorAction SilentlyContinue) { Install-WindowsFeature -Name Web-Server -IncludeManagementTools | Out-Null } else { Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServerRole,IIS-WebServer -All -NoRestart | Out-Null }",
       900_000,
+    );
+  }
+
+  // ---------------------------------------------------------------- Nguồn, Task Scheduler, cập nhật
+
+  async power(action: PowerAction): Promise<void> {
+    await execOk('shutdown.exe', [action === 'reboot' ? '/r' : '/s', '/t', '5', '/c', 'ZenPanel: yêu cầu từ bảng điều khiển']);
+  }
+
+  async syncScheduledTasks(tasks: ScheduledTask[]): Promise<void> {
+    const taskDir = dataPath('tasks');
+    const logDir = dataPath('logs', 'tasks');
+    await mkdir(taskDir, { recursive: true });
+    await mkdir(logDir, { recursive: true });
+    const lines = [
+      // Gỡ tác vụ ZenPanel cũ rồi tạo lại theo tasks.json
+      `Get-ScheduledTask -TaskPath ${psQuote(TASK_PATH)} -ErrorAction SilentlyContinue | Unregister-ScheduledTask -Confirm:$false;`,
+      "$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;",
+    ];
+    for (const task of tasks) {
+      const script = path.join(taskDir, `${task.id}.ps1`);
+      // BOM để PowerShell 5.1 đọc đúng tiếng Việt trong lệnh
+      await writeFile(script, `${UTF8_BOM}${task.command}\r\n`, 'utf8');
+      const log = path.join(logDir, `${task.id}.log`);
+      const argument = `/c powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${script}" >> "${log}" 2>&1`;
+      lines.push(
+        `$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ${psQuote(argument)};`,
+        `$trigger = ${triggerScript(task.schedule)};`,
+        `Register-ScheduledTask -TaskPath ${psQuote(TASK_PATH)} -TaskName ${psQuote(`zp-${task.id}`)} -Description ${psQuote(task.name)} -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null;`,
+      );
+      if (!task.enabled) lines.push(`Disable-ScheduledTask -TaskPath ${psQuote(TASK_PATH)} -TaskName ${psQuote(`zp-${task.id}`)} | Out-Null;`);
+    }
+    await this.ps(lines.join(' '), 120_000);
+  }
+
+  runShell(command: string, opts?: ExecOptions) {
+    return exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `[Console]::OutputEncoding=[Text.Encoding]::UTF8; ${command}`], opts);
+  }
+
+  installerScript(): string {
+    return 'install.ps1';
+  }
+
+  archiveFormat(): 'zip' {
+    return 'zip';
+  }
+
+  async launchDetachedInstall({ scriptPath, env, logFile }: DetachedInstall): Promise<void> {
+    // Chạy installer bằng Scheduled Task riêng (SYSTEM) để không bị dừng khi installer tắt "ZenPanel Agent"
+    const runner = path.join(path.dirname(scriptPath), 'run-update.cmd');
+    const setEnv = Object.entries(env).map(([key, value]) => `set "${key}=${value}"`);
+    await writeFile(runner, ['@echo off', ...setEnv, `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" > "${logFile}" 2>&1`, ''].join('\r\n'), 'utf8');
+    await this.ps(
+      [
+        `$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ${psQuote(`/c "${runner}"`)};`,
+        "$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest;",
+        "Register-ScheduledTask -TaskName 'ZenPanel Update' -Action $action -Principal $principal -Force | Out-Null;",
+        "Start-ScheduledTask -TaskName 'ZenPanel Update';",
+      ].join(' '),
     );
   }
 }

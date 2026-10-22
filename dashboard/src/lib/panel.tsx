@@ -1,7 +1,7 @@
-// ZenPanel - Context toàn cục: thông tin máy chủ + metrics realtime qua WebSocket
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { get, wsUrl } from './api';
-import type { MetricsSnapshot, SystemInfo, TunnelState } from './types';
+// ZenPanel - Context toàn cục: thông tin máy chủ, metrics realtime (WebSocket), tuỳ chọn panel, trạng thái cập nhật
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { get, put, wsUrl } from './api';
+import type { MetricsSnapshot, PanelPrefs, SystemInfo, TunnelState, UpdateState } from './types';
 
 interface PanelContextValue {
   info: SystemInfo | null;
@@ -9,27 +9,88 @@ interface PanelContextValue {
   history: MetricsSnapshot[];
   connected: boolean;
   tunnel: TunnelState | null;
+  prefs: PanelPrefs;
+  update: UpdateState | null;
   refreshInfo: () => Promise<void>;
+  savePrefs: (patch: Partial<PanelPrefs>) => Promise<void>;
+  refreshUpdate: () => Promise<void>;
 }
 
 const PanelContext = createContext<PanelContextValue | null>(null);
 const HISTORY_SIZE = 90;
+const THEME_CACHE = 'zenpanel.theme';
+
+export const DEFAULT_PREFS: PanelPrefs = {
+  networkUnit: 'bytes',
+  theme: 'zen',
+  base: 'slate',
+  vpsExpiry: null,
+  vpsProvider: '',
+  vpsRenewUrl: '',
+  vpsPrice: '',
+  expiryWarnDays: 7,
+  autoCheckUpdate: true,
+  autoDownloadUpdate: true,
+};
+
+/** Áp dụng giao diện lên <html data-theme data-base> (CSS biến màu nằm trong index.css) */
+export function applyTheme(theme: string, base: string): void {
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.base = base;
+  try {
+    localStorage.setItem(THEME_CACHE, JSON.stringify({ theme, base }));
+  } catch {
+    // storage bị chặn: chỉ mất phần nhớ giao diện trước khi tải xong
+  }
+}
+
+/** Gọi sớm trong main.tsx để không bị nháy màu mặc định trước khi tải tuỳ chọn */
+export function applyCachedTheme(): void {
+  try {
+    const cached = JSON.parse(localStorage.getItem(THEME_CACHE) ?? 'null') as { theme: string; base: string } | null;
+    if (cached) applyTheme(cached.theme, cached.base);
+  } catch {
+    // bỏ qua
+  }
+}
 
 export function PanelProvider({ children }: { children: ReactNode }) {
   const [info, setInfo] = useState<SystemInfo | null>(null);
   const [history, setHistory] = useState<MetricsSnapshot[]>([]);
   const [connected, setConnected] = useState(false);
   const [tunnel, setTunnel] = useState<TunnelState | null>(null);
+  const [prefs, setPrefs] = useState<PanelPrefs>(DEFAULT_PREFS);
+  const [update, setUpdate] = useState<UpdateState | null>(null);
 
-  const refreshInfo = async () => {
+  const refreshInfo = useCallback(async () => {
     const next = await get<SystemInfo>('/api/system/info');
     setInfo(next);
     setTunnel(next.tunnel);
-  };
+  }, []);
+
+  const refreshUpdate = useCallback(async () => {
+    setUpdate(await get<UpdateState>('/api/update'));
+  }, []);
+
+  const savePrefs = useCallback(async (patch: Partial<PanelPrefs>) => {
+    const next = await put<PanelPrefs>('/api/prefs', patch);
+    setPrefs(next);
+    applyTheme(next.theme, next.base);
+  }, []);
 
   useEffect(() => {
     void refreshInfo().catch(() => undefined);
-  }, []);
+    get<PanelPrefs>('/api/prefs')
+      .then((p) => {
+        setPrefs(p);
+        applyTheme(p.theme, p.base);
+      })
+      .catch(() => undefined);
+    void refreshUpdate().catch(() => undefined);
+    // Trạng thái cập nhật đổi khi agent tự kiểm tra định kỳ
+    const timer = setInterval(() => void refreshUpdate().catch(() => undefined), 5 * 60_000);
+    return () => clearInterval(timer);
+  }, [refreshInfo, refreshUpdate]);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -62,7 +123,9 @@ export function PanelProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <PanelContext.Provider value={{ info, latest: history[history.length - 1] ?? null, history, connected, tunnel, refreshInfo }}>
+    <PanelContext.Provider
+      value={{ info, latest: history[history.length - 1] ?? null, history, connected, tunnel, prefs, update, refreshInfo, savePrefs, refreshUpdate }}
+    >
       {children}
     </PanelContext.Provider>
   );
@@ -72,4 +135,22 @@ export function usePanel(): PanelContextValue {
   const value = useContext(PanelContext);
   if (!value) throw new Error('usePanel phải nằm trong PanelProvider');
   return value;
+}
+
+/** Đồng hồ tick mỗi giây (dùng cho uptime chạy realtime, đếm ngược hạn VPS) */
+export function useNow(intervalMs = 1000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(timer);
+  }, [intervalMs]);
+  return now;
+}
+
+/** Uptime chính xác tới giây: lấy từ snapshot gần nhất + thời gian đã trôi qua */
+export function useLiveUptime(): number | null {
+  const { latest } = usePanel();
+  const now = useNow();
+  if (!latest) return null;
+  return latest.uptime + Math.max(0, (now - latest.time) / 1000);
 }

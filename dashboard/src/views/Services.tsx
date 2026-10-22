@@ -108,7 +108,7 @@ export default function Services() {
                   <tr key={s.name} className={cn(tr, busy === s.name && 'opacity-50')}>
                     <td className={cn(td, 'max-w-[480px]')}>
                       <div className="font-semibold text-slate-100">{s.displayName}</div>
-                      <div className="truncate text-xs text-slate-500" title={s.description}>
+                      <div className="truncate text-xs text-slate-500" data-tip={s.description}>
                         <span className="mono">{s.name}</span>
                         {s.description && ` · ${s.description}`}
                       </div>

@@ -4,6 +4,8 @@ import { Navigate, Route, Routes } from 'react-router';
 import { getToken, onAuthChange } from './lib/api';
 import { PanelProvider } from './lib/panel';
 import { FeedbackProvider } from './components/feedback';
+import { JobsProvider } from './components/jobs';
+import { TooltipLayer } from './components/TooltipLayer';
 import { Shell } from './components/layout/Shell';
 import { Spinner } from './components/ui';
 import { Login } from './views/Login';
@@ -20,6 +22,7 @@ const FileManager = lazy(() => import('./views/FileManager'));
 const Databases = lazy(() => import('./views/Databases'));
 const Security = lazy(() => import('./views/Security'));
 const Settings = lazy(() => import('./views/Settings'));
+const Tasks = lazy(() => import('./views/Tasks'));
 
 export function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -27,10 +30,12 @@ export function App() {
 
   return (
     <FeedbackProvider>
+      <TooltipLayer />
       {!authed ? (
         <Login />
       ) : (
         <PanelProvider>
+          <JobsProvider>
           <Shell>
             <Suspense fallback={<Spinner />}>
               <Routes>
@@ -46,10 +51,12 @@ export function App() {
                 <Route path="/databases" element={<Databases />} />
                 <Route path="/security" element={<Security />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/tasks" element={<Tasks />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
           </Shell>
+          </JobsProvider>
         </PanelProvider>
       )}
     </FeedbackProvider>

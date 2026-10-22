@@ -26,8 +26,8 @@ function hashPassword(password: string, salt: string): string {
 }
 
 /** Sinh mật khẩu ngẫu nhiên luôn có đủ chữ hoa, chữ thường, số và ký tự đặc biệt */
-export function generatePassword(length = 16): string {
-  const groups = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', '!@#%^*-_=+'];
+export function generatePassword(length = 16, symbols = true): string {
+  const groups = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789', ...(symbols ? ['!@#%^*-_=+'] : [])];
   const all = groups.join('');
   const pick = (set: string) => set[randomBytes(1)[0] % set.length];
   const chars = [...groups.map(pick), ...Array.from({ length: Math.max(0, length - groups.length) }, () => pick(all))];
@@ -76,6 +76,12 @@ export function setPassword(newPassword: string): void {
     passwordHash: hashPassword(newPassword, salt),
     passwordVersion: settings.passwordVersion + 1,
   });
+}
+
+/** Vô hiệu hoá mọi token đang dùng (đăng xuất tất cả thiết bị) */
+export function revokeAllSessions(): void {
+  const settings = getSettings();
+  if (settings) saveSettings({ ...settings, passwordVersion: settings.passwordVersion + 1 });
 }
 
 export function verifyCredentials(username: string, password: string): boolean {

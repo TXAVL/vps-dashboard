@@ -104,7 +104,7 @@ export default function Processes() {
                     <td className={cn(td, 'mono text-slate-400')}>{p.pid}</td>
                     <td className={cn(td, 'max-w-[420px]')}>
                       <div className="font-semibold text-slate-100">{p.name}</div>
-                      {p.command && <div className="mono truncate text-xs text-slate-500" title={p.command}>{p.command}</div>}
+                      {p.command && <div className="mono truncate text-xs text-slate-500" data-tip={p.command}>{p.command}</div>}
                     </td>
                     <td className={cn(td, 'text-slate-400')}>{p.user ?? '—'}</td>
                     <td className={cn(td, 'mono text-right', p.cpu > 50 ? 'text-zen-red' : p.cpu > 10 ? 'text-zen-amber' : 'text-slate-300')}>{p.cpu.toFixed(1)}%</td>

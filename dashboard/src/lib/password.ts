@@ -1,5 +1,10 @@
 // ZenPanel - Quy tắc độ mạnh mật khẩu (giữ giống hệt agent/src/core/password.ts)
 
+/** Mật khẩu ngẫu nhiên: người dùng chọn độ dài (mặc định 8) — giống agent */
+export const RANDOM_MIN_LENGTH = 8;
+export const RANDOM_MAX_LENGTH = 64;
+export const RANDOM_DEFAULT_LENGTH = 8;
+
 export interface PasswordRule {
   id: string;
   label: string;

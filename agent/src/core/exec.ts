@@ -1,5 +1,9 @@
 // ZenPanel - Helper chạy tiến trình con. Chỉ adapter (và driver của adapter) được dùng trực tiếp.
 import { spawn } from 'node:child_process';
+import { inJob, jobOutput } from './jobs.js';
+
+/** Che mật khẩu / token trong dòng lệnh khi ghi log */
+const mask = (arg: string) => arg.replace(/((?:PASSWORD|PWD|TOKEN|SECRET)[^=]*=).+/i, '$1******');
 
 export interface ExecOptions {
   timeout?: number;
@@ -38,6 +42,7 @@ export function exec(file: string, args: string[], opts: ExecOptions = {}): Prom
     let stdout = '';
     let stderr = '';
     let killedByTimeout = false;
+    if (inJob()) jobOutput(`$ ${[file, ...args].map(mask).join(' ')}\n`);
     const timer = opts.timeout
       ? setTimeout(() => {
           killedByTimeout = true;
@@ -46,10 +51,14 @@ export function exec(file: string, args: string[], opts: ExecOptions = {}): Prom
       : null;
 
     child.stdout.on('data', (chunk: Buffer) => {
-      if (stdout.length < maxOutput) stdout += chunk.toString('utf8');
+      const text = chunk.toString('utf8');
+      if (stdout.length < maxOutput) stdout += text;
+      jobOutput(text);
     });
     child.stderr.on('data', (chunk: Buffer) => {
-      if (stderr.length < 1024 * 1024) stderr += chunk.toString('utf8');
+      const text = chunk.toString('utf8');
+      if (stderr.length < 1024 * 1024) stderr += text;
+      jobOutput(text);
     });
     child.on('error', (err) => {
       if (timer) clearTimeout(timer);
