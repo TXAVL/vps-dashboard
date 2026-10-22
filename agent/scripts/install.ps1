@@ -72,21 +72,34 @@ foreach ($dir in 'agent\src', 'agent\dist', 'dashboard\src', 'dashboard\dist') {
 Copy-Item (Join-Path $src.FullName '*') $AppDir -Recurse -Force
 Remove-Item $tmp -Recurse -Force
 
+# Một số VPS Windows: cmd.exe (npm dùng để chạy script) không thấy "node" dù PowerShell thấy.
+# Vì vậy cài gói với --ignore-scripts (esbuild/node-pty có bản build sẵn) và gọi node.exe trực tiếp.
+$node = (Get-Command node).Source
+$env:Path = "$(Split-Path $node);$env:Path"
+function Invoke-Node([string[]]$NodeArgs) {
+    & $node @NodeArgs
+    if ($LASTEXITCODE -ne 0) { throw "Lệnh thất bại: node $($NodeArgs -join ' ')" }
+}
+function Invoke-Npm([string[]]$NpmArgs) {
+    & npm @NpmArgs --ignore-scripts --no-fund --no-audit --loglevel=error
+    if ($LASTEXITCODE -ne 0) { throw "Lệnh thất bại: npm $($NpmArgs -join ' ')" }
+}
+
 Step 'Build ZenPanel Agent'
 Push-Location (Join-Path $AppDir 'agent')
-npm ci --no-fund --no-audit --loglevel=error
-npm run build --silent
-npm prune --omit=dev --no-fund --no-audit --loglevel=error
+Invoke-Npm @('ci')
+Invoke-Node @('node_modules/typescript/bin/tsc', '-p', 'tsconfig.json')
+Invoke-Npm @('prune', '--omit=dev')
 Pop-Location
 
 Step 'Build ZenPanel Dashboard'
 Push-Location (Join-Path $AppDir 'dashboard')
-npm ci --no-fund --no-audit --loglevel=error
-npm run build --silent
+Invoke-Npm @('ci')
+Invoke-Node @('node_modules/typescript/bin/tsc', '-b')
+Invoke-Node @('node_modules/vite/bin/vite.js', 'build')
 Pop-Location
 
 Step 'Đăng ký ZenPanel chạy nền cùng Windows (Scheduled Task - SYSTEM)'
-$node = (Get-Command node).Source
 $starter = 'C:\ZenPanel\start-zenpanel.cmd'
 @"
 @echo off
@@ -113,7 +126,9 @@ Start-ScheduledTask -TaskName $TaskName
 Step 'Cài lệnh tắt: zenpanel'
 $cliDir = 'C:\ZenPanel\bin'
 New-Item -ItemType Directory -Force $cliDir | Out-Null
-Copy-Item (Join-Path $AppDir 'agent\scripts\zenpanel.cmd') (Join-Path $cliDir 'zenpanel.cmd') -Force
+# Ghi đường dẫn tuyệt đối của node.exe vì cmd.exe trên một số VPS không thấy "node" trong PATH
+(Get-Content (Join-Path $AppDir 'agent\scripts\zenpanel.cmd') -Raw).Replace('node dist\cli', "`"$node`" dist\cli") |
+    Set-Content -Path (Join-Path $cliDir 'zenpanel.cmd') -Encoding ASCII
 $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
 if ($machinePath -notlike "*$cliDir*") { [Environment]::SetEnvironmentVariable('Path', "$machinePath;$cliDir", 'Machine') }
 
