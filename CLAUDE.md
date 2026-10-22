@@ -1,112 +1,111 @@
-# CLAUDE.md - Universal VPS Dashboard (Lấy cảm hứng từ 1Panel & vPanel)
+# CLAUDE.md - Universal VPS Dashboard (Kế thừa tinh hoa 1Panel & vPanel.vn)
 
 ## 📌 Tổng quan dự án (Project Overview)
-Dự án là một **Web Control Panel thế hệ mới** dành cho VPS/Server, kế thừa những ưu điểm vượt trội của **1Panel** và **vPanel** (giao diện hiện đại, quản lý Docker, 1-Click App Store, File Manager trực quan, bảo mật cao) nhưng giải quyết được hạn chế lớn nhất của 1Panel: **Hỗ trợ hoàn hảo cả Windows lẫn Linux (Ubuntu, Debian, CentOS, Alpine...) với cơ chế Auto-Detect OS tự động thích ứng 100%**.
+Dự án là một **Web Control Panel thế hệ mới** dành cho VPS/Server, kết hợp hoàn hảo những điểm mạnh nhất từ **1Panel** (quản lý Docker, App Store 1-click) và **vPanel.vn** (phong cách giao diện Jupiter hiện đại, phân tách Admin/User, quản lý Website/Domain Isolation, File Manager tích hợp Code Editor, WAF & Cloudflare Anti-DDoS, Terminal Sandbox).
 
-Người dùng chỉ cần thả agent vào bất kỳ VPS nào (kể cả VPS Windows hay VPS Linux), mọi tác vụ quản trị từ xem chỉ số, bật tắt service, mở port, dựng website đến quản lý Docker đều thao tác trực quan bằng chuột qua Web UI xịn sò, không cần gõ lệnh.
+**Điểm đột phá vượt trội so với cả 1Panel & vPanel.vn:**
+- Cả 1Panel và vPanel.vn **chỉ hỗ trợ Linux**.
+- Dự án này **hỗ trợ 100% cả Windows Server lẫn Linux (Ubuntu, Debian, CentOS, Alpine...)** nhờ bộ engine **Auto-Detect OS Adapter**.
 
----
-
-## 🌟 Điểm nổi bật & So sánh với 1Panel / vPanel
-
-| Tính năng | 1Panel truyền thống | Dự án này (Universal Panel) |
-| :--- | :--- | :--- |
-| **Hệ điều hành** | Chỉ hỗ trợ Linux | **Cả Windows & Linux (Auto-detect OS)** |
-| **Giao diện (UI)** | Web Form chuẩn Element Plus | **Cyberpunk / Dark Glassmorphism, UI cực ngầu** |
-| **Cách chạy** | Bắt buộc Docker trên Linux | **Chạy native binary nhẹ < 15MB hoặc Docker** |
-| **Quản lý Service** | Chỉ Systemd Linux | **Systemd (Linux) & Windows Service / Task Scheduler** |
-| **Quản lý Firewall** | ufw / firewalld | **UFW, iptables (Linux) & Windows Advanced Firewall** |
-| **Quản lý File** | Web File Manager | **Web File Manager + Monaco Code Editor + Drag-Drop** |
-| **Terminal** | Web SSH Linux | **Web Terminal (Bash/Zsh trên Linux, PowerShell/CMD trên Windows)** |
-| **Docker & Apps** | Có Docker Compose | **Có visual Docker & App Store 1-click** |
+Người dùng chỉ cần "thả" agent vào VPS, hệ thống tự động nhận diện và cung cấp Web Dashboard trực quan để điều khiển mọi thứ bằng chuột mà không cần nhớ dòng lệnh.
 
 ---
 
-## 🎯 Các Module cốt lõi (Core Modules)
+## 🎨 Phong cách thiết kế giao diện (UI/UX Inspirations từ vPanel.vn & 1Panel)
 
-### 1. 📊 Dashboard & Giám sát tài nguyên (Host Monitor)
-- **Real-time Metrics**: CPU, RAM, Disk I/O, Network In/Out cập nhật theo mili-giây (WebSocket).
-- **Process Manager**: Danh sách tiến trình đang chiếm RAM/CPU, nút Kill / Restart tiến trình 1-click.
-- **System Information**: Tự động hiển thị tên OS, Kernel version, Uptime, IP công khai, nhiệt độ (nếu hỗ trợ).
+### 1. Tone màu & Visual Elements (Chuẩn vPanel.vn):
+- **Bảng màu chủ đạo**:
+  - Nền & Card: Dark Slate (`#0B0F19`, `#111827`, `#1E293B`) kết hợp Slate Light (`#F8FAFC`, `#F1F5F9`) cho các khối thông tin.
+  - Accent Colors: Electric Blue (`#3B82F6`), Emerald Green (`#10B981` cho trạng thái Active/Online), Amber (`#F59E0B` cảnh báo), Rose Red (`#EF4444` nguy hiểm).
+  - Khung giả lập trình duyệt / Terminal: Có 3 nút macOS chấm màu (`#EF4444`, `#F59E0B`, `#3B82F6`) và thanh URL bảo mật `https://panel.local:2083`.
+- **Typography**: `Inter` hoặc `Plus Jakarta Sans` cho giao diện chính, `JetBrains Mono` cho IP, Port, Terminal và Code Editor.
+- **Components bo góc**: `rounded-2xl` cho các Card lớn, `rounded-xl` cho buttons và inputs, viền `border-slate-700/50` tinh tế.
+- **Bộ chuyển đổi nhanh chế độ**: Nút toggle **GUI Mode** (trực quan đồ họa cho người không chuyên) $\leftrightarrow$ **CLI Mode** (cho DevOps/SysAdmin).
 
-### 2. 🎛️ Bộ điều hợp hệ điều hành (OS Adapter Engine)
-- **Detection Module**: Kiểm tra `process.platform`, `/etc/os-release`, WMI/PowerShell để xác định chính xác OS và kiến trúc CPU (x86_64, arm64).
-- **Windows Adapter**:
-  - Service: `Get-Service`, `sc.exe`, `Restart-Service`.
-  - Firewall: `netsh advfirewall` / `New-NetFirewallRule`.
-  - Process: `Get-Process`, `Stop-Process`.
-  - Terminal: PowerShell 7 / Windows PowerShell.
-- **Linux Adapter (Ubuntu/Debian/CentOS...)**:
-  - Service: `systemctl status/restart/stop`.
-  - Firewall: `ufw status/allow` hoặc `iptables`.
-  - Process: `ps aux`, `kill -9`.
-  - Terminal: `/bin/bash` hoặc `/bin/sh`.
-
-### 3. 📁 Trình quản lý File Web (Visual File Manager)
-- Xem cây thư mục ổ đĩa (C:, D: trên Windows hoặc `/` trên Linux).
-- Upload kéo thả (Drag & Drop), Download file dung lượng lớn.
-- Nén / Giải nén (.zip, .tar.gz) chỉ bằng 1 click.
-- Tích hợp Text/Code Editor sửa trực tiếp file config (.env, .conf, .json, .yaml).
-
-### 4. 🐳 Docker & 1-Click App Store
-- Kiểm tra tự động xem VPS đã có Docker chưa. Nếu chưa, hỗ trợ 1-click tự cài Docker tương ứng với OS.
-- Quản lý Container, Images, Volumes, Compose Stacks.
-- Kho ứng dụng 1-click (App Store): Nginx, Redis, MySQL, PostgreSQL, WordPress, Uptime Kuma, Cloudflare Tunnel...
-
-### 5. 🛡️ Firewall & Bảo mật mạng
-- Xem danh sách các port đang Mở/Lắng nghe (Listening Ports).
-- Nút bấm thêm Rule mở Port (TCP/UDP) hoặc chặn IP độc hại mà không cần nhớ cú pháp lệnh tường lửa.
-
-### 6. 💻 Web Terminal (Dự phòng)
-- Tích hợp terminal xterm.js trên trình duyệt, sẵn sàng khi người dùng chuyên nghiệp muốn can thiệp sâu.
+### 2. Kiến trúc giao diện kép (Dual Panel - Kế thừa từ vPanel.vn):
+1. **Admin Panel (Trang quản trị hạ tầng máy chủ)**:
+   - Tổng quan phần cứng: CPU, RAM, Disk I/O, Network Traffic (Live WebSocket).
+   - Quản lý Service hệ thống (Windows Services hoặc Systemd Daemons).
+   - Quản trị Tường lửa (Firewall Rules, Open Ports, Blocked IPs).
+   - Quản lý Docker & Kho ứng dụng 1-click.
+2. **User / Site Panel (Giao diện Jupiter quản trị Web & Ứng dụng)**:
+   - Danh sách Website / Domain với chế độ **Website Isolation** (mỗi site có thư mục, cấu hình và giới hạn tài nguyên riêng).
+   - Cột thống kê tài nguyên thời gian thực bên phải (Disk Quota, Bandwidth, Inodes, RAM).
+   - Trình quản lý File Manager kéo thả kèm Monaco Code Editor sửa trực tiếp file config.
+   - Quản lý Database (MySQL, PostgreSQL, MariaDB, Redis) kèm nút truy cập phpMyAdmin/Adminer 1-click.
+   - WAF & Tích hợp Cloudflare Anti-DDoS.
+   - Web Terminal sandbox hỗ trợ PowerShell (Windows) và Bash/Zsh (Linux).
 
 ---
 
-## 🏗️ Kiến trúc kỹ thuật (Tech Architecture)
+## 🌟 Bảng so sánh tính năng
+
+| Tính năng | 1Panel | vPanel.vn | Dự án này (Universal Panel) |
+| :--- | :--- | :--- | :--- |
+| **Hệ điều hành** | Chỉ Linux | Chỉ Linux | 🤖 **Windows & Linux (Tự Auto-detect)** |
+| **Giao diện** | Form truyền thống | Hiện đại kiểu Jupiter SaaS | 🚀 **SaaS Jupiter + Cyberpunk Glassmorphism** |
+| **Bố cục** | 1 tầng | 2 tầng (Admin & User) | 💎 **Linh hoạt: Admin Master & Site Dashboard** |
+| **Docker & App Store** | Mạnh | Hạn chế | 🔥 **Có sẵn App Store 1-Click + Docker Compose** |
+| **Website & Domain** | Nginx/OpenResty | OpenLiteSpeed + Cô lập | 🌐 **Nginx/Caddy/IIS (Tự thích ứng theo OS)** |
+| **Tường lửa** | UFW / Firewalld | CSF Firewall | 🛡️ **Tự động: Windows Firewall & UFW/iptables** |
+| **File Manager** | Web UI cơ bản | Đầy đủ + Code Editor | 📂 **Kéo thả + Monaco Editor + Nén/Giải nén** |
+| **Terminal** | Web SSH | Terminal sandbox | 💻 **PowerShell (Win) & Bash (Linux) ngay trên Web** |
+
+---
+
+## 🏗️ Cấu trúc thư mục dự án (Project Structure)
 
 ```
 vps-dashboard/
-├── agent/                       # Core Daemon chạy trên VPS
+├── agent/                       # Core Daemon chạy trên VPS (Siêu nhẹ)
 │   ├── src/
 │   │   ├── core/
-│   │   │   ├── detector.ts      # Detect OS, distro, init system (Systemd/OpenRC/Windows)
-│   │   │   └── metrics.ts       # Thu thập CPU, RAM, Disk, Net bằng native calls
+│   │   │   ├── detector.ts      # Engine tự nhận diện OS (Windows vs Linux distro)
+│   │   │   └── metrics.ts       # Thu thập chỉ số CPU, RAM, Disk, Net realtime
 │   │   ├── adapters/
-│   │   │   ├── base.adapter.ts  # Interface chuẩn hóa mọi thao tác OS
-│   │   │   ├── windows.adapter.ts
-│   │   │   └── linux.adapter.ts
+│   │   │   ├── base.adapter.ts  # Interface quy chuẩn chung
+│   │   │   ├── windows.adapter.ts # PowerShell, WMI/CIM, sc.exe, netsh
+│   │   │   └── linux.adapter.ts   # Systemctl, procfs, ufw, iptables
 │   │   ├── services/
-│   │   │   ├── process.service.ts
-│   │   │   ├── file.service.ts
-│   │   │   ├── firewall.service.ts
-│   │   │   └── docker.service.ts
-│   │   ├── ws/                  # Real-time WebSocket Hub (Terminal & Metrics)
+│   │   │   ├── process.service.ts # Quản lý tiến trình & Task Manager
+│   │   │   ├── file.service.ts    # File Manager API (Upload, Download, Edit)
+│   │   │   ├── site.service.ts    # Quản lý Domain & Website isolation
+│   │   │   ├── firewall.service.ts# Quản lý port & firewall rules
+│   │   │   └── docker.service.ts  # Quản lý Containers & App Store
+│   │   ├── ws/                  # WebSocket truyền thông tin Realtime & Web Terminal
 │   │   └── server.ts            # Fastify / Express API Server
-│   └── package.json
+│   └── scripts/
+│       ├── install.sh           # Script 1 dòng cho Linux (như vpanel.vn)
+│       └── install.ps1          # Script 1 dòng cho Windows
 │
-├── dashboard/                   # Frontend Web UI (Chạy độc lập hoặc Serve từ Agent)
+├── dashboard/                   # Web Dashboard UI (React + Tailwind + Lucide)
 │   ├── src/
-│   │   ├── components/          # Glassmorphic Cards, Real-time Charts, Modals
+│   │   ├── components/
+│   │   │   ├── layout/          # Header, Sidebar kiểu Jupiter, WindowMockup
+│   │   │   ├── cards/           # StatCard, ResourceProgress, ServiceCard
+│   │   │   └── modals/          # Modal xác nhận, Add Domain, Open Port
 │   │   ├── views/
-│   │   │   ├── Overview.tsx     # Dashboard tổng quan
-│   │   │   ├── FileManager.tsx  # Quản lý file
-│   │   │   ├── ProcessList.tsx  # Tiến trình & Task Manager
-│   │   │   ├── Services.tsx     # Services Windows / Daemons Linux
-│   │   │   ├── DockerApps.tsx   # Docker & App Store
-│   │   │   ├── Firewall.tsx     # Mở port & Security
-│   │   │   └── Terminal.tsx     # Xterm console
+│   │   │   ├── Overview.tsx     # Dashboard tổng quan chỉ số máy chủ
+│   │   │   ├── Websites.tsx     # Quản lý Domain & Website isolation
+│   │   │   ├── FileManager.tsx  # Trình quản lý file + Code Editor
+│   │   │   ├── Databases.tsx    # MySQL / MariaDB / Redis GUI
+│   │   │   ├── AppStore.tsx     # Kho ứng dụng 1-click
+│   │   │   ├── Firewall.tsx     # Quản lý Tường lửa & Port
+│   │   │   └── Terminal.tsx     # Web Terminal mô phỏng xterm.js
 │   │   ├── hooks/
 │   │   └── App.tsx
 │   └── package.json
 │
-└── CLAUDE.md                    # Tài liệu kiến trúc chuẩn hóa
+└── CLAUDE.md
 ```
 
 ---
 
-## 🚀 Kế hoạch triển khai (Roadmap)
-- [ ] **Giai đoạn 1**: Xây dựng Agent Core + OS Auto-Detection (thử nghiệm nhận diện Windows & Linux, đọc CPU/RAM/Disk).
-- [ ] **Giai đoạn 2**: Thiết kế giao diện Dashboard Web siêu đẹp (Dark Glassmorphism, biểu đồ mượt, phong cách hiện đại như 1Panel nhưng ngầu hơn).
-- [ ] **Giai đoạn 3**: Hoàn thiện các Adapter tính năng: Services, Process Manager, File Manager, Firewall.
-- [ ] **Giai đoạn 4**: Tích hợp Docker Manager & Web Terminal.
-- [ ] **Giai đoạn 5**: Đóng gói thành 1-file binary duy nhất / Docker container để deploy lên mọi VPS trong 30 giây.
+## 🚀 Kế hoạch triển khai (Next Steps)
+1. **Module Auto-Detect OS & Realtime Metrics**: Viết Agent tự kiểm tra môi trường đang chạy (Windows / Linux), lấy dữ liệu CPU/RAM/Disk live.
+2. **Khởi tạo UI Dashboard**: Setup React + TailwindCSS theo phong cách vPanel.vn (Jupiter UI + Dark Mode hiện đại, các thẻ card bo tròn viền sáng, biểu đồ tài nguyên thời gian thực).
+3. **Tích hợp các module chức năng**:
+   - File Manager + Monaco Code Editor.
+   - Firewall (Mở port 1 click trên cả Windows và Linux).
+   - Website / Domain Manager.
+   - App Store 1-Click (Docker).

@@ -1,114 +1,85 @@
 # 🚀 NexusPanel - Universal VPS Control Dashboard
 
 <p align="center">
-  <b>Bảng điều khiển quản trị VPS đa nền tảng thế hệ mới — Tự động nhận diện hệ điều hành (Windows Server & Linux Ubuntu/Debian/CentOS).</b>
+  <b>Bảng điều khiển quản trị VPS thế hệ mới — Tự động nhận diện hệ điều hành (Windows Server & Linux Ubuntu/Debian/CentOS).</b>
   <br />
-  <i>Lấy cảm hứng từ sự tiện lợi của 1Panel & vPanel nhưng mang lại giao diện Cyberpunk Dark Glassmorphism cực ngầu và khả năng tương thích 100% mọi loại VPS.</i>
+  <i>Kết hợp tinh hoa thiết kế <b>vPanel.vn</b> (Giao diện Jupiter hiện đại, Website Isolation, File Manager + Code Editor, WAF) và <b>1Panel</b> (Docker Containers, 1-Click App Store).</i>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue?style=for-the-badge&logo=linux" alt="OS Platform" />
   <img src="https://img.shields.io/badge/Auto--Detect-OS%20Adapter%20Engine-brightgreen?style=for-the-badge" alt="Auto-Detect" />
-  <img src="https://img.shields.io/badge/UI-Cyberpunk%20Dark%20Glass-purple?style=for-the-badge" alt="UI" />
+  <img src="https://img.shields.io/badge/UI-vPanel.vn%20Jupiter%20Style-indigo?style=for-the-badge" alt="UI" />
   <img src="https://img.shields.io/badge/Zero--Config-1--Click%20Deploy-orange?style=for-the-badge" alt="Deploy" />
 </p>
 
 ---
 
+## 🎨 Phong cách thiết kế giao diện (Lấy cảm hứng từ vPanel.vn)
+
+NexusPanel áp dụng ngôn ngữ thiết kế chuẩn từ **vPanel.vn**:
+- **Bố cục Jupiter UI**: Phân tách rõ ràng giữa cấu hình hệ thống máy chủ và khu vực vận hành website/ứng dụng.
+- **Thanh chuyển đổi GUI $\leftrightarrow$ CLI**: Cho phép người dùng chuyển đổi linh hoạt giữa giao diện đồ họa 1-click hoặc cửa sổ lệnh chuyên sâu.
+- **Thẻ Card & Cửa sổ macOS mockup**: Sử dụng bo góc `rounded-2xl`, viền sáng `border-slate-700/50`, dải nút chấm màu điều khiển (`#EF4444`, `#F59E0B`, `#3B82F6`) và thanh trạng thái an toàn `https://...:2083`.
+- **Cột giám sát tài nguyên bên phải**: Thanh tiến trình hiển thị trực quan Disk Quota, Bandwidth, CPU, RAM cập nhật theo mili-giây.
+
+---
+
 ## 🌟 Điểm nổi bật (Highlights)
 
-- 🤖 **Auto-Detect OS 100%**: Chỉ cần tải agent về VPS và chạy. Agent tự động phát hiện Windows hay Linux và tự nạp Adapter phù hợp:
+- 🤖 **Auto-Detect OS 100%**: Chỉ cần ném agent lên VPS và chạy. Agent tự động phát hiện Windows hay Linux và tự nạp Adapter phù hợp:
   - **Trên Windows**: Tự động dùng PowerShell, WMI/CIM, Windows Services (`sc.exe`), Windows Firewall (`netsh`).
   - **Trên Linux (Ubuntu, Debian, CentOS, Alpine...)**: Tự động dùng `systemctl`, `journalctl`, `ufw/iptables`, Docker native.
-- 🎨 **Giao diện Cyberpunk Glassmorphism**: Thiết kế tối giản, hiệu ứng viền neon, kính mờ sang trọng, tối ưu hiển thị mượt mà trên cả máy tính lẫn điện thoại (không dùng form xám cổ lỗ sĩ).
-- 🖱️ **Nói không với gõ lệnh (Zero-CLI Management)**:
-  - Bật/tắt/khởi động lại VPS hoặc Service chỉ bằng 1 cú click.
-  - Xem và kill các tiến trình chiếm RAM/CPU như Task Manager.
-  - Mở port tường lửa chỉ cần nhập số port và ấn "Cho phép".
-- 📁 **File Manager Web xịn sò**:
-  - Kéo thả file để upload, download file nhanh chóng.
-  - Nén và giải nén file zip/tar.gz trực tiếp.
-  - Chỉnh sửa file `.env`, file cấu hình ngay trên trình duyệt với editor trực quan.
-- 🐳 **Docker & 1-Click App Store**:
-  - Tự động nhận biết Docker trên máy.
-  - Cài đặt các ứng dụng phổ biến (Nginx, WordPress, Redis, MySQL, PostgreSQL, Cloudflare Tunnel...) chỉ với 1 click.
-- 💻 **Tích hợp Web Terminal**:
+- 🌐 **Quản lý Domain & Website Isolation (như vPanel.vn)**:
+  - Mỗi website là một không gian độc lập với document root, SSL và phiên bản runtime riêng.
+  - Hỗ trợ gắn domain, tự cấp chứng chỉ SSL miễn phí (Let's Encrypt / ZeroSSL), Force HTTPS 1-click.
+- 📁 **File Manager Web xịn sò + Monaco Code Editor**:
+  - Kéo thả file để upload, download file dung lượng lớn.
+  - Nén và giải nén file `.zip`, `.tar.gz` trực tiếp trên web.
+  - Trình soạn thảo code tích hợp: Highlight cú pháp, tìm kiếm, sửa file `.env`, `nginx.conf`, file cấu hình ngay trên trình duyệt mà không cần tải về.
+- 🐳 **Docker & 1-Click App Store (như 1Panel)**:
+  - Tự động nhận diện Docker trên VPS.
+  - Kho ứng dụng 1-click: Nginx, WordPress, Redis, MySQL, PostgreSQL, Cloudflare Tunnel, phpMyAdmin...
+- 🛡️ **Tường lửa & Bảo mật chủ động**:
+  - Xem danh sách cổng mạng đang mở.
+  - Mở port hoặc chặn IP độc hại chỉ với 1 cú click (tự gọi Windows Firewall hoặc UFW/iptables tùy theo OS).
+- 💻 **Tích hợp Web Terminal Sandbox**:
   - Khi cần thao tác chuyên sâu, có sẵn Web Terminal (PowerShell trên Windows, Bash/Zsh trên Linux) không cần mở Putty hay SSH client.
 
 ---
 
-## 📊 So sánh với 1Panel & vPanel
+## 📊 Bảng so sánh tính năng
 
-| Tính năng | 1Panel truyền thống | vPanel / Cổ điển | NexusPanel (Dự án này) |
+| Tính năng | 1Panel | vPanel.vn | NexusPanel (Dự án này) |
 | :--- | :--- | :--- | :--- |
-| **Hỗ trợ Windows** | ❌ Không hỗ trợ | ❌ Không hỗ trợ | ✅ **Hỗ trợ 100% (Windows Server & Desktop)** |
-| **Hỗ trợ Linux** | ✅ Có | ✅ Có | ✅ **Tất cả các bản phân phối Linux** |
-| **Nhận diện OS** | Thủ công | Thủ công | 🤖 **Tự động 100% (Auto-detect Adapter)** |
-| **Giao diện (UI)** | Element Plus văn phòng | Cũ kỹ, nhiều chữ | 🚀 **Cyberpunk Dark Glassmorphic, Siêu ngầu** |
-| **Cài đặt** | Bắt buộc cài Docker | Cài đặt phức tạp | ⚡ **1 File Binary nhẹ < 15MB hoặc Script 1 dòng** |
-| **Quản trị Tường lửa**| UFW / Firewalld | iptables | 🛡️ **Tự thích ứng: Windows Firewall & UFW/iptables** |
-
----
-
-## 🏗️ Cấu trúc thư mục (Project Structure)
-
-```text
-vps-dashboard/
-├── agent/                       # Daemon chạy ngầm trên VPS (Siêu nhẹ, không tốn RAM)
-│   ├── src/
-│   │   ├── core/
-│   │   │   ├── detector.ts      # Engine tự nhận diện OS, kiến trúc CPU, Init system
-│   │   │   └── metrics.ts       # Thu thập chỉ số CPU, RAM, Disk, Net thời gian thực
-│   │   ├── adapters/
-│   │   │   ├── base.adapter.ts  # Bộ khung Interface OS chuẩn hóa
-│   │   │   ├── windows.adapter.ts # Adapter riêng cho Windows (PowerShell/WMI)
-│   │   │   └── linux.adapter.ts   # Adapter riêng cho Linux (Systemd/Procfs)
-│   │   ├── services/
-│   │   │   ├── process.service.ts # Quản lý tiến trình (Kill/Monitor)
-│   │   │   ├── file.service.ts    # File Manager API (Upload/Download/Edit/Zip)
-│   │   │   ├── firewall.service.ts# Mở/đóng port, chặn IP
-│   │   │   └── docker.service.ts  # Điều khiển Docker containers
-│   │   ├── ws/                  # WebSocket truyền dữ liệu thời gian thực
-│   │   └── server.ts            # REST API Backend
-│   └── scripts/
-│       ├── install.sh           # Cài đặt 1 dòng cho Linux
-│       └── install.ps1          # Cài đặt 1 dòng cho Windows
-│
-├── dashboard/                   # Web Dashboard UI
-│   ├── src/
-│   │   ├── components/          # Thẻ Card thông số, Biểu đồ Live, Modals
-│   │   ├── views/               # Overview, Files, Processes, Services, Docker, Firewall
-│   │   └── App.tsx
-│
-├── .gitignore
-├── CLAUDE.md                    # Bản thiết kế chi tiết
-└── README.md                    # Tài liệu hướng dẫn sử dụng
-```
+| **Hệ điều hành** | Chỉ Linux | Chỉ Linux | 🤖 **Windows & Linux (Tự Auto-detect)** |
+| **Giao diện (UI)** | Element Plus văn phòng | Giao diện Jupiter hiện đại | 🚀 **Jupiter Style + Dark Glassmorphic hiện đại** |
+| **Bố cục** | 1 tầng | 2 tầng (Admin & User) | 💎 **Linh hoạt: Admin Master & Site Dashboard** |
+| **Docker & App Store** | Mạnh | Hạn chế | 🔥 **Có sẵn App Store 1-Click + Docker Compose** |
+| **Website & Domain** | Nginx/OpenResty | OpenLiteSpeed + Cô lập | 🌐 **Tự động cấu hình Web Server theo OS** |
+| **Tường lửa** | UFW / Firewalld | CSF Firewall | 🛡️ **Tự động: Windows Firewall & UFW/iptables** |
+| **File Manager** | Web UI cơ bản | Đầy đủ + Code Editor | 📂 **Kéo thả + Monaco Editor + Nén/Giải nén** |
+| **Terminal** | Web SSH | Terminal sandbox | 💻 **PowerShell (Win) & Bash (Linux) ngay trên Web** |
 
 ---
 
 ## ⚡ Cài đặt nhanh (Quick Start)
 
 ### 1. Trên VPS Linux (Ubuntu / Debian / CentOS / Alpine)
-Mở terminal VPS và chạy 1 dòng lệnh duy nhất:
+Mở terminal VPS và chạy 1 dòng lệnh duy nhất (tương tự `vpanel.vn`):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/TXAVL/vps-dashboard/main/agent/scripts/install.sh | bash
 ```
-> *Hệ thống sẽ tự nhận diện bản Linux, cấu hình Systemd service và in ra đường link Dashboard kèm mật khẩu đăng nhập an toàn.*
 
 ### 2. Trên VPS Windows (Windows Server / Windows 10/11)
 Mở PowerShell (Run as Administrator) và chạy:
 ```powershell
 irm https://raw.githubusercontent.com/TXAVL/vps-dashboard/main/agent/scripts/install.ps1 | iex
 ```
-> *Hệ thống sẽ tự động đăng ký Windows Service, tự mở cổng Firewall và cung cấp link truy cập Web.*
 
 ---
 
 ## 🛠️ Chạy ở môi trường phát triển (Development)
-
-### Yêu cầu:
-- Node.js >= 18 hoặc Bun / Go
 
 ### Khởi chạy Agent (Backend):
 ```bash
@@ -124,13 +95,6 @@ npm install
 npm run dev
 ```
 Truy cập giao diện tại: `http://localhost:5173`
-
----
-
-## 🛡️ Bảo mật (Security)
-- Xác thực bằng Token / JWT mã hóa 256-bit.
-- Có cơ chế chống Brute-Force (Tự động khóa IP nếu nhập sai mật khẩu nhiều lần).
-- Xác nhận 2 bước đối với các hành động nguy hiểm (Kill Task hệ thống, Reboot VPS, Xóa thư mục gốc).
 
 ---
 
