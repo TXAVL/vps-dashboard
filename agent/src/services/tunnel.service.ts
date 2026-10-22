@@ -2,13 +2,8 @@
 // trỏ về cổng panel, không cần tài khoản Cloudflare hay mở port tường lửa.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { createWriteStream } from 'node:fs';
-import { access, mkdir, rename } from 'node:fs/promises';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
-import os from 'node:os';
-import path from 'node:path';
 import type { OSAdapter } from '../adapters/base.adapter.js';
+import { resolveTool } from '../core/download.js';
 
 const RELEASE_BASE = 'https://github.com/cloudflare/cloudflared/releases/latest/download';
 const URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
@@ -127,29 +122,10 @@ export class TunnelService extends EventEmitter {
   /** Thứ tự ưu tiên: đường dẫn cấu hình -> cloudflared trong PATH -> bản đã tải -> tự tải từ GitHub */
   private async resolveBinary(): Promise<string> {
     if (this.customBinary) return this.customBinary;
-
-    const fromPath = await this.adapter.findExecutable('cloudflared');
-    if (fromPath) return fromPath;
-
-    const binDir = path.join(os.homedir(), '.zenpanel', 'bin');
-    const target = path.join(binDir, this.adapter.cloudflaredBinaryName());
-    try {
-      await access(target);
-      return target;
-    } catch {
-      // Chưa có, tải về bên dưới
-    }
-
-    await mkdir(binDir, { recursive: true });
-    const asset = this.adapter.cloudflaredAssetName();
-    this.emit('download', `${RELEASE_BASE}/${asset}`);
-    const res = await fetch(`${RELEASE_BASE}/${asset}`);
-    if (!res.ok || !res.body) throw new Error(`Không tải được cloudflared (HTTP ${res.status})`);
-
-    const tmp = `${target}.download`;
-    await pipeline(Readable.fromWeb(res.body as import('node:stream/web').ReadableStream), createWriteStream(tmp));
-    await rename(tmp, target);
-    await this.adapter.makeExecutable(target);
-    return target;
+    const binary = await resolveTool(this.adapter, 'cloudflared', {
+      url: `${RELEASE_BASE}/${this.adapter.cloudflaredAssetName()}`,
+      onDownload: (url) => this.emit('download', url),
+    });
+    return binary!;
   }
 }

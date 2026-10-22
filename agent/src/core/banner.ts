@@ -38,9 +38,11 @@ export interface BannerInfo {
   port: number;
   publicUrl: string | null;
   tunnelNote?: string;
+  /** Chỉ có ở lần chạy đầu tiên khi tài khoản admin vừa được tạo */
+  credentials?: { username: string; password: string } | null;
 }
 
-export function printBanner({ osInfo, host, port, publicUrl, tunnelNote }: BannerInfo): void {
+export function printBanner({ osInfo, host, port, publicUrl, tunnelNote, credentials }: BannerInfo): void {
   const label = (text: string) => `${color.dim}${text.padEnd(13)}${color.reset}`;
   const lines = [
     `${color.bold}🧘 ZenPanel Agent${color.reset} ${color.dim}— Quản trị VPS an nhàn${color.reset}`,
@@ -63,6 +65,15 @@ export function printBanner({ osInfo, host, port, publicUrl, tunnelNote }: Banne
 
   if (publicUrl) {
     lines.push('', `${color.dim}Domain trycloudflare.com đổi mỗi lần khởi động lại agent.${color.reset}`);
+  }
+
+  if (credentials) {
+    lines.push(
+      '',
+      `${color.bold}${color.amber}Tài khoản quản trị (chỉ hiển thị 1 lần — hãy lưu lại):${color.reset}`,
+      `${label('Username')} ${color.bold}${credentials.username}${color.reset}`,
+      `${label('Password')} ${color.bold}${credentials.password}${color.reset}`,
+    );
   }
 
   console.log(`\n${box(lines)}\n`);

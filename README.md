@@ -110,6 +110,8 @@ Domain `*.trycloudflare.com` miễn phí, không cần tài khoản Cloudflare v
 | `ZENPANEL_TUNNEL` | `1` | `0` để tắt Cloudflare Tunnel |
 | `ZENPANEL_CLOUDFLARED` | _(tự tìm)_ | Đường dẫn tới file `cloudflared` tùy chỉnh |
 
+Lần chạy đầu agent tạo tài khoản `admin` + mật khẩu ngẫu nhiên và in ra console (đặt trước bằng `ZENPANEL_PASSWORD`). Quên mật khẩu: `npm run reset-password`. Agent tự phục vụ dashboard đã build (`dashboard/dist`) tại cổng panel.
+
 ### Khởi chạy Dashboard (Frontend Web):
 ```bash
 cd dashboard

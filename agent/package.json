@@ -1,6 +1,6 @@
 {
   "name": "zenpanel-agent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ZenPanel Agent - Core daemon chạy trên VPS (Windows & Linux, tự Auto-Detect OS)",
   "type": "module",
   "main": "dist/server.js",
@@ -8,17 +8,26 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "reset-password": "tsx src/cli/reset-password.ts",
+    "reset-password:prod": "node dist/cli/reset-password.js"
   },
   "engines": {
     "node": ">=20"
   },
   "license": "MIT",
   "dependencies": {
-    "fastify": "^5.2.0"
+    "@fastify/multipart": "^10.1.4",
+    "@fastify/static": "^10.1.7",
+    "@fastify/websocket": "^11.3.4",
+    "@lydell/node-pty": "^1.2.0-beta.15",
+    "fastify": "^5.2.0",
+    "fflate": "^0.8.3",
+    "tar": "^7.5.22"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/ws": "^8.18.2",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }

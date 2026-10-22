@@ -1,0 +1,62 @@
+@import 'tailwindcss';
+
+/* ZenPanel design tokens - Jupiter Style + Dark Glassmorphism */
+@theme {
+  --font-sans: 'Plus Jakarta Sans', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  --color-ink-950: #0b0f19;
+  --color-ink-900: #111827;
+  --color-ink-800: #1e293b;
+  --color-zen-blue: #3b82f6;
+  --color-zen-green: #10b981;
+  --color-zen-amber: #f59e0b;
+  --color-zen-red: #ef4444;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-ink-950 text-slate-200 antialiased font-sans;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgb(59 130 246 / 0.14), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 0%, rgb(16 185 129 / 0.08), transparent);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    @apply bg-zen-blue/40;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(71 85 105 / 0.6) transparent;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply rounded-2xl border border-slate-700/50 bg-ink-900/60 backdrop-blur-xl shadow-xl shadow-black/20;
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-slate-700/60 bg-ink-950/70 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-zen-blue/70 focus:ring-2 focus:ring-zen-blue/20 disabled:opacity-50;
+  }
+
+  .mono {
+    @apply font-mono;
+  }
+}
+
+/* xterm.js */
+.xterm {
+  padding: 10px;
+}
+.xterm-viewport {
+  background-color: transparent !important;
+}
