@@ -91,6 +91,25 @@ npm install
 npm run dev
 ```
 
+Khi khởi động, agent tự mở **Cloudflare Quick Tunnel** và in URL truy cập ra console:
+```
+╭──────────────────────────────────────────────────────────────╮
+│ 🧘 ZenPanel Agent — Quản trị VPS an nhàn                     │
+│                                                              │
+│ Hệ điều hành  Ubuntu 24.04 LTS (x64)                         │
+│ Public URL    https://xxx-yyy-zzz.trycloudflare.com          │
+│ Local         http://localhost:2083                          │
+╰──────────────────────────────────────────────────────────────╯
+```
+Domain `*.trycloudflare.com` miễn phí, không cần tài khoản Cloudflare và không cần mở port, nhưng **đổi mỗi lần khởi động lại agent**. Nếu VPS chưa có `cloudflared`, agent tự tải bản phù hợp OS về `~/.zenpanel/bin`.
+
+| Biến môi trường | Mặc định | Ý nghĩa |
+| :--- | :--- | :--- |
+| `ZENPANEL_PORT` | `2083` | Cổng API / Dashboard |
+| `ZENPANEL_HOST` | `0.0.0.0` | Địa chỉ lắng nghe |
+| `ZENPANEL_TUNNEL` | `1` | `0` để tắt Cloudflare Tunnel |
+| `ZENPANEL_CLOUDFLARED` | _(tự tìm)_ | Đường dẫn tới file `cloudflared` tùy chỉnh |
+
 ### Khởi chạy Dashboard (Frontend Web):
 ```bash
 cd dashboard

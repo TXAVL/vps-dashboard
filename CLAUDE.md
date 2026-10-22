@@ -68,6 +68,7 @@ vps-dashboard/ (ZenPanel)
 │   ├── src/
 │   │   ├── core/
 │   │   │   ├── detector.ts      # Engine tự nhận diện OS (Windows vs Linux distro)
+│   │   │   ├── banner.ts        # In Public URL / Local URL ra console khi khởi động
 │   │   │   └── metrics.ts       # Thu thập chỉ số CPU, RAM, Disk, Net realtime
 │   │   ├── adapters/
 │   │   │   ├── base.adapter.ts  # Interface quy chuẩn chung
@@ -78,9 +79,11 @@ vps-dashboard/ (ZenPanel)
 │   │   │   ├── file.service.ts    # File Manager API (Upload, Download, Edit)
 │   │   │   ├── site.service.ts    # Quản lý Domain & Website isolation
 │   │   │   ├── firewall.service.ts# Quản lý port & firewall rules
-│   │   │   └── docker.service.ts  # Quản lý Containers & App Store
+│   │   │   ├── docker.service.ts  # Quản lý Containers & App Store
+│   │   │   └── tunnel.service.ts  # Cloudflare Quick Tunnel -> domain *.trycloudflare.com
 │   │   ├── ws/                  # WebSocket truyền thông tin Realtime & Web Terminal
-│   │   └── server.ts            # Fastify / Express API Server
+│   │   ├── config.ts            # Đọc biến môi trường ZENPANEL_*
+│   │   └── server.ts            # Fastify API Server
 │   └── scripts/
 │       ├── install.sh           # Script 1 dòng cho Linux (như vpanel.vn)
 │       └── install.ps1          # Script 1 dòng cho Windows
@@ -113,4 +116,5 @@ vps-dashboard/ (ZenPanel)
 ## 🤖 Chỉ dẫn quan trọng cho AI phát triển tiếp theo (Instructions for AI)
 1. **Dự án tên là `ZenPanel`**. Luôn sử dụng thương hiệu này trên toàn bộ UI, API, comment và tài liệu.
 2. **Quy tắc OS Agnostic**: Mọi thao tác hệ thống (đọc RAM, CPU, danh sách tiến trình, mở port tường lửa, chạy service) **bắt buộc** phải thông qua `base.adapter.ts`, phân nhánh thực thi sang `windows.adapter.ts` hoặc `linux.adapter.ts`. Không bao giờ gọi trực tiếp lệnh OS độc lập trong controller hay view.
-3. **Phong cách giao diện**: Giữ vững ngôn ngữ thiết kế **Jupiter Style** kết hợp **Dark Glassmorphism** (tone nền Dark Slate, bo góc `rounded-2xl`, hiển thị tài nguyên thời gian thực dạng thanh progress bar, hỗ trợ cả Desktop lẫn Mobile).
+3. **Truy cập công khai qua Cloudflare Tunnel**: Mỗi lần agent khởi động, `tunnel.service.ts` chạy `cloudflared tunnel --url http://127.0.0.1:<port>` để lấy domain `https://<random>.trycloudflare.com` (không cần tài khoản Cloudflare, không cần mở port). URL **phải được in nổi bật ra console** qua `banner.ts`; nếu tunnel rớt và được cấp domain mới thì in lại. Tìm `cloudflared` theo thứ tự: `ZENPANEL_CLOUDFLARED` → PATH → `~/.zenpanel/bin` → tự tải từ GitHub Releases (tên file theo OS do adapter quyết định). Tắt bằng `ZENPANEL_TUNNEL=0`.
+4. **Phong cách giao diện**: Giữ vững ngôn ngữ thiết kế **Jupiter Style** kết hợp **Dark Glassmorphism** (tone nền Dark Slate, bo góc `rounded-2xl`, hiển thị tài nguyên thời gian thực dạng thanh progress bar, hỗ trợ cả Desktop lẫn Mobile).
