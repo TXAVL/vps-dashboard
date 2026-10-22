@@ -335,6 +335,17 @@ export interface FirewallPersistence {
   tool: string;
 }
 
+export interface AiAccountKey {
+  id: string;
+  name: string;
+  key: string;
+  masked: string;
+  status: 'active' | 'rate_limited' | 'error';
+  lastUsedAt?: string;
+  rateLimitedUntil?: number;
+  errorMsg?: string;
+}
+
 export interface AiProvider {
   id: 'openai' | 'anthropic' | 'gemini' | 'openrouter' | 'nvidia';
   label: string;
@@ -346,6 +357,9 @@ export interface AiProvider {
   savedAt: string | null;
   lastTest: { ok: boolean; at: string; message: string } | null;
   defaultModel: string | null;
+  accounts?: AiAccountKey[];
+  totalAccounts?: number;
+  activeAccounts?: number;
 }
 
 export interface Stack {

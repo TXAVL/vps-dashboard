@@ -12,6 +12,23 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-22',
     highlights: [
       {
+        title: 'AI Gateway: Tự động Xoay vòng Tài khoản (Multi-Account Rotation) & Sub AI Agents',
+        items: [
+          'Hỗ trợ cấu hình nhiều API Key / Accounts cho cùng một nhà cung cấp AI (Gemini, Claude, OpenAI, OpenRouter...).',
+          'Cơ chế Xoay vòng Round-Robin thông minh: phân phối đều tải giữa các tài khoản còn hoạt động.',
+          'Smart Failover: khi một tài khoản bị lỗi quá hạn ngạch (429 Rate Limit) hoặc lỗi mạng, Gateway tự động chuyển sang tài khoản tiếp theo ngay lập tức mà không làm đứt đoạn request của client.',
+          'Sub AI Agents: tự do tạo các trợ lý AI chuyên biệt (Lập trình, Dịch thuật, Content, Phân tích dữ liệu...) với System Prompt, Temperature và Model đích riêng biệt.',
+          'Tương thích hoàn hảo chuẩn OpenAI: gọi trực tiếp qua n8n, Flowise, NextChat bằng model "agent/<id>" hoặc "<id>".',
+          'Nhật ký & Logs chi tiết: hiển thị tài khoản xử lý (Account #1, #2), ghi chú xoay vòng (Rotated From), Live Console Log realtime, sao chép logs và tải file JSON.',
+        ],
+      },
+      {
+        title: 'Nhận diện Phiên bản Cập nhật Chính xác & Nâng cấp 1-Click',
+        items: [
+          'Phân biệt chính xác giữa các phiên bản đã tải về trên máy và phiên bản đang chạy: hiển thị rõ Badge "Đang chạy", "Đã tải" và nút "Cài bản này" thay vì bắt tải lại.',
+        ],
+      },
+      {
         title: 'Quy chuẩn Định dạng Dữ liệu toàn diện (Class txaformat)',
         items: [
           'Tích hợp class txaformat toàn bộ website: chuẩn hoá làm tròn 2 chữ số (twoDigits), dung lượng (size), tốc độ mạng (speed), tỷ lệ % (percent), ETA còn lại (timeLeft), ngày giờ (days, time, datetime).',

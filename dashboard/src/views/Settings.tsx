@@ -689,22 +689,40 @@ function UpdateCard() {
           <Spinner />
         ) : (
           <div className="space-y-2">
-            {remote.data.map((v) => (
-              <div key={`${v.ref}-${v.sha}`} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-700/50 bg-ink-950/50 px-4 py-3">
-                <GitBranch className="size-4 text-zen-blue" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-slate-100">
-                    {v.label} · v{v.version}
+            {remote.data.map((v) => {
+              const downloadedPkg = packages.data?.find((p) => p.sha === v.sha || p.version === v.version);
+              const isCurrent = (update && v.version === update.current) || Boolean(downloadedPkg?.current);
+              return (
+                <div key={`${v.ref}-${v.sha}`} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-700/50 bg-ink-950/50 px-4 py-3">
+                  <GitBranch className="size-4 text-zen-blue" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-slate-100">
+                        {v.label} · v{v.version}
+                      </span>
+                      {isCurrent && <Badge tone="green">Đang chạy</Badge>}
+                      {!isCurrent && downloadedPkg && <Badge tone="blue">Đã tải</Badge>}
+                    </div>
+                    <div className="mono truncate text-xs text-slate-500">
+                      {v.sha.slice(0, 7)} {v.message && `· ${v.message}`}
+                    </div>
                   </div>
-                  <div className="mono truncate text-xs text-slate-500">
-                    {v.sha.slice(0, 7)} {v.message && `· ${v.message}`}
-                  </div>
+                  {isCurrent ? (
+                    <Button size="xs" variant="ghost" disabled>
+                      Đang dùng
+                    </Button>
+                  ) : downloadedPkg ? (
+                    <Button size="xs" variant="soft" icon={Rocket} onClick={() => void install(downloadedPkg)}>
+                      Cài bản này
+                    </Button>
+                  ) : (
+                    <Button size="xs" icon={Download} onClick={() => void download(v.sha)}>
+                      Tải về
+                    </Button>
+                  )}
                 </div>
-                <Button size="xs" icon={Download} onClick={() => void download(v.sha)}>
-                  Tải về
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>

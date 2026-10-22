@@ -9,6 +9,19 @@ const SETTINGS_FILE = 'ai-gateway.json';
 const LOG_FILE = 'ai-requests.json';
 const MAX_LOG = 300;
 
+export interface SubAgent {
+  id: string;
+  name: string;
+  description: string;
+  targetModel: string;
+  systemPrompt: string;
+  temperature?: number;
+  maxTokens?: number;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface GatewaySettings {
   enabled: boolean;
   apiKey: string;
@@ -21,16 +34,22 @@ export interface GatewaySettings {
 export interface GatewayLog {
   at: string;
   model: string;
+  resolvedModel?: string;
   provider: string;
+  accountName?: string | null;
+  subAgent?: string | null;
   status: number;
   ms: number;
   stream: boolean;
-  source: 'api' | 'playground';
+  source: 'api' | 'playground' | 'agent';
   promptTokens: number | null;
   completionTokens: number | null;
   error: string | null;
   fallbackFrom: string | null;
+  rotatedFrom?: string | null;
 }
+
+const AGENTS_FILE = 'ai-agents.json';
 
 /** API key dùng chung của gateway luôn có prefix "tzp_" */
 const KEY_PREFIX = 'tzp_';
@@ -46,11 +65,12 @@ const BOT_IDENTITY =
 type ChatMessage = { role: string; content: unknown };
 
 /** Gộp vào 1 system message: system prompt của người dùng trước, danh tính bắt buộc ở cuối để không bị ghi đè */
-function withIdentity(messages: unknown): ChatMessage[] {
+function withIdentity(messages: unknown, extraSystemPrompt?: string): ChatMessage[] {
   const list = Array.isArray(messages) ? (messages as ChatMessage[]) : [];
   const userSystem = list.filter((m) => m?.role === 'system' || m?.role === 'developer').map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)));
   const rest = list.filter((m) => m?.role !== 'system' && m?.role !== 'developer');
-  return [{ role: 'system', content: [...userSystem, BOT_IDENTITY].join('\n\n') }, ...rest];
+  const systems = [...(extraSystemPrompt ? [extraSystemPrompt] : []), ...userSystem, BOT_IDENTITY];
+  return [{ role: 'system', content: systems.join('\n\n') }, ...rest];
 }
 
 function settings(): GatewaySettings {
@@ -120,13 +140,101 @@ export class AiGatewayService {
     writeJson(LOG_FILE, [entry, ...this.logs()].slice(0, MAX_LOG));
   }
 
-  /** Danh sách model gộp từ mọi nhà cung cấp đã kết nối (định dạng OpenAI /v1/models) */
-  async allModels(): Promise<{ id: string; name: string; provider: string; contextLength: number | null; pricing: { prompt: number; completion: number } | null }[]> {
+  clearLogs(): void {
+    writeJson(LOG_FILE, []);
+  }
+
+  // ------------------------------------------------------------------ Quản lý Sub AI Agents
+  getSubAgents(): SubAgent[] {
+    return readJson<SubAgent[]>(AGENTS_FILE, []);
+  }
+
+  saveSubAgent(input: {
+    id?: string;
+    name: string;
+    description?: string;
+    targetModel?: string;
+    systemPrompt: string;
+    temperature?: number;
+    maxTokens?: number;
+    enabled?: boolean;
+  }): SubAgent {
+    const list = this.getSubAgents();
+    const now = new Date().toISOString();
+
+    const cleanName = input.name.trim();
+    if (!cleanName) throw badRequest('Tên Sub-Agent không được để trống');
+
+    const slug = (input.id || cleanName)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 32);
+
+    const existingIndex = list.findIndex((a) => a.id === (input.id || slug));
+    const agent: SubAgent = {
+      id: input.id || slug,
+      name: cleanName,
+      description: input.description?.trim() || '',
+      targetModel: input.targetModel?.trim() || 'auto',
+      systemPrompt: input.systemPrompt?.trim() || 'Bạn là trợ lý AI chuyên nghiệp.',
+      temperature: input.temperature !== undefined ? Number(input.temperature) : 0.7,
+      maxTokens: input.maxTokens ? Number(input.maxTokens) : undefined,
+      enabled: input.enabled !== undefined ? Boolean(input.enabled) : true,
+      createdAt: existingIndex >= 0 ? list[existingIndex].createdAt : now,
+      updatedAt: now,
+    };
+
+    if (existingIndex >= 0) {
+      list[existingIndex] = agent;
+    } else {
+      list.push(agent);
+    }
+
+    writeJson(AGENTS_FILE, list);
+    return agent;
+  }
+
+  deleteSubAgent(id: string): void {
+    const list = this.getSubAgents().filter((a) => a.id !== id);
+    writeJson(AGENTS_FILE, list);
+  }
+
+  findSubAgent(requested: unknown): SubAgent | null {
+    if (typeof requested !== 'string' || !requested) return null;
+    const req = requested.toLowerCase().trim();
+    const agents = this.getSubAgents().filter((a) => a.enabled);
+    return (
+      agents.find(
+        (a) =>
+          a.id.toLowerCase() === req ||
+          `agent/${a.id.toLowerCase()}` === req ||
+          `agent:${a.id.toLowerCase()}` === req ||
+          a.name.toLowerCase() === req,
+      ) ?? null
+    );
+  }
+
+  /** Danh sách model gộp từ mọi nhà cung cấp đã kết nối + Sub-Agents (định dạng OpenAI /v1/models) */
+  async allModels(): Promise<{ id: string; name: string; provider: string; contextLength: number | null; pricing: { prompt: number; completion: number } | null; description?: string }[]> {
     const connected = this.ai.list().filter((p) => p.configured);
     const lists = await Promise.all(
       connected.map(async (p) => (await this.ai.models(p.id).catch(() => [])).map((m) => ({ ...m, id: `${p.id}/${m.id}`, provider: p.id }))),
     );
-    return lists.flat();
+    const models = lists.flat();
+
+    // Thêm các Sub-Agents vào danh sách model để n8n, Open WebUI có thể chọn trực tiếp
+    const subAgents = this.getSubAgents().filter((a) => a.enabled);
+    const agentModels = subAgents.map((a) => ({
+      id: `agent/${a.id}`,
+      name: `🤖 ${a.name}`,
+      provider: 'subagent',
+      contextLength: null,
+      pricing: null,
+      description: a.description || `Sub-Agent: ${a.name} (chạy qua ${a.targetModel})`,
+    }));
+
+    return [...agentModels, ...models];
   }
 
   /** Model sẽ dùng: model trong request > model mặc định của gateway > model mặc định của nhà cung cấp đầu tiên */
@@ -148,7 +256,6 @@ export class AiGatewayService {
     throw badRequest('Chưa có model mặc định. Chọn model mặc định trong trang AI Gateway.');
   }
 
-
   /** Thông tin key (giống GET /api/v1/key của OpenRouter) */
   keyInfo() {
     const s = settings();
@@ -159,6 +266,7 @@ export class AiGatewayService {
         enabled: s.enabled,
         default_model: s.defaultModel,
         fallbacks: s.fallbacks,
+        sub_agents_count: this.getSubAgents().length,
         usage_24h: {
           requests: day.length,
           success: day.filter((l) => l.status >= 200 && l.status < 300).length,
@@ -170,13 +278,20 @@ export class AiGatewayService {
     };
   }
 
-  /** Nhà cung cấp đã kết nối + model mặc định */
+  /** Nhà cung cấp đã kết nối + model mặc định + số accounts trong pool */
   providers() {
     return {
       data: this.ai
         .list()
         .filter((p) => p.configured)
-        .map((p) => ({ id: p.id, name: p.label, default_model: p.defaultModel ? `${p.id}/${p.defaultModel}` : null, status: p.lastTest?.ok ? 'ok' : 'error' })),
+        .map((p) => ({
+          id: p.id,
+          name: p.label,
+          default_model: p.defaultModel ? `${p.id}/${p.defaultModel}` : null,
+          total_accounts: p.totalAccounts,
+          active_accounts: p.activeAccounts,
+          status: p.lastTest?.ok ? 'ok' : 'error',
+        })),
     };
   }
 
@@ -200,7 +315,7 @@ export class AiGatewayService {
   async modelInfo(id: string) {
     const model = (await this.allModels()).find((m) => m.id === id);
     if (!model) throw new HttpError(404, `Không tìm thấy model "${id}"`);
-    return { id: model.id, object: 'model', owned_by: model.provider, name: model.name, context_length: model.contextLength, pricing: model.pricing };
+    return { id: model.id, object: 'model', owned_by: model.provider, name: model.name, context_length: model.contextLength, pricing: model.pricing, description: model.description };
   }
 
   /** /completions kiểu cũ (prompt -> text): chuyển sang chat completions */
@@ -241,6 +356,7 @@ export class AiGatewayService {
       at: new Date().toISOString(),
       model: body.model,
       provider,
+      accountName: `${cred.account.name} (${cred.account.masked})`,
       status: res.status,
       ms: Date.now() - started,
       stream: false,
@@ -254,76 +370,161 @@ export class AiGatewayService {
   }
 
   /**
-   * Gọi chat completions qua nhà cung cấp tương ứng. Trả về Response gốc (giữ nguyên stream SSE).
-   * Model chính lỗi 429/5xx thì thử lần lượt các model dự phòng.
+   * Gọi chat completions với hỗ trợ:
+   * 1. Sub AI Agent tự động điều hướng và tiêm system prompt
+   * 2. Tự động xoay vòng qua các Accounts / API keys của nhà cung cấp (Multi-account rotation)
+   * 3. Tự động đổi key khi bị 429 Rate Limit
+   * 4. Model Fallback dự phòng khi toàn bộ keys của provider lỗi
    */
   async chat(body: Record<string, unknown>, source: GatewayLog['source']): Promise<Response> {
+    let subAgentName: string | null = null;
+    let extraSystemPrompt: string | undefined;
+
+    // Kiểm tra Sub AI Agent
+    const matchedSub = this.findSubAgent(body.model) || this.findSubAgent(body.subAgent);
+    if (matchedSub) {
+      subAgentName = matchedSub.name;
+      extraSystemPrompt = matchedSub.systemPrompt;
+      if (matchedSub.temperature !== undefined && body.temperature === undefined) {
+        body.temperature = matchedSub.temperature;
+      }
+      // Định hướng sang model của SubAgent
+      body.model = matchedSub.targetModel;
+    }
+
     const primary = this.resolveModel(body.model);
-    body = { ...body, messages: withIdentity(body.messages) };
+    body = { ...body, messages: withIdentity(body.messages, extraSystemPrompt) };
     const candidates = [primary, ...settings().fallbacks.filter((m) => m !== primary)];
     const stream = Boolean(body.stream);
     let lastError: HttpError | null = null;
 
-    for (const [index, full] of candidates.entries()) {
+    for (const [candidateIndex, full] of candidates.entries()) {
       const { provider, model } = parseModel(full);
-      const cred = this.ai.credentials(provider);
-      const started = Date.now();
-      const base: GatewayLog = {
-        at: new Date().toISOString(),
-        model: full,
-        provider,
-        status: 0,
-        ms: 0,
-        stream,
-        source,
-        promptTokens: null,
-        completionTokens: null,
-        error: null,
-        fallbackFrom: index > 0 ? primary : null,
-      };
-      if (!cred) {
-        lastError = badRequest(`Chưa kết nối API key cho ${provider}`);
-        this.record({ ...base, status: 400, error: lastError.message });
-        continue;
-      }
-      let res: Response;
-      try {
-        res = await fetch(`${cred.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cred.key}`, 'HTTP-Referer': 'https://github.com/TXAVL/vps-dashboard', 'X-Title': 'ZenPanel' },
-          body: JSON.stringify({ ...body, model }),
-          signal: AbortSignal.timeout(300_000),
+      const accounts = this.ai.getActiveAccounts(provider);
+
+      if (accounts.length === 0) {
+        lastError = badRequest(`Chưa kết nối API key cho nhà cung cấp ${provider}`);
+        this.record({
+          at: new Date().toISOString(),
+          model: full,
+          resolvedModel: full,
+          provider,
+          subAgent: subAgentName,
+          status: 400,
+          ms: 0,
+          stream,
+          source,
+          promptTokens: null,
+          completionTokens: null,
+          error: lastError.message,
+          fallbackFrom: candidateIndex > 0 ? primary : null,
         });
-      } catch (err) {
-        lastError = new HttpError(502, `Không kết nối được ${provider}: ${(err as Error).message}`);
-        this.record({ ...base, status: 502, ms: Date.now() - started, error: lastError.message });
         continue;
       }
-      const retryable = res.status === 429 || res.status >= 500;
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        const message = (() => {
-          try {
-            const j = JSON.parse(text) as { error?: { message?: string } | string };
-            return typeof j.error === 'string' ? j.error : (j.error?.message ?? text);
-          } catch {
-            return text;
+
+      // Xoay vòng qua các account trong Pool của provider
+      let rotatedNote: string | null = null;
+      let providerSucceeded = false;
+
+      for (let accIdx = 0; accIdx < accounts.length; accIdx++) {
+        const { account, key, baseUrl } = accounts[accIdx];
+        const started = Date.now();
+        const base: GatewayLog = {
+          at: new Date().toISOString(),
+          model: full,
+          resolvedModel: full,
+          provider,
+          accountName: `${account.name} (${account.masked})`,
+          subAgent: subAgentName,
+          status: 0,
+          ms: 0,
+          stream,
+          source,
+          promptTokens: null,
+          completionTokens: null,
+          error: null,
+          fallbackFrom: candidateIndex > 0 ? primary : null,
+          rotatedFrom: rotatedNote,
+        };
+
+        let res: Response;
+        try {
+          res = await fetch(`${baseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${key}`,
+              'HTTP-Referer': 'https://github.com/TXAVL/vps-dashboard',
+              'X-Title': 'ZenPanel AI Gateway',
+            },
+            body: JSON.stringify({ ...body, model }),
+            signal: AbortSignal.timeout(300_000),
+          });
+        } catch (err) {
+          lastError = new HttpError(502, `Không kết nối được ${provider} (${account.name}): ${(err as Error).message}`);
+          this.record({ ...base, status: 502, ms: Date.now() - started, error: lastError.message });
+          // Thử account tiếp theo trong pool nếu còn
+          if (accIdx < accounts.length - 1) {
+            rotatedNote = `${account.name} mất kết nối, xoay sang account tiếp theo`;
+            continue;
           }
-        })().slice(0, 500);
-        lastError = new HttpError(res.status, `${provider}: ${message || res.statusText}`);
-        this.record({ ...base, status: res.status, ms: Date.now() - started, error: lastError.message });
-        if (retryable && index < candidates.length - 1) continue;
-        throw lastError;
+          break;
+        }
+
+        const isRateLimit = res.status === 429;
+        const retryable = isRateLimit || res.status >= 500;
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          const message = (() => {
+            try {
+              const j = JSON.parse(text) as { error?: { message?: string } | string };
+              return typeof j.error === 'string' ? j.error : (j.error?.message ?? text);
+            } catch {
+              return text;
+            }
+          })().slice(0, 500);
+
+          lastError = new HttpError(res.status, `${provider} [${account.name}]: ${message || res.statusText}`);
+
+          // Nếu bị Rate Limit (429): đánh dấu phạt account này 60 giây và tự động xoay sang account tiếp theo!
+          if (isRateLimit) {
+            this.ai.markAccountRateLimited(provider, account.id, 60_000, message);
+          }
+
+          this.record({ ...base, status: res.status, ms: Date.now() - started, error: lastError.message });
+
+          if (retryable && accIdx < accounts.length - 1) {
+            // Còn account khác trong pool: tự động xoay vòng sang account kế tiếp!
+            rotatedNote = `${account.name} (${account.masked}) bị ${isRateLimit ? '429 Rate Limit' : 'lỗi server'}, tự đổi sang account tiếp theo`;
+            continue;
+          }
+          break;
+        }
+
+        // Thành công!
+        providerSucceeded = true;
+        if (stream) {
+          this.record({ ...base, status: res.status, ms: Date.now() - started });
+          return res;
+        }
+
+        // Không stream: đọc usage thống kê token
+        const json = (await res.json()) as { usage?: { prompt_tokens?: number; completion_tokens?: number } };
+        this.record({
+          ...base,
+          status: res.status,
+          ms: Date.now() - started,
+          promptTokens: json.usage?.prompt_tokens ?? null,
+          completionTokens: json.usage?.completion_tokens ?? null,
+        });
+        return new Response(JSON.stringify(json), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
-      if (stream) {
-        this.record({ ...base, status: res.status, ms: Date.now() - started });
-        return res;
-      }
-      // Không stream: đọc usage để thống kê token rồi trả lại nguyên JSON
-      const json = (await res.json()) as { usage?: { prompt_tokens?: number; completion_tokens?: number } };
-      this.record({ ...base, status: res.status, ms: Date.now() - started, promptTokens: json.usage?.prompt_tokens ?? null, completionTokens: json.usage?.completion_tokens ?? null });
-      return new Response(JSON.stringify(json), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+      // Nếu đã có response thành công thì đã return ở trên. Nếu không thành công và còn model fallback, vòng lặp candidate tiếp tục.
+      if (providerSucceeded) break;
     }
-    throw lastError ?? new HttpError(502, 'Không có model nào khả dụng');
+
+    throw lastError ?? new HttpError(502, 'Tất cả tài khoản và model dự phòng đều không phản hồi');
   }
 }

@@ -22,12 +22,40 @@ export async function aiPanelRoutes(app: FastifyInstance, deps: { ai: AiService;
     ai.setDefaultModel((req.params as Params).id, (req.body as { model?: string | null } | undefined)?.model ?? null);
     return ai.list();
   });
+  app.post('/api/ai/providers/:id/accounts', async (req) => {
+    const body = (req.body ?? {}) as { key?: string; name?: string };
+    await ai.addAccount((req.params as Params).id, body.key ?? '', body.name);
+    return ai.list();
+  });
+  app.delete('/api/ai/providers/:id/accounts/:keyId', async (req) => {
+    const params = req.params as { id: string; keyId: string };
+    ai.removeAccount(params.id, params.keyId);
+    return ai.list();
+  });
+  app.put('/api/ai/providers/:id/accounts/:keyId/reset', async (req) => {
+    const params = req.params as { id: string; keyId: string };
+    ai.resetAccountStatus(params.id, params.keyId);
+    return ai.list();
+  });
+
   app.get('/api/ai/models', async () => gateway.allModels());
+
+  // Quản lý Sub AI Agents
+  app.get('/api/ai/subagents', async () => gateway.getSubAgents());
+  app.post('/api/ai/subagents', async (req) => gateway.saveSubAgent((req.body ?? {}) as Parameters<typeof gateway.saveSubAgent>[0]));
+  app.delete('/api/ai/subagents/:id', async (req) => {
+    gateway.deleteSubAgent((req.params as Params).id);
+    return { ok: true };
+  });
 
   app.get('/api/ai/gateway', async () => gateway.getSettings());
   app.put('/api/ai/gateway', async (req) => gateway.update((req.body ?? {}) as Record<string, never>));
   app.post('/api/ai/gateway/regenerate', async () => gateway.regenerateKey());
   app.get('/api/ai/gateway/logs', async () => gateway.logs());
+  app.delete('/api/ai/gateway/logs', async () => {
+    gateway.clearLogs();
+    return { ok: true };
+  });
 
   // Playground trong panel dùng chung logic định tuyến với gateway
   app.post('/api/ai/chat', async (req, reply) => pipe(reply, await gateway.chat((req.body ?? {}) as Record<string, unknown>, 'playground')));
