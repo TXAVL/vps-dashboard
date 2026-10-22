@@ -131,6 +131,9 @@ else
   exit 1
 fi
 
+step "Cài lệnh tắt: zenpanel"
+install -m 755 "$APP_DIR/agent/scripts/zenpanel.sh" /usr/local/bin/zenpanel
+
 step "Chờ ZenPanel khởi động và Cloudflare cấp domain"
 for _ in $(seq 1 60); do
   if $LOG_CMD 2>/dev/null | grep -qE 'Public URL'; then break; fi
@@ -141,6 +144,5 @@ done
 $LOG_CMD 2>/dev/null | awk '/╭/{buf=""} {buf=buf $0 "\n"} /╰/{last=buf} END{printf "%s", last}'
 
 green "✔ Cài đặt ZenPanel hoàn tất!"
-echo "  • Xem log:          $LOG_CMD"
-echo "  • Quên mật khẩu:    cd $APP_DIR/agent && ZENPANEL_DATA_DIR=$DATA_DIR npm run reset-password:prod"
-echo "  • Cập nhật:         chạy lại lệnh cài đặt này"
+echo "  • Tự chạy lại khi khởi động lại VPS: đã bật"
+echo "  • Lệnh nhanh: zenpanel status | restart | logs | url | reset-password | update"

@@ -110,6 +110,13 @@ if (-not (Get-NetFirewallRule -DisplayName "ZenPanel Panel $Port" -ErrorAction S
 if (Test-Path $LogFile) { Remove-Item $LogFile -Force }
 Start-ScheduledTask -TaskName $TaskName
 
+Step 'Cài lệnh tắt: zenpanel'
+$cliDir = 'C:\ZenPanelin'
+New-Item -ItemType Directory -Force $cliDir | Out-Null
+Copy-Item (Join-Path $AppDir 'agent\scripts\zenpanel.cmd') (Join-Path $cliDir 'zenpanel.cmd') -Force
+$machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+if ($machinePath -notlike "*$cliDir*") { [Environment]::SetEnvironmentVariable('Path', "$machinePath;$cliDir", 'Machine') }
+
 Step 'Chờ ZenPanel khởi động và Cloudflare cấp domain'
 for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep -Seconds 2
@@ -125,6 +132,5 @@ if (Test-Path $LogFile) {
 }
 
 Ok "`n✔ Cài đặt ZenPanel hoàn tất!"
-Write-Host "  • Xem log:          Get-Content '$LogFile' -Wait"
-Write-Host "  • Quên mật khẩu:    cd '$AppDir\agent'; `$env:ZENPANEL_DATA_DIR='$DataDir'; npm run reset-password:prod"
-Write-Host '  • Cập nhật:         chạy lại lệnh cài đặt này'
+Write-Host '  • Tự chạy lại khi khởi động lại Windows: đã bật (Scheduled Task SYSTEM)'
+Write-Host '  • Lệnh nhanh (mở cửa sổ PowerShell/CMD mới): zenpanel status | restart | logs | url | reset-password | update'
