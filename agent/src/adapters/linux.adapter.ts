@@ -1,12 +1,13 @@
 // ZenPanel - Adapter cho Linux (Ubuntu, Debian, CentOS, Alpine...): procfs, systemd/OpenRC, ufw/firewalld/iptables
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { chmod, readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import type {
   DiskUsage,
+  FirewallPersistence,
   FirewallRule,
   FirewallRuleInput,
   FirewallStatus,
@@ -428,6 +429,7 @@ export class LinuxAdapter implements OSAdapter {
         }
       }
       await execOk('iptables', ['-P', 'INPUT', enabled ? 'DROP' : 'ACCEPT']);
+      await this.saveIptables();
     } else throw new Error('Không có tường lửa nào được cài trên máy');
   }
 
@@ -552,6 +554,7 @@ export class LinuxAdapter implements OSAdapter {
         args.push('-j', rule.action === 'allow' ? 'ACCEPT' : 'DROP');
         await execOk('iptables', args);
       }
+      await this.saveIptables();
       return;
     }
     throw new Error('Không có tường lửa nào được cài trên máy');
@@ -564,7 +567,10 @@ export class LinuxAdapter implements OSAdapter {
     else if (kind === 'port') await execOk('firewall-cmd', ['--permanent', `--remove-port=${value}`]);
     else if (kind === 'service') await execOk('firewall-cmd', ['--permanent', `--remove-service=${value}`]);
     else if (kind === 'rich') await execOk('firewall-cmd', ['--permanent', `--remove-rich-rule=${Buffer.from(value, 'base64url').toString()}`]);
-    else if (kind === 'ipt') await execOk('iptables', ['-D', 'INPUT', ...tokenize(Buffer.from(value, 'base64url').toString())]);
+    else if (kind === 'ipt') {
+      await execOk('iptables', ['-D', 'INPUT', ...tokenize(Buffer.from(value, 'base64url').toString())]);
+      await this.saveIptables();
+    }
     else throw new Error('Mã luật tường lửa không hợp lệ');
     if (kind === 'port' || kind === 'service' || kind === 'rich') await execOk('firewall-cmd', ['--reload']);
   }
@@ -711,5 +717,55 @@ export class LinuxAdapter implements OSAdapter {
     }
     const child = spawn('setsid', ['/bin/bash', '-c', command], { detached: true, stdio: 'ignore', env: { ...process.env, ...env } });
     child.unref();
+  }
+
+  // ---------------------------------------------------------------- Lưu quy tắc tường lửa vĩnh viễn
+
+  async firewallPersistence(): Promise<FirewallPersistence> {
+    const backend = await this.firewallBackend();
+    if (backend === 'ufw') return { required: false, installed: true, tool: 'UFW tự lưu quy tắc' };
+    if (backend === 'firewalld') return { required: false, installed: true, tool: 'firewalld (--permanent)' };
+    if (backend === 'none') return { required: false, installed: false, tool: 'Không có tường lửa' };
+    if (await this.findExecutable('netfilter-persistent')) return { required: true, installed: true, tool: 'iptables-persistent' };
+    if (existsSync('/usr/libexec/iptables/iptables.init') || existsSync('/etc/sysconfig/iptables-config')) return { required: true, installed: true, tool: 'iptables-services' };
+    return { required: true, installed: false, tool: (await this.findExecutable('apt-get')) ? 'iptables-persistent' : 'iptables-services' };
+  }
+
+  async installFirewallPersistence(): Promise<void> {
+    const env = { ...process.env, DEBIAN_FRONTEND: 'noninteractive' };
+    const opts = { timeout: 600_000, env };
+    if (await this.findExecutable('apt-get')) {
+      // Trả lời trước câu hỏi "lưu quy tắc hiện tại?" để apt không dừng lại chờ nhập
+      await execOk('debconf-set-selections', [], {
+        input: 'iptables-persistent iptables-persistent/autosave_v4 boolean true\niptables-persistent iptables-persistent/autosave_v6 boolean true\n',
+      });
+      await execOk('apt-get', ['update'], opts);
+      await execOk('apt-get', ['install', '-y', 'iptables-persistent'], opts);
+      await exec('systemctl', ['enable', 'netfilter-persistent']);
+    } else if ((await this.findExecutable('dnf')) || (await this.findExecutable('yum'))) {
+      const pm = (await this.findExecutable('dnf')) ? 'dnf' : 'yum';
+      await execOk(pm, ['install', '-y', 'iptables-services'], opts);
+      await exec('systemctl', ['enable', 'iptables']);
+    } else if (await this.findExecutable('apk')) {
+      await execOk('apk', ['add', 'iptables-openrc'], opts);
+      await exec('rc-update', ['add', 'iptables', 'default']);
+    } else throw new Error('Không nhận diện được trình quản lý gói để cài iptables-persistent');
+    await this.saveIptables();
+  }
+
+  /** Ghi quy tắc iptables hiện tại ra file để tự nạp lại khi khởi động */
+  private async saveIptables(): Promise<void> {
+    if (await this.findExecutable('netfilter-persistent')) {
+      await exec('netfilter-persistent', ['save']);
+      return;
+    }
+    const save = await exec('sh', ['-c', 'iptables-save']);
+    if (save.code !== 0) return;
+    for (const file of ['/etc/sysconfig/iptables', '/etc/iptables/rules.v4', '/etc/iptables/rules-save']) {
+      if (existsSync(path.dirname(file))) {
+        await writeFile(file, save.stdout);
+        return;
+      }
+    }
   }
 }

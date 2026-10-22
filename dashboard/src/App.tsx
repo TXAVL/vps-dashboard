@@ -6,6 +6,7 @@ import { PanelProvider } from './lib/panel';
 import { FeedbackProvider } from './components/feedback';
 import { JobsProvider } from './components/jobs';
 import { TooltipLayer } from './components/TooltipLayer';
+import { WhatsNewProvider } from './components/WhatsNew';
 import { Shell } from './components/layout/Shell';
 import { Spinner } from './components/ui';
 import { Login } from './views/Login';
@@ -23,6 +24,7 @@ const Databases = lazy(() => import('./views/Databases'));
 const Security = lazy(() => import('./views/Security'));
 const Settings = lazy(() => import('./views/Settings'));
 const Tasks = lazy(() => import('./views/Tasks'));
+const Speedtest = lazy(() => import('./views/Speedtest'));
 
 export function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -36,6 +38,7 @@ export function App() {
       ) : (
         <PanelProvider>
           <JobsProvider>
+          <WhatsNewProvider>
           <Shell>
             <Suspense fallback={<Spinner />}>
               <Routes>
@@ -52,10 +55,12 @@ export function App() {
                 <Route path="/security" element={<Security />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/tasks" element={<Tasks />} />
+                <Route path="/speedtest" element={<Speedtest />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
           </Shell>
+          </WhatsNewProvider>
           </JobsProvider>
         </PanelProvider>
       )}

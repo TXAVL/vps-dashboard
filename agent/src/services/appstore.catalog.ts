@@ -1,6 +1,6 @@
 // ZenPanel - Danh mục ứng dụng 1-Click (Docker Compose)
 
-export type AppCategory = 'web' | 'database' | 'tools' | 'devops' | 'storage' | 'network';
+export type AppCategory = 'web' | 'database' | 'tools' | 'devops' | 'storage' | 'network' | 'ai';
 export type DatabaseEngine = 'mysql' | 'mariadb' | 'postgres' | 'redis' | 'mongodb';
 
 export interface AppParam {
@@ -10,6 +10,19 @@ export interface AppParam {
   default?: string | number;
   /** Tự sinh mật khẩu ngẫu nhiên nếu người dùng để trống */
   generate?: boolean;
+  /** Được phép để trống */
+  optional?: boolean;
+  hint?: string;
+}
+
+/** API key AI đã lưu trong ZenPanel (Cài đặt → AI), được bơm vào các app AI khi cài */
+export interface AiKey {
+  key: string;
+  baseUrl: string;
+}
+
+export interface ComposeContext {
+  ai: Partial<Record<'openai' | 'anthropic' | 'gemini' | 'openrouter' | 'nvidia', AiKey>>;
 }
 
 export interface AppDefinition {
@@ -24,7 +37,13 @@ export interface AppDefinition {
   /** Cổng chính để mở giao diện web của ứng dụng (key của param) */
   webPort?: string;
   database?: { engine: DatabaseEngine; passwordKey: string; portKey: string };
-  compose(p: Record<string, string>, container: string): string;
+  /** Giao diện web chạy HTTPS tự ký (tunnel cần --no-tls-verify) */
+  webScheme?: 'http' | 'https';
+  /** Dùng API key AI đã lưu: đổi key thì cần "Cấu hình lại" */
+  usesAiKeys?: boolean;
+  /** File cấu hình đi kèm docker-compose.yml (tên file -> nội dung) */
+  files?(p: Record<string, string>, ctx: ComposeContext): Record<string, string>;
+  compose(p: Record<string, string>, container: string, ctx: ComposeContext): string;
 }
 
 const q = (value: string) => JSON.stringify(value);
@@ -224,6 +243,7 @@ export const APP_CATALOG: AppDefinition[] = [
     website: 'https://www.portainer.io',
     params: [portParam('port', 'Cổng HTTPS', 9443)],
     webPort: 'port',
+    webScheme: 'https',
     compose: (p, c) =>
       service({
         container: c,
@@ -251,10 +271,23 @@ export const APP_CATALOG: AppDefinition[] = [
     category: 'devops',
     icon: 'Workflow',
     website: 'https://n8n.io',
-    params: [portParam('port', 'Cổng HTTP', 5678)],
+    params: [
+      portParam('port', 'Cổng HTTP', 5678),
+      { key: 'webhookUrl', label: 'Webhook URL public (tuỳ chọn)', type: 'text', optional: true, hint: 'Để trống lúc cài, sau đó dùng "Thiết lập n8n" để tự điền link public' },
+    ],
     webPort: 'port',
-    compose: (p, c) =>
-      service({ container: c, image: 'n8nio/n8n:latest', ports: [`${p.port}:5678`], env: { N8N_SECURE_COOKIE: 'false' }, volumes: { data: '/home/node/.n8n' } }),
+    compose: (p, c) => {
+      const env: Record<string, string> = { N8N_SECURE_COOKIE: 'false', GENERIC_TIMEZONE: 'Asia/Ho_Chi_Minh', TZ: 'Asia/Ho_Chi_Minh', N8N_RUNNERS_ENABLED: 'true' };
+      // Webhook URL phải là địa chỉ public thì webhook / OAuth callback mới hoạt động từ bên ngoài
+      if (p.webhookUrl) {
+        const url = p.webhookUrl.endsWith('/') ? p.webhookUrl : `${p.webhookUrl}/`;
+        env.WEBHOOK_URL = url;
+        env.N8N_EDITOR_BASE_URL = url;
+        env.N8N_HOST = new URL(url).hostname;
+        env.N8N_PROTOCOL = new URL(url).protocol.replace(':', '');
+      }
+      return service({ container: c, image: 'n8nio/n8n:latest', ports: [`${p.port}:5678`], env, volumes: { data: '/home/node/.n8n' } });
+    },
   },
   {
     id: 'gitea',
@@ -450,6 +483,120 @@ export const APP_CATALOG: AppDefinition[] = [
         ports: [`${p.port}:8081`],
         env: { ME_CONFIG_MONGODB_URL: p.mongoUrl, ME_CONFIG_BASICAUTH: 'false' },
         extra: ['extra_hosts:', '  - "host.docker.internal:host-gateway"'],
+      }),
+  },
+  // ------------------------------------------------------------ AI
+  {
+    id: 'litellm',
+    name: 'AI Gateway (LiteLLM)',
+    description: '1 endpoint chuẩn OpenAI cho mọi model: ChatGPT, Claude, Gemini, OpenRouter, NVIDIA. Giống OpenRouter nhưng tự host.',
+    category: 'ai',
+    icon: 'Waypoints',
+    website: 'https://docs.litellm.ai',
+    usesAiKeys: true,
+    params: [portParam('port', 'Cổng API', 4000), { key: 'masterKey', label: 'Master key (API key của gateway)', type: 'password', generate: true }],
+    webPort: 'port',
+    files: (_p, ctx) => {
+      // Định tuyến wildcard: gọi model "anthropic/<tên model>", "gemini/<tên model>"... qua cùng 1 endpoint
+      const routes: [keyof ComposeContext['ai'], string, string][] = [
+        ['openai', 'openai/*', 'OPENAI_API_KEY'],
+        ['anthropic', 'anthropic/*', 'ANTHROPIC_API_KEY'],
+        ['gemini', 'gemini/*', 'GEMINI_API_KEY'],
+        ['openrouter', 'openrouter/*', 'OPENROUTER_API_KEY'],
+        ['nvidia', 'nvidia_nim/*', 'NVIDIA_NIM_API_KEY'],
+      ];
+      const lines = ['# Managed by ZenPanel - sửa API key trong Cài đặt → AI rồi bấm "Cấu hình lại"', 'model_list:'];
+      for (const [provider, model, env] of routes) {
+        if (!ctx.ai[provider]) continue;
+        lines.push(`  - model_name: ${q(model)}`, '    litellm_params:', `      model: ${q(model)}`, `      api_key: ${q(`os.environ/${env}`)}`);
+      }
+      if (lines.length === 2) lines.push('  []');
+      lines.push('general_settings:', '  master_key: "os.environ/LITELLM_MASTER_KEY"', '');
+      return { 'config.yaml': lines.join('\n') };
+    },
+    compose: (p, c, ctx) => {
+      const env: Record<string, string> = { LITELLM_MASTER_KEY: `sk-${p.masterKey}` };
+      if (ctx.ai.openai) env.OPENAI_API_KEY = ctx.ai.openai.key;
+      if (ctx.ai.anthropic) env.ANTHROPIC_API_KEY = ctx.ai.anthropic.key;
+      if (ctx.ai.gemini) env.GEMINI_API_KEY = ctx.ai.gemini.key;
+      if (ctx.ai.openrouter) env.OPENROUTER_API_KEY = ctx.ai.openrouter.key;
+      if (ctx.ai.nvidia) env.NVIDIA_NIM_API_KEY = ctx.ai.nvidia.key;
+      return service({
+        container: c,
+        image: 'ghcr.io/berriai/litellm:main-stable',
+        command: q('--config /app/config.yaml --port 4000'),
+        ports: [`${p.port}:4000`],
+        env,
+        binds: ['./config.yaml:/app/config.yaml:ro'],
+      });
+    },
+  },
+  {
+    id: 'open-webui',
+    name: 'Open WebUI',
+    description: 'Giao diện chat AI kiểu ChatGPT, tự nối các API key AI bạn đã lưu trong ZenPanel.',
+    category: 'ai',
+    icon: 'MessagesSquare',
+    website: 'https://openwebui.com',
+    usesAiKeys: true,
+    params: [portParam('port', 'Cổng HTTP', 3003)],
+    webPort: 'port',
+    compose: (p, c, ctx) => {
+      // Gemini, Claude, NVIDIA, OpenRouter đều có endpoint tương thích OpenAI
+      const providers = Object.values(ctx.ai).filter((x): x is { key: string; baseUrl: string } => Boolean(x));
+      const env: Record<string, string> = { WEBUI_SECRET_KEY: c, ENABLE_OLLAMA_API: 'false' };
+      if (providers.length) {
+        env.OPENAI_API_BASE_URLS = providers.map((x) => x.baseUrl).join(';');
+        env.OPENAI_API_KEYS = providers.map((x) => x.key).join(';');
+      }
+      return service({
+        container: c,
+        image: 'ghcr.io/open-webui/open-webui:main',
+        ports: [`${p.port}:8080`],
+        env,
+        volumes: { data: '/app/backend/data' },
+        extra: ['extra_hosts:', '  - "host.docker.internal:host-gateway"'],
+      });
+    },
+  },
+  {
+    id: 'ollama',
+    name: 'Ollama',
+    description: 'Chạy model AI mã nguồn mở (Llama, Qwen, Gemma...) ngay trên VPS, không cần API key.',
+    category: 'ai',
+    icon: 'Cpu',
+    website: 'https://ollama.com',
+    params: [portParam('port', 'Cổng API', 11434)],
+    compose: (p, c) => service({ container: c, image: 'ollama/ollama:latest', ports: [`${p.port}:11434`], volumes: { models: '/root/.ollama' } }),
+  },
+  {
+    id: 'flowise',
+    name: 'Flowise',
+    description: 'Kéo thả xây AI Agent, chatbot RAG, workflow LLM không cần code.',
+    category: 'ai',
+    icon: 'Bot',
+    website: 'https://flowiseai.com',
+    params: [portParam('port', 'Cổng HTTP', 3004)],
+    webPort: 'port',
+    compose: (p, c) => service({ container: c, image: 'flowiseai/flowise:latest', ports: [`${p.port}:3000`], volumes: { data: '/root/.flowise' } }),
+  },
+  {
+    id: 'anythingllm',
+    name: 'AnythingLLM',
+    description: 'Trợ lý AI + chat với tài liệu (RAG), agent có công cụ, hỗ trợ mọi nhà cung cấp LLM.',
+    category: 'ai',
+    icon: 'BrainCircuit',
+    website: 'https://anythingllm.com',
+    params: [portParam('port', 'Cổng HTTP', 3005)],
+    webPort: 'port',
+    compose: (p, c) =>
+      service({
+        container: c,
+        image: 'mintplexlabs/anythingllm:latest',
+        ports: [`${p.port}:3001`],
+        env: { STORAGE_DIR: '/app/server/storage' },
+        volumes: { storage: '/app/server/storage' },
+        extra: ['cap_add:', '  - SYS_ADMIN'],
       }),
   },
   {

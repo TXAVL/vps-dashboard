@@ -1,17 +1,19 @@
 // ZenPanel - Quản lý Database (MySQL, MariaDB, PostgreSQL, Redis, MongoDB) + Adminer/phpMyAdmin 1-click
 import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
-import { Database, ExternalLink, Plus, RefreshCw, Server, Table2, Trash2 } from 'lucide-react';
+import { Database, DoorOpen, ExternalLink, Globe, Plus, RefreshCw, Server, Table2, Trash2 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Secret, Spinner, cn, td, th, tr } from '../components/ui';
 import { del, post } from '../lib/api';
 import { formatBytes } from '../lib/format';
 import { useApi } from '../lib/hooks';
+import { usePublicHost } from '../lib/panel';
 import type { AppView, DatabaseItem, DatabaseServer, ServiceInfo } from '../lib/types';
 
 const ENGINE_LABEL: Record<DatabaseServer['engine'], string> = { mysql: 'MySQL', mariadb: 'MariaDB', postgres: 'PostgreSQL', redis: 'Redis', mongodb: 'MongoDB' };
 
 function CreateModal({ server, onClose, onCreated }: { server: DatabaseServer; onClose: () => void; onCreated: () => void }) {
+  const { host } = usePublicHost();
   const [form, setForm] = useState({ name: '', username: '', password: '' });
   const [result, setResult] = useState<{ name: string; username: string; password: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -33,7 +35,11 @@ function CreateModal({ server, onClose, onCreated }: { server: DatabaseServer; o
       {result ? (
         <div className="space-y-4">
           <Notice tone="green">Database đã sẵn sàng. Hãy lưu lại thông tin đăng nhập bên dưới.</Notice>
-          <ConnectionInfo rows={[['Host', `127.0.0.1:${server.port}`], ['Database', result.name], ['User', result.username], ['Password', result.password]]} />
+          <ConnectionInfo rows={[['Host', `${host}:${server.port}`], ['Host nội bộ', `127.0.0.1:${server.port}`], ['Database', result.name], ['User', result.username], ['Password', result.password]]} />
+          <div className="flex items-center gap-2 rounded-lg bg-ink-950/80 px-3 py-2">
+            <code className="mono min-w-0 flex-1 truncate text-xs text-emerald-300">{connectionUri(server, host, result.name, result.username, result.password)}</code>
+            <CopyButton value={connectionUri(server, host, result.name, result.username, result.password)} />
+          </div>
           <div className="flex justify-end">
             <Button variant="primary" onClick={onClose}>
               Xong
@@ -87,6 +93,61 @@ function ConnectionInfo({ rows }: { rows: [string, string][] }) {
   );
 }
 
+const SCHEME: Record<DatabaseServer['engine'], string> = { mysql: 'mysql', mariadb: 'mysql', postgres: 'postgresql', redis: 'redis', mongodb: 'mongodb' };
+
+/** Chuỗi kết nối chuẩn cho ứng dụng / máy khác */
+function connectionUri(server: DatabaseServer, host: string, db?: string, user?: string, pass?: string): string {
+  const u = encodeURIComponent(user ?? server.username);
+  const pw = encodeURIComponent(pass ?? server.password);
+  const h = host.includes(':') ? `[${host}]` : host;
+  const path = db ? `/${db}` : server.engine === 'mongodb' ? '/' : '';
+  return `${SCHEME[server.engine]}://${u}:${pw}@${h}:${server.port}${path}`;
+}
+
+function ExternalAccess({ server }: { server: DatabaseServer }) {
+  const { host, source } = usePublicHost();
+  const [source_, setSource] = useState('');
+  const [busy, setBusy] = useState(false);
+  const { run } = useFeedback();
+
+  const open = async () => {
+    setBusy(true);
+    await run(
+      () => post('/api/firewall/rules', { action: 'allow', port: String(server.port), protocol: 'tcp', source: source_.trim() || null, description: `ZenPanel - ${server.name}` }),
+      source_.trim() ? `Đã cho phép ${source_.trim()} kết nối cổng ${server.port}` : `Đã mở cổng ${server.port} cho mọi IP`,
+    );
+    setBusy(false);
+  };
+
+  return (
+    <div className="space-y-3 rounded-xl border border-slate-700/50 bg-ink-950/50 p-4 text-sm">
+      <div className="flex items-center gap-2 font-semibold text-white">
+        <Globe className="size-4 text-zen-blue" /> Kết nối từ máy khác / bên ngoài
+      </div>
+      <ConnectionInfo rows={[['Host', host], ['Port', String(server.port)], ['User', server.username], ['Password', server.password]]} />
+      <div className="flex items-center gap-2 rounded-lg bg-ink-950/80 px-3 py-2">
+        <code className="mono min-w-0 flex-1 truncate text-xs text-emerald-300">{connectionUri(server, host)}</code>
+        <CopyButton value={connectionUri(server, host)} />
+      </div>
+      <p className="text-xs text-slate-500">
+        {source === 'custom' ? 'Host là domain/IP bạn đặt' : source === 'ip' ? 'Host là IP public tự phát hiện' : 'Chưa lấy được IP public'} — đặt domain riêng (vd db.example.com trỏ về IP VPS) trong{' '}
+        <Link to="/settings?tab=system" className="text-blue-300 underline">
+          Cài đặt → Hệ thống
+        </Link>
+        . Database dùng TCP nên không đi qua link trycloudflare được.
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Chỉ cho phép IP (khuyên dùng)">
+          <input className="input mono h-9 w-48 py-0" value={source_} onChange={(e) => setSource(e.target.value)} placeholder="Để trống = mọi IP" />
+        </Field>
+        <Button size="sm" variant="soft" icon={DoorOpen} loading={busy} onClick={() => void open()}>
+          Mở cổng {server.port}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ServerPanel({ server, adminUrl }: { server: DatabaseServer; adminUrl: string | null }) {
   const list = useApi<DatabaseItem[]>(server.running ? `/api/databases/${server.appId}` : null);
   const [creating, setCreating] = useState(false);
@@ -133,16 +194,18 @@ function ServerPanel({ server, adminUrl }: { server: DatabaseServer; adminUrl: s
         </>
       }
     >
-      <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <ConnectionInfo
-          rows={[
-            ['Engine', ENGINE_LABEL[server.engine]],
-            ['Host', `127.0.0.1:${server.port}`],
-            ['Container', server.container],
-            ['User', server.username],
-            ['Password', server.password],
-          ]}
-        />
+      <div className="grid gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
+        <div className="space-y-3">
+          <ConnectionInfo
+            rows={[
+              ['Engine', ENGINE_LABEL[server.engine]],
+              ['Host nội bộ', `127.0.0.1:${server.port}`],
+              ['Trong Docker', `host.docker.internal:${server.port}`],
+              ['Container', server.container],
+            ]}
+          />
+          <ExternalAccess server={server} />
+        </div>
         <div className="min-w-0">
           {!server.running ? (
             <Notice tone="amber">

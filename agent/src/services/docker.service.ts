@@ -66,6 +66,13 @@ export class DockerService {
     return stdout + stderr;
   }
 
+  async composeProjects(): Promise<{ name: string; status: string; configFiles: string[] }[]> {
+    const out = (await this.compose(['ls', '-a', '--format', 'json'], process.cwd(), 30_000)).trim();
+    const json = out.slice(out.indexOf('['), out.lastIndexOf(']') + 1);
+    const rows = json ? (JSON.parse(json) as { Name: string; Status: string; ConfigFiles: string }[]) : [];
+    return rows.map((row) => ({ name: row.Name, status: row.Status, configFiles: row.ConfigFiles ? row.ConfigFiles.split(',').map((f) => f.trim()) : [] }));
+  }
+
   async containers(): Promise<DockerContainer[]> {
     const rows = parseJsonLines<Record<string, string>>(await this.docker(['ps', '-a', '--no-trunc', '--format', '{{json .}}']));
     return rows.map((row) => ({

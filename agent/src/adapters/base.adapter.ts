@@ -63,6 +63,13 @@ export interface FirewallStatus {
   detail: string;
 }
 
+export interface FirewallPersistence {
+  /** Backend cần công cụ riêng để giữ quy tắc sau khi khởi động lại (iptables) */
+  required: boolean;
+  installed: boolean;
+  tool: string;
+}
+
 export interface FirewallRule {
   id: string;
   action: 'allow' | 'deny';
@@ -168,6 +175,10 @@ export interface OSAdapter {
   addFirewallRule(rule: FirewallRuleInput): Promise<void>;
   deleteFirewallRule(id: string): Promise<void>;
   listListeningPorts(): Promise<ListeningPort[]>;
+  /** Kiểm tra quy tắc tường lửa có được lưu vĩnh viễn qua lần khởi động lại không */
+  firewallPersistence(): Promise<FirewallPersistence>;
+  /** Cài công cụ lưu quy tắc (iptables-persistent / iptables-services) */
+  installFirewallPersistence(): Promise<void>;
 
   // --- File Manager ---
   /** Các điểm gốc để duyệt file: ["/"] trên Linux, ["C:\\", "D:\\"] trên Windows */

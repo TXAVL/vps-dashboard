@@ -28,6 +28,8 @@ export class TunnelService extends EventEmitter {
     private readonly adapter: OSAdapter,
     private readonly localUrl: string,
     private readonly customBinary?: string,
+    /** Thêm tham số cho cloudflared, vd --no-tls-verify khi app dùng HTTPS tự ký */
+    private readonly extraArgs: string[] = [],
   ) {
     super();
   }
@@ -59,7 +61,7 @@ export class TunnelService extends EventEmitter {
     this.setState({ status: 'starting', url: null, error: null });
 
     return new Promise((resolve, reject) => {
-      const child = spawn(binary, ['tunnel', '--no-autoupdate', '--url', this.localUrl], {
+      const child = spawn(binary, ['tunnel', '--no-autoupdate', ...this.extraArgs, '--url', this.localUrl], {
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
       });

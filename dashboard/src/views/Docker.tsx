@@ -8,8 +8,9 @@ import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
 import type { DockerContainer, DockerImage, DockerInfo, Job } from '../lib/types';
 import { useJobs } from '../components/jobs';
+import { StacksPanel } from './Stacks';
 
-type Tab = 'containers' | 'images' | 'volumes' | 'networks';
+type Tab = 'containers' | 'stacks' | 'images' | 'volumes' | 'networks';
 type Stats = Record<string, { cpu: string; memory: string; memPerc: string; net: string }>;
 
 const stateTone = (state: string): Tone => (state === 'running' ? 'green' : state === 'paused' ? 'amber' : state === 'restarting' ? 'blue' : state === 'dead' ? 'red' : 'slate');
@@ -186,6 +187,7 @@ export default function Docker() {
               onChange={setTab}
               tabs={[
                 { id: 'containers', label: 'Containers', icon: Boxes, count: containers.data?.length },
+                { id: 'stacks', label: 'Compose', icon: Layers },
                 { id: 'images', label: 'Images', icon: Layers },
                 { id: 'volumes', label: 'Volumes', icon: HardDrive },
                 { id: 'networks', label: 'Networks', icon: Network },
@@ -196,7 +198,7 @@ export default function Docker() {
             <IconButton
               icon={RefreshCw}
               title="Làm mới"
-              onClick={() => void { containers, images, volumes, networks }[tab].reload()}
+              onClick={() => void (tab === 'stacks' ? Promise.resolve() : { containers, images, volumes, networks }[tab].reload())}
             />
           }
         >
@@ -261,6 +263,8 @@ export default function Docker() {
                 </table>
               </div>
             ))}
+
+          {tab === 'stacks' && <StacksPanel />}
 
           {tab === 'images' &&
             (!images.data ? (

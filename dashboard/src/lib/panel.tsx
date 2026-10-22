@@ -31,6 +31,7 @@ export const DEFAULT_PREFS: PanelPrefs = {
   expiryWarnDays: 7,
   autoCheckUpdate: true,
   autoDownloadUpdate: true,
+  publicHost: '',
 };
 
 /** Áp dụng giao diện lên <html data-theme data-base> (CSS biến màu nằm trong index.css) */
@@ -153,4 +154,19 @@ export function useLiveUptime(): number | null {
   const now = useNow();
   if (!latest) return null;
   return latest.uptime + Math.max(0, (now - latest.time) / 1000);
+}
+
+/** Host public để hiển thị địa chỉ truy cập: domain admin tự đặt > IP public > hostname trình duyệt */
+export function usePublicHost(): { host: string; source: 'custom' | 'ip' | 'browser' } {
+  const { prefs } = usePanel();
+  const [ip, setIp] = useState<string | null>(null);
+  useEffect(() => {
+    if (prefs.publicHost) return;
+    get<{ publicIpv4: string | null }>('/api/system/network')
+      .then((n) => setIp(n.publicIpv4))
+      .catch(() => undefined);
+  }, [prefs.publicHost]);
+  if (prefs.publicHost) return { host: prefs.publicHost, source: 'custom' };
+  if (ip) return { host: ip, source: 'ip' };
+  return { host: window.location.hostname, source: 'browser' };
 }

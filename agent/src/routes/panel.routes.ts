@@ -6,6 +6,8 @@ import type { AppContext } from '../core/context.js';
 import { getJob, listJobs } from '../core/jobs.js';
 import { getPrefs, updatePrefs, type PanelPrefs } from '../core/prefs.js';
 import { badRequest, HttpError } from '../core/validate.js';
+import type { AiService } from '../services/ai.service.js';
+import type { SpeedtestService } from '../services/speedtest.service.js';
 import type { TaskService } from '../services/task.service.js';
 import type { UpdateService } from '../services/update.service.js';
 
@@ -20,8 +22,28 @@ async function lookup(url: string): Promise<string | null> {
   }
 }
 
-export async function panelRoutes(app: FastifyInstance, ctx: AppContext, deps: { updates: UpdateService; tasks: TaskService }): Promise<void> {
-  const { updates, tasks } = deps;
+export async function panelRoutes(
+  app: FastifyInstance,
+  ctx: AppContext,
+  deps: { updates: UpdateService; tasks: TaskService; ai: AiService; speedtest: SpeedtestService },
+): Promise<void> {
+  const { updates, tasks, ai, speedtest } = deps;
+
+  // ------------------------------------------------------------ AI providers
+  app.get('/api/ai/providers', async () => ai.list());
+  app.put('/api/ai/providers/:id', async (req) => {
+    await ai.save((req.params as { id: string }).id, (req.body as { key?: string } | undefined)?.key);
+    return ai.list();
+  });
+  app.post('/api/ai/providers/:id/test', async (req) => ai.test((req.params as { id: string }).id));
+  app.delete('/api/ai/providers/:id', async (req) => {
+    ai.remove((req.params as { id: string }).id);
+    return ai.list();
+  });
+
+  // ------------------------------------------------------------ Speedtest
+  app.get('/api/speedtest', async () => ({ state: speedtest.getState(), history: speedtest.history() }));
+  app.post('/api/speedtest', async () => speedtest.start());
 
   // ------------------------------------------------------------ Jobs
   app.get('/api/jobs', async () => listJobs());

@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { FirewallRuleInput, ServiceAction, ServiceInfo } from '../adapters/base.adapter.js';
 import type { AppContext } from '../core/context.js';
 import { config } from '../config.js';
+import { startJob } from '../core/jobs.js';
 import { badRequest, HttpError, isIpOrCidr, isPortSpec, isServiceName } from '../core/validate.js';
 
 const SERVICE_ACTIONS: ServiceAction[] = ['start', 'stop', 'restart', 'enable', 'disable'];
@@ -77,8 +78,15 @@ export async function systemRoutes(app: FastifyInstance, ctx: AppContext): Promi
 
   // ------------------------------------------------------------ Tường lửa
   app.get('/api/firewall', async () => {
-    const [status, rules] = await Promise.all([adapter.getFirewallStatus(), adapter.listFirewallRules()]);
-    return { status, rules };
+    const [status, rules, persistence] = await Promise.all([adapter.getFirewallStatus(), adapter.listFirewallRules(), adapter.firewallPersistence()]);
+    return { status, rules, persistence };
+  });
+
+  // Cài iptables-persistent / iptables-services để quy tắc không mất khi khởi động lại VPS
+  app.post('/api/firewall/persistence', async () => {
+    const current = await adapter.firewallPersistence();
+    if (!current.required || current.installed) return { ok: true, skipped: true };
+    return startJob(`Cài ${current.tool} để lưu quy tắc tường lửa vĩnh viễn`, 'firewall', () => adapter.installFirewallPersistence());
   });
 
   app.post('/api/firewall/toggle', async (req) => {

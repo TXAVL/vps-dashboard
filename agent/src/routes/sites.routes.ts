@@ -40,29 +40,46 @@ export async function siteRoutes(app: FastifyInstance, ctx: AppContext, deps: { 
   });
 
   // ------------------------------------------------------------ Cloudflare
+  type ZoneParams = { id: string };
   app.get('/api/cloudflare', async () => cloudflare.status());
   app.put('/api/cloudflare/token', async (req) => {
     await cloudflare.saveToken(String((req.body as { token?: string } | undefined)?.token ?? ''));
     return cloudflare.status();
   });
+  app.get('/api/cloudflare/permissions', async () => cloudflare.permissions());
   app.get('/api/cloudflare/zones', async () => cloudflare.zones());
   app.patch('/api/cloudflare/zones/:id/settings/:setting', async (req) => {
     const { id, setting } = req.params as { id: string; setting: string };
-    await cloudflare.updateSetting(id, setting, requireString((req.body as { value?: string } | undefined)?.value, 'value'));
+    await cloudflare.updateSetting(id, setting, requireString(String((req.body as { value?: unknown } | undefined)?.value ?? ''), 'value'));
     return { ok: true };
   });
   app.post('/api/cloudflare/zones/:id/purge', async (req) => {
-    await cloudflare.purgeCache((req.params as { id: string }).id);
+    await cloudflare.purgeCache((req.params as ZoneParams).id, (req.body as { urls?: string[] } | undefined)?.urls);
     return { ok: true };
   });
-  app.get('/api/cloudflare/zones/:id/dns', async (req) => cloudflare.dnsRecords((req.params as { id: string }).id));
+  app.get('/api/cloudflare/zones/:id/dns', async (req) => cloudflare.dnsRecords((req.params as ZoneParams).id));
   app.post('/api/cloudflare/zones/:id/dns', async (req) => {
-    await cloudflare.createDns((req.params as { id: string }).id, (req.body ?? {}) as Record<string, never>);
+    await cloudflare.createDns((req.params as ZoneParams).id, (req.body ?? {}) as Record<string, never>);
+    return { ok: true };
+  });
+  app.patch('/api/cloudflare/zones/:id/dns/:recordId', async (req) => {
+    const { id, recordId } = req.params as { id: string; recordId: string };
+    await cloudflare.toggleDnsProxy(id, recordId, Boolean((req.body as { proxied?: boolean } | undefined)?.proxied));
     return { ok: true };
   });
   app.delete('/api/cloudflare/zones/:id/dns/:recordId', async (req) => {
     const { id, recordId } = req.params as { id: string; recordId: string };
     await cloudflare.deleteDns(id, recordId);
+    return { ok: true };
+  });
+  app.get('/api/cloudflare/zones/:id/access-rules', async (req) => cloudflare.accessRules((req.params as ZoneParams).id));
+  app.post('/api/cloudflare/zones/:id/access-rules', async (req) => {
+    await cloudflare.createAccessRule((req.params as ZoneParams).id, (req.body ?? {}) as Record<string, never>);
+    return { ok: true };
+  });
+  app.delete('/api/cloudflare/zones/:id/access-rules/:ruleId', async (req) => {
+    const { id, ruleId } = req.params as { id: string; ruleId: string };
+    await cloudflare.deleteAccessRule(id, ruleId);
     return { ok: true };
   });
 }

@@ -6,15 +6,17 @@ import { badRequest } from '../core/validate.js';
 import type { AppStoreService } from '../services/appstore.service.js';
 import type { DatabaseService } from '../services/database.service.js';
 import type { ContainerAction, DockerService } from '../services/docker.service.js';
+import type { StackService } from '../services/stack.service.js';
 
 export interface DockerDeps {
   docker: DockerService;
+  stacks: StackService;
   apps: AppStoreService;
   databases: DatabaseService;
 }
 
 export async function dockerRoutes(app: FastifyInstance, ctx: AppContext, deps: DockerDeps): Promise<void> {
-  const { docker, apps, databases } = deps;
+  const { docker, apps, databases, stacks } = deps;
 
   // ------------------------------------------------------------ Docker
   app.get('/api/docker/info', async () => docker.info());
@@ -72,6 +74,40 @@ export async function dockerRoutes(app: FastifyInstance, ctx: AppContext, deps: 
   });
 
   app.get('/api/apps/:id/compose', async (req) => ({ path: await apps.composeFile((req.params as { id: string }).id) }));
+  app.get('/api/apps/:id/config', async (req) => apps.config((req.params as { id: string }).id));
+  app.post('/api/apps/:id/reconfigure', async (req) => {
+    const id = (req.params as { id: string }).id;
+    const params = apps.prepareReconfigure(id, (req.body ?? {}) as Record<string, unknown>);
+    return startJob(`Cấu hình lại ${id}`, 'app', () => apps.reconfigure(id, params));
+  });
+  app.post('/api/apps/:id/public-link', async (req) =>
+    apps.setPublicLink((req.params as { id: string }).id, Boolean((req.body as { enabled?: boolean } | undefined)?.enabled)),
+  );
+
+  // ------------------------------------------------------------ Docker Compose stacks
+  app.get('/api/docker/stacks', async () => stacks.list());
+  app.get('/api/docker/stacks/:name', async (req) => stacks.read((req.params as { name: string }).name));
+  app.post('/api/docker/stacks', async (req) => {
+    const body = (req.body ?? {}) as { name?: string; yaml?: string };
+    const name = String(body.name ?? '').trim();
+    await stacks.save(name, body.yaml, true);
+    return startJob(`Tạo stack ${name}`, 'docker', () => stacks.action(name, 'up'));
+  });
+  app.put('/api/docker/stacks/:name', async (req) => {
+    const name = (req.params as { name: string }).name;
+    await stacks.save(name, (req.body as { yaml?: string } | undefined)?.yaml, false);
+    return { ok: true };
+  });
+  app.post('/api/docker/stacks/:name/:action', async (req) => {
+    const { name, action } = req.params as { name: string; action: string };
+    if (!['up', 'down', 'restart', 'pull'].includes(action)) throw badRequest('Thao tác không hợp lệ');
+    return startJob(`Stack ${name}: ${action}`, 'docker', () => stacks.action(name, action as 'up' | 'down' | 'restart' | 'pull'));
+  });
+  app.delete('/api/docker/stacks/:name', async (req) => {
+    const name = (req.params as { name: string }).name;
+    const removeVolumes = (req.query as { volumes?: string }).volumes === 'true';
+    return startJob(`Xoá stack ${name}`, 'docker', () => stacks.remove(name, removeVolumes));
+  });
 
   // ------------------------------------------------------------ Databases
   app.get('/api/databases', async () => {

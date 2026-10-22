@@ -7,6 +7,7 @@ import { formatPercent } from '../../lib/format';
 import { useLocalStorage } from '../../lib/hooks';
 import { usePanel } from '../../lib/panel';
 import { JobsButton } from '../jobs';
+import { useWhatsNew } from '../WhatsNew';
 import { TerminalPanel } from '../TerminalPanel';
 import { CopyButton, StatusDot, cn } from '../ui';
 import { ALL_NAV, NAV_SECTIONS } from './nav';
@@ -28,6 +29,7 @@ function Logo() {
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { info, latest } = usePanel();
+  const showWhatsNew = useWhatsNew();
   const memPct = latest ? (latest.memory.used / latest.memory.total) * 100 : 0;
   return (
     <div className="flex h-full flex-col">
@@ -79,7 +81,12 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <MiniBar label="RAM" value={memPct} />
           </div>
         )}
-        <div className="mt-3 truncate text-[11px] text-slate-500">{info ? `${info.os.name} · v${info.version}` : 'Đang kết nối...'}</div>
+        <div className="mt-3 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+          <span className="truncate">{info ? `${info.os.name} · v${info.version}` : 'Đang kết nối...'}</span>
+          <button onClick={showWhatsNew} className="shrink-0 font-semibold text-blue-300 hover:underline" data-tip="Xem các tính năng mới">
+            Có gì mới
+          </button>
+        </div>
       </div>
     </div>
   );

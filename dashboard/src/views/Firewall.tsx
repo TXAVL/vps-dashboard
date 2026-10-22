@@ -1,12 +1,13 @@
 // ZenPanel - Tường lửa: bật/tắt, mở cổng, chặn IP, xem cổng đang lắng nghe
-import { useMemo, useState, type FormEvent } from 'react';
-import { Ban, DoorOpen, Plus, RefreshCw, Shield, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { AlertTriangle, Ban, DoorOpen, Plus, RefreshCw, Shield, ShieldCheck, Trash2 } from 'lucide-react';
+import { useJobs } from '../components/jobs';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, SearchInput, Select, Spinner, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
 import { del, post } from '../lib/api';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
-import type { FirewallRule, FirewallStatus, ListeningPort } from '../lib/types';
+import type { FirewallPersistence, FirewallRule, FirewallStatus, Job, ListeningPort } from '../lib/types';
 
 const backendLabel: Record<FirewallStatus['backend'], string> = {
   ufw: 'UFW',
@@ -95,7 +96,17 @@ export function RuleModal({ open, onClose, onSaved, initial }: { open: boolean; 
 
 export default function Firewall() {
   const { info } = usePanel();
-  const firewall = useApi<{ status: FirewallStatus; rules: FirewallRule[] }>('/api/firewall');
+  const firewall = useApi<{ status: FirewallStatus; rules: FirewallRule[]; persistence: FirewallPersistence }>('/api/firewall');
+  const { runJob } = useJobs();
+  const autoInstalled = useRef(false);
+  const persistence = firewall.data?.persistence;
+
+  // iptables không tự lưu quy tắc: vào trang là tự cài iptables-persistent / iptables-services (1 lần)
+  useEffect(() => {
+    if (!persistence || autoInstalled.current || !persistence.required || persistence.installed) return;
+    autoInstalled.current = true;
+    void runJob(() => post<Job>('/api/firewall/persistence'), () => void firewall.reload());
+  }, [persistence, runJob, firewall]);
   const ports = useApi<ListeningPort[]>('/api/ports');
   const [tab, setTab] = useState<'rules' | 'ports'>('rules');
   const [modal, setModal] = useState<Partial<RuleForm> | null>(null);
@@ -177,6 +188,24 @@ export default function Firewall() {
             <div className="text-sm text-slate-400">{status.detail}</div>
           </div>
           {status.backend !== 'none' && <Toggle checked={status.enabled} onChange={(v) => void toggle(v)} disabled={toggling} label="Bật tường lửa" />}
+        </div>
+      )}
+
+      {persistence && (
+        <div className="mb-4">
+          <Notice tone={persistence.installed ? 'green' : 'amber'} icon={persistence.installed ? ShieldCheck : AlertTriangle}>
+            {persistence.installed ? (
+              <>
+                Quy tắc được lưu vĩnh viễn qua lần khởi động lại: <b>{persistence.tool}</b>.
+              </>
+            ) : persistence.required ? (
+              <>
+                Đang cài <b>{persistence.tool}</b> để quy tắc iptables không mất khi khởi động lại VPS (xem log trong cửa sổ tác vụ)...
+              </>
+            ) : (
+              persistence.tool
+            )}
+          </Notice>
         </div>
       )}
 

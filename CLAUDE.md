@@ -95,6 +95,11 @@ vps-dashboard/ (ZenPanel)
 │   │   │   ├── cloudflare.service.ts # Cloudflare API (Anti-DDoS, DNS)
 │   │   │   ├── update.service.ts  # Kiểm tra GitHub, tải/xoá/cài các gói phiên bản
 │   │   │   ├── task.service.ts    # Lịch tác vụ (cron / Task Scheduler)
+│   │   │   ├── apptunnel.service.ts # Link public riêng cho từng app (Cloudflare Quick Tunnel)
+│   │   │   ├── appstore.guides.ts # Hướng dẫn sau khi cài từng app
+│   │   │   ├── ai.service.ts      # API key AI (OpenAI, Claude, Gemini, OpenRouter, NVIDIA) bơm vào app AI
+│   │   │   ├── stack.service.ts   # Docker Compose stacks
+│   │   │   ├── speedtest.service.ts # Speedtest thật tới speed.cloudflare.com
 │   │   │   └── tunnel.service.ts  # Cloudflare Quick Tunnel -> *.trycloudflare.com
 │   │   ├── routes/                # auth, system, files, docker, sites, panel (REST API)
 │   │   ├── ws/realtime.ts         # WebSocket metrics + Web Terminal (node-pty)
@@ -112,10 +117,11 @@ vps-dashboard/ (ZenPanel)
 │       │   ├── ui.tsx, charts.tsx, feedback.tsx (toast/confirm/prompt), TerminalPanel.tsx
 │       │   ├── jobs.tsx           # Cửa sổ log tác vụ nền + nút tác vụ trên header
 │       │   ├── TooltipLayer.tsx   # Tooltip tuỳ chỉnh cho mọi phần tử có data-tip
+│       │   ├── WhatsNew.tsx       # Hộp thoại "Có gì mới" (nội dung trong lib/changelog.ts)
 │       │   └── layout/            # Shell, nav, WindowMockup
 │       └── views/                 # Login, Overview, Processes, Services, Firewall, Docker,
 │                                  # AppStore, Terminal, Websites, FileManager, Databases,
-│                                  # Security, Settings, Tasks
+│                                  # Security, Settings, Tasks, Speedtest, Stacks
 ├── CLAUDE.md
 └── README.md
 ```
@@ -127,4 +133,6 @@ vps-dashboard/ (ZenPanel)
 2. **Quy tắc OS Agnostic**: Mọi thao tác hệ thống (đọc RAM, CPU, danh sách tiến trình, mở port tường lửa, chạy service) **bắt buộc** phải thông qua `base.adapter.ts`, phân nhánh thực thi sang `windows.adapter.ts` hoặc `linux.adapter.ts`. Không bao giờ gọi trực tiếp lệnh OS độc lập trong controller hay view.
 3. **Truy cập công khai qua Cloudflare Tunnel**: Mỗi lần agent khởi động, `tunnel.service.ts` chạy `cloudflared tunnel --url http://127.0.0.1:<port>` để lấy domain `https://<random>.trycloudflare.com` (không cần tài khoản Cloudflare, không cần mở port). URL **phải được in nổi bật ra console** qua `banner.ts`; nếu tunnel rớt và được cấp domain mới thì in lại. Tìm `cloudflared` theo thứ tự: `ZENPANEL_CLOUDFLARED` → PATH → `~/.zenpanel/bin` → tự tải từ GitHub Releases (tên file theo OS do adapter quyết định). Tắt bằng `ZENPANEL_TUNNEL=0`.
 4. **Không dùng hộp thoại / tooltip của trình duyệt**: dùng `useFeedback()` (toast, confirm, prompt), `<Modal>` và thuộc tính `data-tip` thay cho `alert/confirm/prompt/title`. Thao tác lâu (cài app, pull image, cài web server, tải phiên bản) phải chạy bằng `startJob()` để dashboard xem log realtime.
-5. **Phong cách giao diện**: Giữ vững ngôn ngữ thiết kế **Jupiter Style** kết hợp **Dark Glassmorphism** (tone nền Dark Slate, bo góc `rounded-2xl`, hiển thị tài nguyên thời gian thực dạng thanh progress bar, hỗ trợ cả Desktop lẫn Mobile).
+5. **Mỗi lần nâng phiên bản** (agent/package.json + dashboard/package.json): thêm mục mới vào đầu `dashboard/src/lib/changelog.ts` để hộp thoại "Có gì mới" hiển thị.
+6. **App Store**: app có giao diện web phải khai báo `webPort` (để bật link public) và thêm hướng dẫn vào `appstore.guides.ts`. App dùng API key AI khai báo `usesAiKeys` và đọc key từ `ctx.ai` trong `compose()`.
+7. **Phong cách giao diện**: Giữ vững ngôn ngữ thiết kế **Jupiter Style** kết hợp **Dark Glassmorphism** (tone nền Dark Slate, bo góc `rounded-2xl`, hiển thị tài nguyên thời gian thực dạng thanh progress bar, hỗ trợ cả Desktop lẫn Mobile).

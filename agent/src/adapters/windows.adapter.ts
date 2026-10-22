@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import type {
   DiskUsage,
+  FirewallPersistence,
   FirewallRule,
   FirewallRuleInput,
   FirewallStatus,
@@ -431,5 +432,13 @@ export class WindowsAdapter implements OSAdapter {
         "Start-ScheduledTask -TaskName 'ZenPanel Update';",
       ].join(' '),
     );
+  }
+
+  async firewallPersistence(): Promise<FirewallPersistence> {
+    return { required: false, installed: true, tool: 'Windows Firewall tự lưu quy tắc' };
+  }
+
+  async installFirewallPersistence(): Promise<void> {
+    // Windows Firewall luôn lưu quy tắc vĩnh viễn
   }
 }

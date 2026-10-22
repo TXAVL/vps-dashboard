@@ -19,11 +19,15 @@ import { fileDownloadRoute, fileRoutes } from './routes/files.routes.js';
 import { panelRoutes } from './routes/panel.routes.js';
 import { siteRoutes } from './routes/sites.routes.js';
 import { systemRoutes } from './routes/system.routes.js';
+import { AiService } from './services/ai.service.js';
 import { AppStoreService } from './services/appstore.service.js';
+import { AppTunnelService } from './services/apptunnel.service.js';
 import { CloudflareService } from './services/cloudflare.service.js';
 import { DatabaseService } from './services/database.service.js';
 import { DockerService } from './services/docker.service.js';
 import { SiteService } from './services/site.service.js';
+import { SpeedtestService } from './services/speedtest.service.js';
+import { StackService } from './services/stack.service.js';
 import { TaskService } from './services/task.service.js';
 import { UpdateService } from './services/update.service.js';
 import { TunnelService } from './services/tunnel.service.js';
@@ -42,7 +46,11 @@ async function main() {
   const ctx: AppContext = { adapter, osInfo, metrics, tunnel, port: config.port, startedAt: Date.now(), version: pkg.version };
 
   const docker = new DockerService(adapter);
-  const apps = new AppStoreService(docker);
+  const ai = new AiService();
+  const appTunnels = new AppTunnelService(adapter);
+  const apps = new AppStoreService(docker, ai, appTunnels);
+  const stacks = new StackService(docker);
+  const speedtest = new SpeedtestService();
   const databases = new DatabaseService(docker, apps);
   const sites = new SiteService(adapter);
   const tasks = new TaskService(adapter);
@@ -74,9 +82,9 @@ async function main() {
     secured.addHook('preHandler', requireAuth);
     await systemRoutes(secured, ctx);
     await fileRoutes(secured, ctx);
-    await dockerRoutes(secured, ctx, { docker, apps, databases });
+    await dockerRoutes(secured, ctx, { docker, apps, databases, stacks });
     await siteRoutes(secured, ctx, { sites, cloudflare });
-    await panelRoutes(secured, ctx, { updates, tasks });
+    await panelRoutes(secured, ctx, { updates, tasks, ai, speedtest });
   });
   // WebSocket tự xác thực bằng ?token= (trình duyệt không gửi được header Authorization)
   await app.register(async (wsScope) => realtimeRoutes(wsScope, ctx));
@@ -101,6 +109,7 @@ async function main() {
   await app.listen({ host: config.host, port: config.port });
   void sites.bootstrap();
   updates.startAuto();
+  appTunnels.bootstrap();
 
   let publicUrl: string | null = null;
   let tunnelNote: string | undefined;
@@ -130,6 +139,7 @@ async function main() {
     tunnel?.stop();
     metrics.stop();
     updates.stop();
+    appTunnels.stopAll();
     await app.close();
     process.exit(0);
   };

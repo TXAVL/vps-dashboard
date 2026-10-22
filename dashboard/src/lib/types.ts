@@ -134,19 +134,25 @@ export interface AppParam {
   type: 'text' | 'password' | 'port';
   default?: string | number;
   generate?: boolean;
+  optional?: boolean;
+  hint?: string;
 }
 
 export interface AppView {
   id: string;
   name: string;
   description: string;
-  category: 'web' | 'database' | 'tools' | 'devops' | 'storage' | 'network';
+  category: 'web' | 'database' | 'tools' | 'devops' | 'storage' | 'network' | 'ai';
   icon: string;
   website: string;
   params: AppParam[];
   webPort?: string;
   database?: { engine: DatabaseServer['engine']; passwordKey: string; portKey: string };
   installed: { id: string; params: Record<string, string>; installedAt: string } | null;
+  webScheme?: 'http' | 'https';
+  usesAiKeys?: boolean;
+  guide: { credentials?: string; steps: string[] } | null;
+  publicLink: (TunnelState & { enabled: boolean }) | null;
   status: 'running' | 'stopped' | 'partial' | 'not-installed';
   containers: DockerContainer[];
 }
@@ -221,6 +227,7 @@ export interface PanelPrefs {
   expiryWarnDays: number;
   autoCheckUpdate: boolean;
   autoDownloadUpdate: boolean;
+  publicHost: string;
 }
 
 export interface RemoteVersion {
@@ -293,4 +300,70 @@ export interface LoginRecord {
   ip: string;
   ok: boolean;
   userAgent: string;
+}
+
+export interface FirewallPersistence {
+  required: boolean;
+  installed: boolean;
+  tool: string;
+}
+
+export interface AiProvider {
+  id: 'openai' | 'anthropic' | 'gemini' | 'openrouter' | 'nvidia';
+  label: string;
+  baseUrl: string;
+  keyUrl: string;
+  keyHint: string;
+  configured: boolean;
+  masked: string | null;
+  savedAt: string | null;
+  lastTest: { ok: boolean; at: string; message: string } | null;
+}
+
+export interface Stack {
+  name: string;
+  status: string;
+  managed: boolean;
+  appStore: boolean;
+  configFiles: string[];
+}
+
+export interface SpeedResult {
+  at: string;
+  pingMs: number;
+  jitterMs: number;
+  download: number;
+  upload: number;
+  server: { colo: string; city: string; country: string };
+  client: { ip: string; isp: string };
+}
+
+export interface SpeedState {
+  running: boolean;
+  phase: 'idle' | 'meta' | 'ping' | 'download' | 'upload' | 'done' | 'error';
+  progress: number;
+  liveSpeed: number;
+  pingMs: number | null;
+  jitterMs: number | null;
+  download: number | null;
+  upload: number | null;
+  error: string | null;
+  last: SpeedResult | null;
+}
+
+export interface CfPermission {
+  id: string;
+  label: string;
+  required: string;
+  ok: boolean;
+  message: string;
+}
+
+export interface CfAccessRule {
+  id: string;
+  mode: string;
+  target: string;
+  value: string;
+  notes: string;
+  createdAt: string;
 }
