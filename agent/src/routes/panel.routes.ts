@@ -94,6 +94,10 @@ export async function panelRoutes(
   );
   app.post('/api/tasks/:id/run', async (req) => tasks.runNow((req.params as { id: string }).id));
   app.get('/api/tasks/:id/log', async (req) => ({ log: await tasks.log((req.params as { id: string }).id) }));
+  app.delete('/api/tasks/:id/log', async (req) => {
+    await tasks.clearLog((req.params as { id: string }).id);
+    return { ok: true };
+  });
   app.delete('/api/tasks/:id', async (req) => {
     await tasks.remove((req.params as { id: string }).id);
     return { ok: true };

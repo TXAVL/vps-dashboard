@@ -404,7 +404,7 @@ export default function Tasks() {
   const [editing, setEditing] = useState<ScheduledTask | 'new' | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplate | undefined>(undefined);
   const [templateLibraryOpen, setTemplateLibraryOpen] = useState(false);
-  const [log, setLog] = useState<{ name: string; content: string | null } | null>(null);
+  const [log, setLog] = useState<{ task: ScheduledTask; content: string | null } | null>(null);
   const { confirm, run } = useFeedback();
   const { runJob } = useJobs();
 
@@ -420,9 +420,12 @@ export default function Tasks() {
   };
 
   const showLog = async (task: ScheduledTask) => {
-    setLog({ name: task.name, content: null });
-    const result = await run(() => get<{ log: string }>(`/api/tasks/${task.id}/log`));
-    setLog({ name: task.name, content: result?.log || 'Chưa có log. Tác vụ chưa chạy theo lịch lần nào.' });
+    setLog({ task, content: null });
+    const result = await get<{ log: string }>(`/api/tasks/${task.id}/log`).catch(() => null);
+    setLog({
+      task,
+      content: result?.log || 'Chưa có log. Tác vụ chưa chạy lần nào hoặc chưa sinh output. Bạn có thể bấm "Chạy ngay" phía trên để kích hoạt thử tác vụ.',
+    });
   };
 
   return (
@@ -523,9 +526,19 @@ export default function Tasks() {
                         icon={Play}
                         title="Chạy ngay và xem log"
                         className="hover:text-zen-green"
-                        onClick={() => void runJob(() => post<Job>(`/api/tasks/${task.id}/run`), () => void reload())}
+                        onClick={() =>
+                          void runJob(
+                            () => post<Job>(`/api/tasks/${task.id}/run`),
+                            async () => {
+                              await reload();
+                              if (log?.task.id === task.id) {
+                                await showLog(task);
+                              }
+                            },
+                          )
+                        }
                       />
-                      <IconButton icon={FileText} title="Log các lần chạy theo lịch" onClick={() => void showLog(task)} />
+                      <IconButton icon={FileText} title="Xem nhật ký chạy (Log)" onClick={() => void showLog(task)} />
                       <IconButton icon={Pencil} title="Sửa" onClick={() => setEditing(task)} />
                       <IconButton icon={Trash2} title="Xoá" className="hover:text-zen-red" onClick={() => void remove(task)} />
                     </td>
@@ -560,12 +573,58 @@ export default function Tasks() {
         />
       )}
 
-      <Modal open={Boolean(log)} onClose={() => setLog(null)} title={`Log: ${log?.name ?? ''}`} size="xl">
-        {log?.content === null ? (
-          <Spinner />
-        ) : (
-          <pre className="mono max-h-[65vh] overflow-auto whitespace-pre-wrap rounded-xl bg-[#0a0e17] p-4 text-xs leading-relaxed text-slate-300">{log?.content}</pre>
-        )}
+      <Modal open={Boolean(log)} onClose={() => setLog(null)} title={`Nhật ký (Log): ${log?.task.name ?? ''}`} size="xl">
+        <div className="space-y-3">
+          {log?.task && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-ink-950/70 p-3 text-xs">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="font-mono text-emerald-400 truncate max-w-full" title={log.task.command}>
+                  $ {log.task.command}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-slate-400">
+                  <span>Lịch: {scheduleLabel(log.task.schedule)}</span>
+                  {log.task.lastRunAt && (
+                    <>
+                      <span>·</span>
+                      <span>Chạy gần nhất: {formatRelative(log.task.lastRunAt)}</span>
+                      <Badge tone={log.task.lastExitCode === 0 ? 'green' : 'red'}>exit {log.task.lastExitCode}</Badge>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="xs"
+                  variant="primary"
+                  icon={Play}
+                  onClick={() => {
+                    const currentTask = log.task;
+                    void runJob(
+                      () => post<Job>(`/api/tasks/${currentTask.id}/run`),
+                      async () => {
+                        await reload();
+                        await showLog(currentTask);
+                      },
+                    );
+                  }}
+                >
+                  Chạy ngay
+                </Button>
+                <Button size="xs" variant="secondary" icon={RefreshCw} onClick={() => void showLog(log.task)}>
+                  Làm mới
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {log?.content === null ? (
+            <Spinner />
+          ) : (
+            <pre className="mono max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-xl bg-[#0a0e17] p-4 text-xs leading-relaxed text-slate-300 border border-slate-800/80">
+              {log?.content}
+            </pre>
+          )}
+        </div>
       </Modal>
     </>
   );

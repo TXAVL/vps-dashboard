@@ -1,7 +1,8 @@
 // ZenPanel - Tác vụ định kỳ (cron trên Linux, Task Scheduler trên Windows). Dữ liệu gốc lưu trong tasks.json
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { readFile, rm } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, rm } from 'node:fs/promises';
+import path from 'node:path';
 import type { OSAdapter, ScheduledTask, TaskSchedule } from '../adapters/base.adapter.js';
 import { jobLog, startJob, type JobView } from '../core/jobs.js';
 import { dataPath, JsonCollection } from '../core/store.js';
@@ -98,22 +99,83 @@ export class TaskService {
     await rm(dataPath('logs', 'tasks', `${id}.log`), { force: true });
   }
 
-  /** Chạy ngay trong 1 job để xem log trực tiếp trên panel */
+  /** Chạy ngay trong 1 job để xem log trực tiếp trên panel và lưu vào file log tác vụ */
   runNow(id: string): JobView {
     const task = this.get(id);
     return startJob(`Chạy tác vụ "${task.name}"`, 'task', async () => {
+      const startTime = new Date();
+      jobLog(`[Bắt đầu thực thi]: ${startTime.toLocaleString('vi-VN')}`);
+      jobLog(`[Tác vụ]: ${task.name}`);
+      jobLog(`$ ${task.command}\n`);
+
       const result = await this.adapter.runShell(task.command, { timeout: 30 * 60_000 });
-      jobLog(`\nMã thoát: ${result.code}`);
-      tasks.upsert({ ...this.get(id), lastRunAt: new Date().toISOString(), lastExitCode: result.code });
+      const endTime = new Date();
+      const durationSec = ((endTime.getTime() - startTime.getTime()) / 1000).toFixed(2);
+
+      if (result.stdout?.trim()) jobLog(result.stdout.trim());
+      if (result.stderr?.trim()) jobLog(`[STDERR]\n${result.stderr.trim()}`);
+      jobLog(`\n[Hoàn tất trong ${durationSec}s] Mã thoát: ${result.code} (${result.code === 0 ? 'Thành công' : 'Thất bại'})`);
+
+      tasks.upsert({ ...this.get(id), lastRunAt: endTime.toISOString(), lastExitCode: result.code });
+
+      // Lưu vĩnh viễn kết quả chạy vào file logs/tasks/<id>.log
+      try {
+        const logDir = dataPath('logs', 'tasks');
+        await mkdir(logDir, { recursive: true });
+        const logFile = path.join(logDir, `${task.id}.log`);
+        const outputText = [
+          result.stdout?.trim(),
+          result.stderr?.trim() ? `[STDERR]\n${result.stderr.trim()}` : '',
+        ].filter(Boolean).join('\n') || '[Lệnh thực thi hoàn tất, không sinh output ở stdout/stderr]';
+
+        const entry = [
+          `================================================================================`,
+          `[${endTime.toISOString().replace('T', ' ').slice(0, 19)}] CHẠY TỪ PANEL (${durationSec}s)`,
+          `Tác vụ: ${task.name}`,
+          `Lệnh:   ${task.command}`,
+          `--------------------------------------------------------------------------------`,
+          outputText,
+          `--------------------------------------------------------------------------------`,
+          `Mã thoát: ${result.code} - ${result.code === 0 ? 'THÀNH CÔNG' : 'THẤT BẠI'}`,
+          `================================================================================\n\n`,
+        ].join('\n');
+
+        await appendFile(logFile, entry, 'utf8');
+      } catch {
+        // bỏ qua nếu lỗi ghi file phụ
+      }
+
       if (result.code !== 0) throw new Error(`Lệnh thoát với mã ${result.code}`);
     });
   }
 
-  /** Log của các lần chạy theo lịch (do cron / Task Scheduler ghi) */
+  /** Log của các lần chạy (cả cron / Task Scheduler lẫn chạy thủ công từ Panel) */
   async log(id: string): Promise<string> {
-    this.get(id);
+    const task = this.get(id);
     const file = dataPath('logs', 'tasks', `${id}.log`);
-    if (!existsSync(file)) return '';
-    return (await readFile(file, 'utf8')).slice(-100_000);
+    if (existsSync(file)) {
+      try {
+        const content = (await readFile(file, 'utf8')).slice(-100_000);
+        if (content.trim()) return content;
+      } catch {}
+    }
+    // Nếu file chưa có nhưng task đã có bản ghi lần chạy gần nhất
+    if (task.lastRunAt) {
+      return [
+        `[Thông tin tác vụ]`,
+        `Tên tác vụ: ${task.name}`,
+        `Lệnh:       ${task.command}`,
+        `Lần chạy:   ${task.lastRunAt}`,
+        `Mã thoát:   ${task.lastExitCode ?? 0} (${task.lastExitCode === 0 ? 'Thành công' : 'Thất bại'})`,
+        `Ghi chú:    Tác vụ vừa được thực thi. Hãy bấm nút "Chạy ngay" để xem chi tiết output realtime.`,
+      ].join('\n');
+    }
+    return '';
+  }
+
+  /** Xoá trắng tệp log của tác vụ */
+  async clearLog(id: string): Promise<void> {
+    this.get(id);
+    await rm(dataPath('logs', 'tasks', `${id}.log`), { force: true });
   }
 }
