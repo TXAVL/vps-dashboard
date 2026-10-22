@@ -7,15 +7,21 @@ import {
   ArrowUp,
   Bot,
   Boxes,
+  Briefcase,
+  Building2,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock,
   Copy,
   Download,
   KeyRound,
+  Layers,
   ListOrdered,
   MessageSquare,
+  Network,
+  Pencil,
   Play,
   Plus,
   RefreshCw,
@@ -32,7 +38,7 @@ import {
   X,
 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
-import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Notice, PageHeader, Secret, Select, Spinner, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
+import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Secret, Select, Spinner, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
 import { del, get, getToken, post, put } from '../lib/api';
 import { formatRelative } from '../lib/format';
 import { useApi } from '../lib/hooks';
@@ -58,7 +64,47 @@ export interface SubAgent {
   maxTokens?: number;
   enabled: boolean;
   createdAt: string;
-  updatedAt: string;
+}
+
+export interface CompanyWorker {
+  id: string;
+  name: string;
+  role: string;
+  avatar: string;
+  targetModel: string;
+  systemPrompt: string;
+  enabled: boolean;
+}
+
+export interface MasterBotConfig {
+  name: string;
+  role: string;
+  targetModel: string;
+  systemPrompt: string;
+}
+
+export interface AiCompanyConfig {
+  enabled: boolean;
+  masterBot: MasterBotConfig;
+  workers: CompanyWorker[];
+}
+
+export interface CompanyStreamEvent {
+  type: 'phase' | 'plan' | 'worker_start' | 'worker_done' | 'worker_error' | 'boss_chunk' | 'done' | 'error';
+  phase?: 'planning' | 'working' | 'synthesizing' | 'completed';
+  message?: string;
+  plan?: {
+    taskSummary: string;
+    subtasks: { workerId: string; workerName: string; instruction: string }[];
+  };
+  workerId?: string;
+  workerName?: string;
+  modelUsed?: string;
+  instruction?: string;
+  result?: string;
+  delta?: string;
+  fullReport?: string;
+  error?: string;
 }
 
 interface GatewaySettings {
@@ -1097,6 +1143,682 @@ function SubAgentsTab({ models, onTry }: { models: AiModel[]; onTry: (model: str
   );
 }
 
+// ------------------------------------------------------------------ AI Company Orchestrator (Sếp & Công nhân)
+
+function CompanyTab({ models, providers }: { models: AiModel[]; providers: AiProvider[] }) {
+  const company = useApi<AiCompanyConfig>('/api/ai/company');
+  const [prompt, setPrompt] = useState('');
+  const [running, setRunning] = useState(false);
+  const [currentPhase, setCurrentPhase] = useState<'idle' | 'planning' | 'working' | 'synthesizing' | 'completed'>('idle');
+  const [statusMessage, setStatusMessage] = useState('');
+  const [plan, setPlan] = useState<{ taskSummary: string; subtasks: { workerId: string; workerName: string; instruction: string }[] } | null>(null);
+  const [workerProgress, setWorkerProgress] = useState<Record<string, { status: 'running' | 'done' | 'error'; model?: string; result?: string }>>({});
+  const [bossReport, setBossReport] = useState('');
+  const [selectedWorkerDetail, setSelectedWorkerDetail] = useState<{ name: string; avatar: string; result: string } | null>(null);
+
+  // Modal Sửa Sếp Tổng & Sửa Worker
+  const [editMasterOpen, setEditMasterOpen] = useState(false);
+  const [masterForm, setMasterForm] = useState<MasterBotConfig>({ name: '', role: '', targetModel: 'auto', systemPrompt: '' });
+  const [workerModalOpen, setWorkerModalOpen] = useState(false);
+  const [editingWorker, setEditingWorker] = useState<CompanyWorker | null>(null);
+  const [workerForm, setWorkerForm] = useState<CompanyWorker>({ id: '', name: '', role: '', avatar: '👷', targetModel: 'auto', systemPrompt: '', enabled: true });
+
+  const { confirm, run, toast } = useFeedback();
+
+  const configuredProviders = useMemo(() => providers.filter((p) => p.configured), [providers]);
+  const isMultiModel = configuredProviders.length > 1;
+
+  const startOrchestration = async () => {
+    const text = prompt.trim();
+    if (!text || running) return;
+
+    setRunning(true);
+    setCurrentPhase('planning');
+    setStatusMessage('👔 Sếp Tổng đang tiếp nhận đề bài và lập kế hoạch phân việc...');
+    setPlan(null);
+    setWorkerProgress({});
+    setBossReport('');
+
+    try {
+      const res = await fetch('/api/ai/company/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ prompt: text }),
+      });
+
+      if (!res.ok || !res.body) {
+        throw new Error(`Lỗi kết nối Sếp Tổng: ${res.status}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const dataStr = trimmed.replace(/^data:\s*/, '');
+          if (dataStr === '[DONE]') continue;
+
+          try {
+            const ev = JSON.parse(dataStr) as CompanyStreamEvent;
+            if (ev.type === 'phase' && ev.phase) {
+              setCurrentPhase(ev.phase);
+              if (ev.message) setStatusMessage(ev.message);
+            } else if (ev.type === 'plan' && ev.plan) {
+              setPlan(ev.plan);
+              if (ev.message) setStatusMessage(ev.message);
+            } else if (ev.type === 'worker_start' && ev.workerId) {
+              setWorkerProgress((prev) => ({
+                ...prev,
+                [ev.workerId!]: { status: 'running', model: ev.modelUsed },
+              }));
+              if (ev.message) setStatusMessage(ev.message);
+            } else if (ev.type === 'worker_done' && ev.workerId) {
+              setWorkerProgress((prev) => ({
+                ...prev,
+                [ev.workerId!]: { status: 'done', result: ev.result },
+              }));
+              if (ev.message) setStatusMessage(ev.message);
+            } else if (ev.type === 'boss_chunk' && ev.delta) {
+              setCurrentPhase('synthesizing');
+              setBossReport((prev) => prev + ev.delta);
+            } else if (ev.type === 'done') {
+              setCurrentPhase('completed');
+              if (ev.fullReport) setBossReport(ev.fullReport);
+              if (ev.message) setStatusMessage(ev.message);
+            } else if (ev.type === 'error') {
+              toast(ev.error || 'Lỗi điều phối', 'error');
+            }
+          } catch {
+            // ignore non-json
+          }
+        }
+      }
+    } catch (err) {
+      toast((err as Error).message, 'error');
+      setCurrentPhase('idle');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const openEditMaster = () => {
+    if (!company.data) return;
+    setMasterForm(company.data.masterBot);
+    setEditMasterOpen(true);
+  };
+
+  const saveMaster = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!masterForm.name.trim()) return;
+    await run(() => put('/api/ai/company', { masterBot: masterForm }), 'Đã cập nhật thông tin Sếp Tổng');
+    setEditMasterOpen(false);
+    void company.reload();
+  };
+
+  const openCreateWorker = () => {
+    setEditingWorker(null);
+    setWorkerForm({
+      id: '',
+      name: '',
+      role: '',
+      avatar: '👷',
+      targetModel: 'auto',
+      systemPrompt: 'Bạn là chuyên viên thực thi nhiệm vụ chuyên nghiệp.',
+      enabled: true,
+    });
+    setWorkerModalOpen(true);
+  };
+
+  const openEditWorker = (w: CompanyWorker) => {
+    setEditingWorker(w);
+    setWorkerForm(w);
+    setWorkerModalOpen(true);
+  };
+
+  const saveWorkerSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!workerForm.name.trim()) return;
+    await run(() => post('/api/ai/company/workers', workerForm), editingWorker ? 'Đã cập nhật phòng ban' : 'Đã thêm phòng ban mới');
+    setWorkerModalOpen(false);
+    void company.reload();
+  };
+
+  const toggleWorker = async (w: CompanyWorker) => {
+    await run(() => post('/api/ai/company/workers', { ...w, enabled: !w.enabled }), w.enabled ? `Đã tạm dừng ${w.name}` : `Đã kích hoạt ${w.name}`);
+    void company.reload();
+  };
+
+  const deleteWorker = async (w: CompanyWorker) => {
+    if (!(await confirm({ title: `Xóa phòng ban ${w.name}`, message: `Bạn có chắc muốn xóa phòng ban ${w.name} khỏi công ty?`, danger: true, confirmLabel: 'Xóa' }))) return;
+    await run(() => del(`/api/ai/company/workers/${w.id}`), 'Đã xóa phòng ban');
+    void company.reload();
+  };
+
+  const resetDefault = async () => {
+    if (!(await confirm({ title: 'Khôi phục phòng ban mẫu', message: 'Hệ thống sẽ đặt lại Sếp Tổng và 4 phòng ban mẫu chuẩn (Dev, Content, QA, Research).', confirmLabel: 'Khôi phục' }))) return;
+    await run(() => post('/api/ai/company/reset'), 'Đã khôi phục công ty mẫu');
+    void company.reload();
+  };
+
+  if (!company.data) return <Spinner label="Đang tải dữ liệu Công ty AI..." />;
+
+  const { masterBot, workers } = company.data;
+  const activeWorkers = workers.filter((w) => w.enabled);
+
+  return (
+    <div className="space-y-6">
+      {/* HEADER TỔNG QUAN HỆ THỐNG CÔNG TY AI */}
+      <div className="glass flex flex-wrap items-center justify-between gap-4 p-5 rounded-2xl border border-slate-700/60 bg-gradient-to-r from-slate-900/90 via-indigo-950/40 to-slate-900/90 shadow-xl">
+        <div className="flex items-center gap-3">
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500 to-indigo-600 text-2xl shadow-lg ring-2 ring-amber-400/30">
+            🏢
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-white">Hệ thống Công ty AI Agent (AI Company)</h2>
+              <Badge tone="blue" className="flex items-center gap-1 font-semibold">
+                <Network className="size-3 text-purple-300" /> Master & Workers Dispatcher
+              </Badge>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Sếp Tổng ({masterBot.name}) bóc tách đề bài, phân chia việc cho {activeWorkers.length}/{workers.length} phòng ban chuyên môn, sau đó kiểm duyệt và tổng hợp báo cáo.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="xs" variant="secondary" icon={RotateCw} onClick={resetDefault}>
+            Đặt lại mẫu chuẩn
+          </Button>
+          <Button size="xs" variant="primary" icon={Plus} onClick={openCreateWorker} className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500">
+            Thêm phòng ban
+          </Button>
+        </div>
+      </div>
+
+      {/* THÔNG BÁO CHẾ ĐỘ PHÂN BỔ MODEL */}
+      <Notice icon={Briefcase}>
+        {isMultiModel ? (
+          <span>
+            <b>Đa Model đã kết nối ({configuredProviders.length} nhà cung cấp):</b> Sếp Tổng sẽ phân chia nhiệm vụ cho các model AI chuyên biệt (ví dụ: Claude/GPT giải quyết Code, Gemini phân tích Data & Content).
+          </span>
+        ) : (
+          <span>
+            <b>Chế độ 1 AI Đa vai trò (Single-Agent Multi-Persona):</b> Hiện chỉ có 1 nhà cung cấp/API key kết nối, 1 con AI duy nhất sẽ tự động hoán đổi vai trò để lần lượt thực hiện mọi nhiệm vụ của từng phòng ban rồi tổng hợp!
+          </span>
+        )}
+      </Notice>
+
+      {/* BÀN ĐIỀU HÀNH & TRÒ CHUYỆN VỚI SẾP TỔNG (LIVE ORCHESTRATION DESK) */}
+      <div className="glass rounded-2xl border border-indigo-500/30 p-5 space-y-4 shadow-2xl bg-ink-950/70">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/50 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">👔</span>
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                Bàn Điều Phối Sếp Tổng: {masterBot.name}
+                <span className="text-[11px] font-normal text-slate-400">({masterBot.role})</span>
+              </h3>
+              <p className="text-xs text-slate-400">Giao việc cho Sếp. Sếp sẽ họp công ty, chia việc và trả về giải pháp hoàn chỉnh.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Sẵn sàng tiếp nhận dự án</span>
+          </div>
+        </div>
+
+        {/* Ô NHẬP ĐỀ BÀI */}
+        <div className="space-y-2">
+          <textarea
+            className="input min-h-[90px] w-full text-sm resize-none focus:ring-2 focus:ring-indigo-500/50"
+            disabled={running}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Mô tả dự án, tính năng hoặc bài toán bạn cần giải quyết... (Ví dụ: Xây dựng hệ thống tự động backup database MySQL lên Google Drive kèm bot Telegram thông báo khi lỗi)"
+          />
+
+          {/* Gợi ý mẫu 1-click */}
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase">Gợi ý nhanh:</span>
+            {[
+              'Xây dựng hệ thống auto backup database lên S3 kèm bot Telegram cảnh báo',
+              'Audit bảo mật toàn diện cho VPS Ubuntu và cấu hình Firewall chuẩn',
+              'Kế hoạch ra mắt sản phẩm SaaS mới: Landing page, Marketing, và DevOps',
+            ].map((sample) => (
+              <button
+                key={sample}
+                type="button"
+                onClick={() => setPrompt(sample)}
+                className="rounded-lg border border-slate-800 bg-slate-800/40 px-2 py-1 hover:border-slate-600 hover:text-white transition text-left truncate max-w-[280px]"
+                title={sample}
+              >
+                {sample}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <div className="text-xs text-slate-400 italic">
+              {running && statusMessage ? statusMessage : 'Bấm nút bên phải để Sếp phân công các phòng ban thực thi'}
+            </div>
+
+            <Button
+              variant="primary"
+              icon={Send}
+              loading={running}
+              disabled={!prompt.trim() || running}
+              onClick={startOrchestration}
+              className="bg-gradient-to-r from-amber-500 via-indigo-600 to-purple-600 hover:from-amber-400 hover:to-purple-500 font-semibold px-5 shadow-lg shadow-indigo-900/30"
+            >
+              👔 Sếp Điều Phối & Báo Cáo
+            </Button>
+          </div>
+        </div>
+
+        {/* TIẾN TRÌNH THỰC THI THỜI GIAN THỰC (LIVE STEPPER) */}
+        {currentPhase !== 'idle' && (
+          <div className="space-y-4 pt-3 border-t border-slate-800">
+            {/* GIAI ĐOẠN 1: KẾ HOẠCH CỦA SẾP */}
+            <div className="rounded-xl border border-slate-700/70 bg-slate-900/80 p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">👔</span>
+                  <span className="font-semibold text-xs text-amber-300 uppercase tracking-wider">
+                    Giai đoạn 1: Sếp Tổng Lập Kế Hoạch & Phân Công
+                  </span>
+                </div>
+                {plan ? (
+                  <Badge tone="green" className="text-[10px]">Đã duyệt kế hoạch</Badge>
+                ) : (
+                  <Badge tone="blue" className="text-[10px] animate-pulse">Đang phân tích...</Badge>
+                )}
+              </div>
+
+              {plan ? (
+                <div className="space-y-2">
+                  <div className="text-xs text-slate-200 font-medium">
+                    🎯 <b>Mục tiêu chiến lược:</b> {plan.taskSummary}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4 pt-1">
+                    {plan.subtasks.map((st, idx) => {
+                      const w = workers.find((item) => item.id === st.workerId);
+                      return (
+                        <div key={idx} className="rounded-lg border border-slate-800 bg-black/40 p-2.5 text-xs space-y-1">
+                          <div className="flex items-center gap-1.5 font-bold text-white">
+                            <span>{w?.avatar || '👷'}</span>
+                            <span className="truncate">{st.workerName}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 line-clamp-2">{st.instruction}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-slate-400 py-2">
+                  <RefreshCw className="size-3.5 animate-spin text-amber-400" />
+                  <span>Sếp đang họp ban giám đốc và chuẩn bị danh sách nhiệm vụ...</span>
+                </div>
+              )}
+            </div>
+
+            {/* GIAI ĐOẠN 2: CÁC PHÒNG BAN THỰC THI */}
+            {plan && (
+              <div className="rounded-xl border border-slate-700/70 bg-slate-900/80 p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">👷</span>
+                    <span className="font-semibold text-xs text-blue-300 uppercase tracking-wider">
+                      Giai đoạn 2: Các Phòng Ban AI Đồng Loạt Xử Lý
+                    </span>
+                  </div>
+                  <Badge tone="blue" className="text-[10px]">
+                    {Object.values(workerProgress).filter((p) => p.status === 'done').length}/{plan.subtasks.length} Hoàn thành
+                  </Badge>
+                </div>
+
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {plan.subtasks.map((st, idx) => {
+                    const w = workers.find((item) => item.id === st.workerId);
+                    const prog = workerProgress[st.workerId];
+                    const isDone = prog?.status === 'done';
+                    const isRunning = prog?.status === 'running';
+
+                    return (
+                      <div
+                        key={idx}
+                        className={cn(
+                          'rounded-xl border p-3 text-xs space-y-2 transition shadow-sm',
+                          isDone
+                            ? 'border-emerald-500/40 bg-emerald-950/20'
+                            : isRunning
+                              ? 'border-blue-500/50 bg-blue-950/30 ring-1 ring-blue-500/30'
+                              : 'border-slate-800 bg-black/30 opacity-60',
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 font-bold text-white">
+                            <span className="text-base">{w?.avatar || '👷'}</span>
+                            <span className="truncate">{st.workerName}</span>
+                          </div>
+                          {isDone ? (
+                            <CheckCircle2 className="size-4 text-emerald-400" />
+                          ) : isRunning ? (
+                            <RefreshCw className="size-3.5 animate-spin text-blue-400" />
+                          ) : (
+                            <Clock className="size-3.5 text-slate-500" />
+                          )}
+                        </div>
+
+                        <div className="text-[11px] text-slate-400 line-clamp-2">{st.instruction}</div>
+
+                        {prog?.model && (
+                          <div className="mono text-[10px] text-indigo-300 truncate">Model: {prog.model}</div>
+                        )}
+
+                        {isDone && prog?.result && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedWorkerDetail({
+                                name: st.workerName,
+                                avatar: w?.avatar || '👷',
+                                result: prog.result!,
+                              })
+                            }
+                            className="w-full text-center rounded-lg bg-emerald-900/40 hover:bg-emerald-900/70 py-1 text-[11px] font-semibold text-emerald-300 transition"
+                          >
+                            Xem bài làm phòng ban →
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* GIAI ĐOẠN 3: BÁO CÁO TỔNG HỢP TOÀN DIỆN CỦA SẾP */}
+            {(currentPhase === 'synthesizing' || currentPhase === 'completed' || bossReport) && (
+              <div className="rounded-xl border border-indigo-500/40 bg-slate-900/95 p-4 space-y-3 shadow-xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🏆</span>
+                    <div>
+                      <h4 className="text-sm font-bold text-white">Báo Cáo Tổng Hợp từ Sếp Tổng ({masterBot.name})</h4>
+                      <p className="text-[11px] text-slate-400">Đã chắt lọc, nghiệm thu và tích hợp giải pháp từ mọi phòng ban</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {bossReport && (
+                      <CopyButton value={bossReport} label="Sao chép báo cáo" />
+                    )}
+                    {currentPhase === 'completed' ? (
+                      <Badge tone="green">Hoàn tất 100%</Badge>
+                    ) : (
+                      <Badge tone="blue" className="flex items-center gap-1">
+                        <RefreshCw className="size-3 animate-spin" /> Sếp đang soạn...
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                <div className="prose prose-invert max-w-none text-xs leading-relaxed max-h-[460px] overflow-y-auto whitespace-pre-wrap p-3 rounded-xl bg-black/40 border border-slate-800/80 font-sans text-slate-200">
+                  {bossReport || <span className="text-slate-500 italic animate-pulse">Sếp đang viết báo cáo gửi bạn...</span>}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* SƠ ĐỒ CƠ CẤU CÔNG TY & QUẢN LÝ PHÒNG BAN (ORG CHART) */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Layers className="size-5 text-indigo-400" />
+            <h3 className="text-base font-bold text-white">Sơ đồ Cơ cấu & Danh sách Phòng Ban Công ty</h3>
+          </div>
+          <Button size="xs" variant="primary" icon={Plus} onClick={openCreateWorker}>
+            Thêm phòng ban mới
+          </Button>
+        </div>
+
+        {/* THẺ SẾP TỔNG (MASTER BOT) */}
+        <div className="relative rounded-2xl border-2 border-amber-500/40 bg-gradient-to-r from-amber-950/30 via-slate-900 to-indigo-950/30 p-4 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">👔</span>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-extrabold text-white text-base">{masterBot.name}</h4>
+                  <Badge tone="amber" className="text-[10px] font-bold uppercase tracking-wider">
+                    Sếp Tổng (CEO & Orchestrator)
+                  </Badge>
+                </div>
+                <div className="text-xs text-amber-300/80 font-medium">{masterBot.role}</div>
+                <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5 max-w-xl">{masterBot.systemPrompt}</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="mono text-xs text-slate-400 bg-black/40 px-2 py-1 rounded-lg border border-slate-800">
+                Model: {masterBot.targetModel || 'auto'}
+              </span>
+              <Button size="xs" variant="secondary" icon={Pencil} onClick={openEditMaster}>
+                Sửa Sếp
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* DANH SÁCH PHÒNG BAN CÔNG NHÂN (WORKERS) */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {workers.map((w) => (
+            <div
+              key={w.id}
+              className={cn(
+                'glass rounded-2xl p-4 flex flex-col justify-between gap-3 border transition-all',
+                w.enabled ? 'border-slate-700/80 hover:border-indigo-500/50' : 'border-slate-800/40 opacity-50 bg-black/40',
+              )}
+            >
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">{w.avatar || '👷'}</span>
+                    <div>
+                      <h4 className="font-bold text-white text-xs">{w.name}</h4>
+                      <span className="mono text-[10px] text-slate-500">#{w.id}</span>
+                    </div>
+                  </div>
+                  <Toggle checked={w.enabled} onChange={() => void toggleWorker(w)} />
+                </div>
+
+                <div className="text-xs text-slate-300 font-medium">{w.role}</div>
+                <div className="text-[11px] text-slate-400 line-clamp-3 bg-black/30 p-2 rounded-lg border border-slate-800">
+                  {w.systemPrompt}
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                <span className="mono text-[10px] text-indigo-300 font-semibold truncate max-w-[120px]">
+                  {w.targetModel || 'auto'}
+                </span>
+
+                <div className="flex items-center gap-1">
+                  <IconButton icon={Pencil} title="Chỉnh sửa" onClick={() => openEditWorker(w)} />
+                  <IconButton icon={Trash2} title="Xóa" onClick={() => void deleteWorker(w)} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* MODAL SỬA SẾP TỔNG */}
+      <Modal open={editMasterOpen} title="Thiết lập Sếp Tổng (Master Bot)" onClose={() => setEditMasterOpen(false)}>
+        <form onSubmit={saveMaster} className="space-y-3 text-sm">
+          <Field label="Tên Sếp Tổng">
+            <input
+              className="input"
+              required
+              value={masterForm.name}
+              onChange={(e) => setMasterForm({ ...masterForm, name: e.target.value })}
+            />
+          </Field>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Chức danh & Vai trò">
+              <input
+                className="input"
+                required
+                value={masterForm.role}
+                onChange={(e) => setMasterForm({ ...masterForm, role: e.target.value })}
+              />
+            </Field>
+            <Field label="Model AI phụ trách">
+              <Select value={masterForm.targetModel} onChange={(e) => setMasterForm({ ...masterForm, targetModel: e.target.value })}>
+                <option value="auto">auto (Model mặc định của Gateway)</option>
+                {models.filter((m) => !m.id.startsWith('agent/')).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+
+          <Field label="System Prompt Chỉ Đạo (Quy định tư duy lãnh đạo, bóc tách và tổng hợp)">
+            <textarea
+              className="input h-32 text-xs font-mono"
+              required
+              value={masterForm.systemPrompt}
+              onChange={(e) => setMasterForm({ ...masterForm, systemPrompt: e.target.value })}
+            />
+          </Field>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setEditMasterOpen(false)}>
+              Hủy
+            </Button>
+            <Button type="submit" variant="primary" icon={Save}>
+              Lưu Sếp Tổng
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL THÊM / SỬA PHÒNG BAN */}
+      <Modal open={workerModalOpen} title={editingWorker ? `Sửa phòng ban: ${editingWorker.name}` : 'Thêm phòng ban mới'} onClose={() => setWorkerModalOpen(false)}>
+        <form onSubmit={saveWorkerSubmit} className="space-y-3 text-sm">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="sm:col-span-2">
+              <Field label="Tên phòng ban">
+                <input
+                  className="input"
+                  required
+                  placeholder="vd: Kỹ sư Phần mềm"
+                  value={workerForm.name}
+                  onChange={(e) => setWorkerForm({ ...workerForm, name: e.target.value })}
+                />
+              </Field>
+            </div>
+            <Field label="Biểu tượng (Emoji)">
+              <input
+                className="input text-center text-lg"
+                value={workerForm.avatar}
+                onChange={(e) => setWorkerForm({ ...workerForm, avatar: e.target.value })}
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Mã gọi (Slug)">
+              <input
+                className="input mono"
+                placeholder="vd: dev, content"
+                value={workerForm.id}
+                disabled={Boolean(editingWorker)}
+                onChange={(e) => setWorkerForm({ ...workerForm, id: e.target.value })}
+              />
+            </Field>
+            <Field label="Model AI phân bổ">
+              <Select value={workerForm.targetModel} onChange={(e) => setWorkerForm({ ...workerForm, targetModel: e.target.value })}>
+                <option value="auto">auto (Tự động linh hoạt theo kết nối)</option>
+                {models.filter((m) => !m.id.startsWith('agent/')).map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+
+          <Field label="Mô tả vai trò chuyên môn">
+            <input
+              className="input"
+              required
+              placeholder="vd: Phụ trách code, kiến trúc hệ thống, Linux shell..."
+              value={workerForm.role}
+              onChange={(e) => setWorkerForm({ ...workerForm, role: e.target.value })}
+            />
+          </Field>
+
+          <Field label="System Prompt Chuyên Môn">
+            <textarea
+              className="input h-32 text-xs font-mono"
+              required
+              value={workerForm.systemPrompt}
+              onChange={(e) => setWorkerForm({ ...workerForm, systemPrompt: e.target.value })}
+              placeholder="Hướng dẫn cách tư duy, phong cách trả lời và nhiệm vụ cốt lõi..."
+            />
+          </Field>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="ghost" onClick={() => setWorkerModalOpen(false)}>
+              Hủy
+            </Button>
+            <Button type="submit" variant="primary" icon={Save}>
+              {editingWorker ? 'Cập nhật' : 'Thêm phòng ban'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* MODAL CHI TIẾT BÀI LÀM CỦA PHÒNG BAN */}
+      <Modal
+        open={Boolean(selectedWorkerDetail)}
+        title={selectedWorkerDetail ? `Chi tiết bài làm: ${selectedWorkerDetail.avatar} ${selectedWorkerDetail.name}` : ''}
+        onClose={() => setSelectedWorkerDetail(null)}
+      >
+        {selectedWorkerDetail && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs text-slate-400">
+              <span>Báo cáo thô nộp lên Sếp Tổng</span>
+              <CopyButton value={selectedWorkerDetail.result} label="Chép nội dung" />
+            </div>
+            <div className="prose prose-invert max-w-none text-xs leading-relaxed max-h-[400px] overflow-y-auto whitespace-pre-wrap p-3 rounded-xl bg-black/50 border border-slate-800 font-sans text-slate-200">
+              {selectedWorkerDetail.result}
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ Hoạt động & Logs
 
 function ActivityTab() {
@@ -1553,7 +2275,7 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
   );
 }
 
-type TabId = 'overview' | 'subagents' | 'providers' | 'models' | 'playground' | 'routing' | 'activity';
+type TabId = 'overview' | 'company' | 'subagents' | 'providers' | 'models' | 'playground' | 'routing' | 'activity';
 
 export default function AiGateway() {
   const providers = useApi<AiProvider[]>('/api/ai/providers');
@@ -1610,6 +2332,7 @@ export default function AiGateway() {
           onChange={setTab}
           tabs={[
             { id: 'overview', label: 'Tổng quan', icon: Route },
+            { id: 'company', label: '🏢 AI Company (Sếp & Công nhân)', icon: Building2 },
             { id: 'subagents', label: 'Sub AI Agents', icon: Bot, count: subagents.data?.length },
             { id: 'providers', label: 'Nhà cung cấp & Keys', icon: KeyRound, count: providers.data.filter((p) => p.configured).length },
             { id: 'models', label: 'Models', icon: Boxes, count: allModels.data?.length },
@@ -1620,6 +2343,7 @@ export default function AiGateway() {
         />
       </div>
       {tab === 'overview' && <OverviewTab gateway={gateway} saveGateway={saveGateway} regenerate={() => void regenerate()} providers={providers.data} />}
+      {tab === 'company' && <CompanyTab models={allModels.data ?? []} providers={providers.data} />}
       {tab === 'subagents' && (
         <SubAgentsTab
           models={allModels.data ?? []}

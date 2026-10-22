@@ -5,6 +5,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { HttpError } from '../core/validate.js';
 import type { AiService } from '../services/ai.service.js';
 import type { AiGatewayService, GatewayLog } from '../services/aigateway.service.js';
+import type { AiCompanyService } from '../services/aicompany.service.js';
 
 /** Trả nguyên response của nhà cung cấp (giữ stream SSE) */
 function pipe(reply: FastifyReply, res: Response) {
@@ -13,8 +14,8 @@ function pipe(reply: FastifyReply, res: Response) {
 }
 
 /** Route trong panel (yêu cầu đăng nhập) */
-export async function aiPanelRoutes(app: FastifyInstance, deps: { ai: AiService; gateway: AiGatewayService }): Promise<void> {
-  const { ai, gateway } = deps;
+export async function aiPanelRoutes(app: FastifyInstance, deps: { ai: AiService; gateway: AiGatewayService; company: AiCompanyService }): Promise<void> {
+  const { ai, gateway, company } = deps;
   type Params = { id: string };
 
   app.get('/api/ai/providers/:id/models', async (req) => ai.models((req.params as Params).id, (req.query as { refresh?: string }).refresh === '1'));
@@ -46,6 +47,42 @@ export async function aiPanelRoutes(app: FastifyInstance, deps: { ai: AiService;
   app.delete('/api/ai/subagents/:id', async (req) => {
     gateway.deleteSubAgent((req.params as Params).id);
     return { ok: true };
+  });
+
+  // Quản lý AI Company Orchestrator (Master Bot & Workers)
+  app.get('/api/ai/company', async () => company.getConfig());
+  app.put('/api/ai/company', async (req) => company.saveConfig((req.body ?? {}) as Parameters<typeof company.saveConfig>[0]));
+  app.post('/api/ai/company/workers', async (req) => company.saveWorker((req.body ?? {}) as Parameters<typeof company.saveWorker>[0]));
+  app.delete('/api/ai/company/workers/:id', async (req) => {
+    company.deleteWorker((req.params as Params).id);
+    return { ok: true };
+  });
+  app.post('/api/ai/company/reset', async () => company.resetDefault());
+
+  // Điều phối công việc AI Company qua Server-Sent Events (SSE)
+  app.post('/api/ai/company/chat', async (req, reply) => {
+    const body = (req.body ?? {}) as { prompt?: string };
+    const prompt = body.prompt?.trim() ?? '';
+    if (!prompt) return reply.code(400).send({ error: 'Vui lòng nhập yêu cầu công việc' });
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    try {
+      for await (const ev of company.dispatchStream(prompt)) {
+        reply.raw.write(`data: ${JSON.stringify(ev)}\n\n`);
+      }
+      reply.raw.write(`data: [DONE]\n\n`);
+    } catch (err) {
+      reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: (err as Error).message })}\n\n`);
+    } finally {
+      reply.raw.end();
+    }
   });
 
   app.get('/api/ai/gateway', async () => gateway.getSettings());

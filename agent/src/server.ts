@@ -25,6 +25,7 @@ import { siteRoutes } from './routes/sites.routes.js';
 import { systemRoutes } from './routes/system.routes.js';
 import { AiService } from './services/ai.service.js';
 import { AiGatewayService } from './services/aigateway.service.js';
+import { AiCompanyService } from './services/aicompany.service.js';
 import { HttpClientService } from './services/httpclient.service.js';
 import { AppStoreService } from './services/appstore.service.js';
 import { AppTunnelService } from './services/apptunnel.service.js';
@@ -58,6 +59,7 @@ async function main() {
   const docker = new DockerService(adapter);
   const ai = new AiService();
   const gateway = new AiGatewayService(ai);
+  const company = new AiCompanyService(ai, gateway);
   const http = new HttpClientService();
   const appTunnels = new AppTunnelService(adapter);
   const apps = new AppStoreService(docker, ai, appTunnels, adapter);
@@ -102,7 +104,7 @@ async function main() {
     await fileRoutes(secured, ctx);
     await dockerRoutes(secured, ctx, { docker, apps, databases, stacks, hub });
     await procRoutes(secured, { procs });
-    await aiPanelRoutes(secured, { ai, gateway });
+    await aiPanelRoutes(secured, { ai, gateway, company });
     await httpRoutes(secured, { http });
     await phpRoutes(secured, { php });
     await siteRoutes(secured, ctx, { sites, cloudflare });
