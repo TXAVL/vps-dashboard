@@ -1,12 +1,15 @@
-# 🚀 NexusPanel - Universal VPS Control Dashboard
+# 🧘 ZenPanel - Universal VPS Control Dashboard
 
 <p align="center">
-  <b>Bảng điều khiển quản trị VPS thế hệ mới — Tự động nhận diện hệ điều hành (Windows Server & Linux Ubuntu/Debian/CentOS).</b>
+  <b>Bảng điều khiển quản trị VPS thế hệ mới — Quản trị an nhàn, không cần nhớ lệnh!</b>
+  <br />
+  <i>Tự động nhận diện hệ điều hành (Windows Server & Linux Ubuntu/Debian/CentOS).</i>
   <br />
   <i>Kết hợp tinh hoa thiết kế <b>vPanel.vn</b> (Giao diện Jupiter hiện đại, Website Isolation, File Manager + Code Editor, WAF) và <b>1Panel</b> (Docker Containers, 1-Click App Store).</i>
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/Project-ZenPanel-6366F1?style=for-the-badge&logo=compass" alt="ZenPanel" />
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue?style=for-the-badge&logo=linux" alt="OS Platform" />
   <img src="https://img.shields.io/badge/Auto--Detect-OS%20Adapter%20Engine-brightgreen?style=for-the-badge" alt="Auto-Detect" />
   <img src="https://img.shields.io/badge/UI-vPanel.vn%20Jupiter%20Style-indigo?style=for-the-badge" alt="UI" />
@@ -17,10 +20,10 @@
 
 ## 🎨 Phong cách thiết kế giao diện (Lấy cảm hứng từ vPanel.vn)
 
-NexusPanel áp dụng ngôn ngữ thiết kế chuẩn từ **vPanel.vn**:
-- **Bố cục Jupiter UI**: Phân tách rõ ràng giữa cấu hình hệ thống máy chủ và khu vực vận hành website/ứng dụng.
-- **Thanh chuyển đổi GUI $\leftrightarrow$ CLI**: Cho phép người dùng chuyển đổi linh hoạt giữa giao diện đồ họa 1-click hoặc cửa sổ lệnh chuyên sâu.
-- **Thẻ Card & Cửa sổ macOS mockup**: Sử dụng bo góc `rounded-2xl`, viền sáng `border-slate-700/50`, dải nút chấm màu điều khiển (`#EF4444`, `#F59E0B`, `#3B82F6`) và thanh trạng thái an toàn `https://...:2083`.
+**ZenPanel** áp dụng trọn vẹn ngôn ngữ thiết kế chuẩn từ **vPanel.vn**:
+- **Bố cục Jupiter UI**: Phân tách rõ ràng giữa cấu hình máy chủ (Admin Master) và khu vực vận hành website/ứng dụng (User Dashboard).
+- **Thanh chuyển đổi Zen GUI $\leftrightarrow$ Zen CLI**: Cho phép người dùng chuyển đổi linh hoạt giữa giao diện đồ họa 1-click hoặc cửa sổ terminal chuyên sâu.
+- **Thẻ Card & Cửa sổ macOS mockup**: Sử dụng bo góc `rounded-2xl`, viền sáng `border-slate-700/50`, dải nút chấm màu điều khiển (`#EF4444`, `#F59E0B`, `#3B82F6`) và thanh trạng thái an toàn `https://zenpanel.vps:2083`.
 - **Cột giám sát tài nguyên bên phải**: Thanh tiến trình hiển thị trực quan Disk Quota, Bandwidth, CPU, RAM cập nhật theo mili-giây.
 
 ---
@@ -50,10 +53,10 @@ NexusPanel áp dụng ngôn ngữ thiết kế chuẩn từ **vPanel.vn**:
 
 ## 📊 Bảng so sánh tính năng
 
-| Tính năng | 1Panel | vPanel.vn | NexusPanel (Dự án này) |
+| Tính năng | 1Panel | vPanel.vn | ZenPanel (Dự án này) |
 | :--- | :--- | :--- | :--- |
 | **Hệ điều hành** | Chỉ Linux | Chỉ Linux | 🤖 **Windows & Linux (Tự Auto-detect)** |
-| **Giao diện (UI)** | Element Plus văn phòng | Giao diện Jupiter hiện đại | 🚀 **Jupiter Style + Dark Glassmorphic hiện đại** |
+| **Giao diện (UI)** | Element Plus văn phòng | Giao diện Jupiter hiện đại | 🚀 **Jupiter Style + Dark Glassmorphic cực ngầu** |
 | **Bố cục** | 1 tầng | 2 tầng (Admin & User) | 💎 **Linh hoạt: Admin Master & Site Dashboard** |
 | **Docker & App Store** | Mạnh | Hạn chế | 🔥 **Có sẵn App Store 1-Click + Docker Compose** |
 | **Website & Domain** | Nginx/OpenResty | OpenLiteSpeed + Cô lập | 🌐 **Tự động cấu hình Web Server theo OS** |
