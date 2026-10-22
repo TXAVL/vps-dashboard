@@ -114,7 +114,7 @@ export class SpeedtestService {
         client: { ip: meta.clientIp ?? '', isp: meta.asOrganization ?? '' },
       };
       writeJson(HISTORY_FILE, [result, ...this.history()].slice(0, 20));
-      this.state = { ...this.state, running: false, phase: 'done', progress: 1, liveSpeed: 0, last: result };
+      this.state = { ...this.state, running: false, phase: 'done', progress: 1, liveSpeed: this.state.download ?? 0, last: result };
     } catch (err) {
       this.state = { ...this.state, running: false, phase: 'error', error: `Speedtest lỗi: ${(err as Error).message}` };
     }
@@ -134,11 +134,20 @@ export class SpeedtestService {
     };
     const ticker = setInterval(() => {
       const now = performance.now();
-      this.state.liveSpeed = ((total - lastBytes) / (now - lastTime)) * 1000;
+      const timeDelta = now - lastTime;
+      if (timeDelta > 0) {
+        const currentDelta = total - lastBytes;
+        const instant = (currentDelta / timeDelta) * 1000;
+        if (instant > 0) {
+          this.state.liveSpeed = this.state.liveSpeed > 0 ? this.state.liveSpeed * 0.35 + instant * 0.65 : instant;
+        } else if (this.state.liveSpeed > 0) {
+          this.state.liveSpeed = this.state.liveSpeed * 0.88;
+        }
+      }
       this.state.progress = Math.min(1, (now - start) / durationMs);
       lastBytes = total;
       lastTime = now;
-    }, 300);
+    }, 150);
     const timer = setTimeout(() => controller.abort(), durationMs);
     const loop = async () => {
       while (!controller.signal.aborted) await worker(count, controller.signal).catch(() => undefined);
