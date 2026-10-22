@@ -678,7 +678,8 @@ export const APP_CATALOG: AppDefinition[] = [
     appType: 'native',
     params: [],
     nativeInstall: {
-      downloadUrl: 'https://github.com/TXAVL/T-Drop/releases/latest/download/T-Drop.exe',
+      downloadUrl: 'https://github.com/TXAVL/T-Drop/releases/download/v0.1.10/T-Drop-Setup-0.1.10.exe',
+      targetExe: 'T-Drop.exe',
     },
   },
   {

@@ -215,21 +215,61 @@ export class AppStoreService {
       const execAsync = promisify(exec);
 
       if (app.id === 'tdrop') {
-        jobLog('Đang tải T-Drop từ GitHub release (TXAVL/T-Drop)...');
-        const exePath = path.join(dir, 'T-Drop.exe');
+        jobLog('Đang kiểm tra và tìm bản phát hành mới nhất của T-Drop (TXAVL/T-Drop)...');
+        let downloadUrl = 'https://github.com/TXAVL/T-Drop/releases/download/v0.1.10/T-Drop-Setup-0.1.10.exe';
+        let releaseTag = 'v0.1.10';
+
+        try {
+          const res = await fetch('https://api.github.com/repos/TXAVL/T-Drop/releases/latest', {
+            headers: { 'User-Agent': 'ZenPanel-AppStore' },
+            signal: AbortSignal.timeout(6000),
+          });
+          if (res.ok) {
+            const data: any = await res.json();
+            if (data.tag_name) releaseTag = data.tag_name;
+            const exeAsset = data.assets?.find(
+              (a: any) =>
+                typeof a.name === 'string' &&
+                (a.name.toLowerCase().startsWith('t-drop-setup') || a.name.toLowerCase().endsWith('.exe')) &&
+                !a.name.toLowerCase().includes('.blockmap'),
+            );
+            if (exeAsset?.browser_download_url) {
+              downloadUrl = exeAsset.browser_download_url;
+              jobLog(`✓ Đã phát hiện bản mới nhất: ${releaseTag} (${exeAsset.name})`);
+            }
+          }
+        } catch {
+          jobLog(`Lưu ý: Không thể truy vấn GitHub API, dùng URL mặc định chuẩn (${releaseTag})`);
+        }
+
+        jobLog(`Đang tải T-Drop Setup từ: ${downloadUrl}`);
+        const installerPath = path.join(dir, 'T-Drop-Setup.exe');
         const script = `
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-          $url = "https://github.com/TXAVL/T-Drop/releases/latest/download/T-Drop.exe"
-          Invoke-WebRequest -Uri $url -OutFile "${exePath}" -UseBasicParsing
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri "${downloadUrl}" -OutFile "${installerPath}" -UseBasicParsing
         `;
         await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
-        jobLog(`✓ T-Drop đã được tải thành công về: ${exePath}`);
+        jobLog(`✓ T-Drop Setup đã được tải thành công về: ${installerPath}`);
+
+        // Chạy cài đặt tự động (silent switch /S)
+        jobLog('Đang tiến hành cài đặt T-Drop vào hệ thống Windows...');
+        try {
+          await execAsync(`powershell -NoProfile -Command "Start-Process -FilePath '${installerPath}' -ArgumentList '/S' -Wait"`).catch(() => undefined);
+          jobLog('✓ Đã chạy hoàn tất cài đặt T-Drop');
+        } catch (err: any) {
+          jobLog(`Lưu ý khi chạy cài đặt silent: ${err?.message || err}. Khởi chạy trình cài đặt trực tiếp...`);
+          await execAsync(`powershell -NoProfile -Command "Start-Process -FilePath '${installerPath}'"`).catch(() => undefined);
+        }
+
         // Tạo shortcut trên Desktop
         const desktopShortcut = `
           $WshShell = New-Object -ComObject WScript.Shell
+          $installedExe = Join-Path $env:LOCALAPPDATA 'Programs\\T-Drop\\T-Drop.exe'
+          $target = if (Test-Path $installedExe) { $installedExe } else { '${installerPath}' }
           $Shortcut = $WshShell.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\\T-Drop.lnk')
-          $Shortcut.TargetPath = '${exePath}'
-          $Shortcut.WorkingDirectory = '${dir}'
+          $Shortcut.TargetPath = $target
+          $Shortcut.WorkingDirectory = Split-Path $target
           $Shortcut.Save()
         `;
         await execAsync(`powershell -NoProfile -Command "${desktopShortcut.replace(/\r?\n/g, ' ')}"`);
