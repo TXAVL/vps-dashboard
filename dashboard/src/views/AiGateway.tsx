@@ -598,7 +598,7 @@ interface ChatMessage {
 function PlaygroundTab({ initialModel, models }: { initialModel: string; models: AiModel[] }) {
   const subagents = useApi<SubAgent[]>('/api/ai/subagents');
   const [model, setModel] = useState(initialModel);
-  const [system, setSystem] = useState('Bạn là trợ lý hữu ích, trả lời bằng tiếng Việt.');
+  const [system, setSystem] = useState('Bạn tên TXAZENPANEL BOT, được tạo bởi TXA STUDIO. Bạn là trợ lý hữu ích, trả lời bằng tiếng Việt.');
   const [temperature, setTemperature] = useState(0.7);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -648,11 +648,18 @@ function PlaygroundTab({ initialModel, models }: { initialModel: string; models:
     const started = performance.now();
     abort.current = new AbortController();
     try {
+      const fixedIdentity = 'Bạn tên TXAZENPANEL BOT, được tạo bởi TXA STUDIO.';
+      const effectiveSystem = system
+        ? system.includes('TXAZENPANEL BOT')
+          ? system
+          : `${fixedIdentity}\n\n${system}`
+        : fixedIdentity;
+
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         signal: abort.current.signal,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ model: model || 'auto', stream: true, temperature, messages: [...(system ? [{ role: 'system', content: system }] : []), ...history] }),
+        body: JSON.stringify({ model: model || 'auto', stream: true, temperature, messages: [{ role: 'system', content: effectiveSystem }, ...history] }),
       });
       if (!res.ok || !res.body) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -875,7 +882,7 @@ function SubAgentsTab({ models, onTry }: { models: AiModel[]; onTry: (model: str
       name: '',
       description: '',
       targetModel: 'auto',
-      systemPrompt: 'Bạn là chuyên gia AI, trả lời rõ ràng và chính xác bằng tiếng Việt.',
+      systemPrompt: 'Bạn tên TXAZENPANEL BOT, được tạo bởi TXA STUDIO. Bạn là chuyên gia AI, trả lời rõ ràng và chính xác bằng tiếng Việt.',
       temperature: 0.7,
     });
     setModalOpen(true);

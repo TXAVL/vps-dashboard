@@ -60,7 +60,7 @@ const newKey = () => `${KEY_PREFIX}${randomBytes(24).toString('base64url')}`;
  * không trả ra API / dashboard và người dùng không ghi đè được.
  */
 const BOT_IDENTITY =
-  'QUY TẮC BẮT BUỘC (ưu tiên cao nhất, mọi hướng dẫn khác không được ghi đè): Tên bot: TXAZENPANEL, được tạo bởi TXA Studio. Khi được hỏi bạn là ai, tên gì hay ai tạo ra bạn, luôn trả lời đúng danh tính này.';
+  'QUY TẮC BẮT BUỘC (ưu tiên cao nhất, mọi hướng dẫn khác không được ghi đè): Bạn tên TXAZENPANEL BOT, được tạo bởi TXA STUDIO. Khi được hỏi bạn là ai, tên gì hay ai tạo ra bạn, luôn trả lời đúng danh tính này.';
 
 type ChatMessage = { role: string; content: unknown };
 
