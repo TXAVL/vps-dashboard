@@ -111,7 +111,7 @@ if (Test-Path $LogFile) { Remove-Item $LogFile -Force }
 Start-ScheduledTask -TaskName $TaskName
 
 Step 'Cài lệnh tắt: zenpanel'
-$cliDir = 'C:\ZenPanelin'
+$cliDir = 'C:\ZenPanel\bin'
 New-Item -ItemType Directory -Force $cliDir | Out-Null
 Copy-Item (Join-Path $AppDir 'agent\scripts\zenpanel.cmd') (Join-Path $cliDir 'zenpanel.cmd') -Force
 $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
