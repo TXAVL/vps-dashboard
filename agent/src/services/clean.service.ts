@@ -1,7 +1,6 @@
-// ZenPanel - Dịch vụ Dọn dẹp hệ thống & Hạ tải CPU: dọn Docker, log, cache gói, file tạm, giải phóng RAM
 import os from 'node:os';
 import type { CleanExecutionOptions, DiskUsage, OSAdapter } from '../adapters/base.adapter.js';
-import { jobLog } from '../core/jobs.js';
+import { jobLog, jobProgress } from '../core/jobs.js';
 import type { DockerService } from './docker.service.js';
 
 export interface CleanScanResult {
@@ -129,6 +128,7 @@ export class CleanService {
   }
 
   async execute(options: CleanExecutionOptions): Promise<void> {
+    jobProgress(5, 'Bắt đầu chuẩn bị dọn dẹp hệ thống...');
     jobLog('═══════════════════════════════════════════════════');
     jobLog('  ZENPANEL - BẮT ĐẦU DỌN DẸP HỆ THỐNG');
     jobLog('═══════════════════════════════════════════════════\n');
@@ -137,6 +137,7 @@ export class CleanService {
     const dockerInfo = await this.docker.info().catch(() => ({ installed: false, running: false }));
     if (dockerInfo.running) {
       if (options.cleanDockerContainers) {
+        jobProgress(15, 'Đang dọn dẹp container Docker đã dừng...');
         jobLog('➜ [Docker] Dọn dẹp container đã dừng...');
         try {
           const out = await this.docker.prune('containers');
@@ -147,6 +148,7 @@ export class CleanService {
       }
 
       if (options.cleanDockerAllImages) {
+        jobProgress(30, 'Đang dọn dẹp toàn bộ Docker images không dùng...');
         jobLog('➜ [Docker] Dọn dẹp tất cả images không sử dụng...');
         try {
           const out = await this.docker.prune('all-images');
@@ -155,6 +157,7 @@ export class CleanService {
           jobLog(`Lỗi dọn images: ${(err as Error).message}`);
         }
       } else if (options.cleanDockerImages) {
+        jobProgress(30, 'Đang dọn dẹp Docker images rác (dangling)...');
         jobLog('➜ [Docker] Dọn dẹp image rác (dangling images)...');
         try {
           const out = await this.docker.prune('images');
@@ -165,6 +168,7 @@ export class CleanService {
       }
 
       if (options.cleanDockerBuildCache) {
+        jobProgress(45, 'Đang dọn dẹp Docker Build Cache...');
         jobLog('➜ [Docker] Dọn dẹp bộ nhớ đệm Build Cache...');
         try {
           const out = await this.docker.prune('builder');
@@ -175,6 +179,7 @@ export class CleanService {
       }
 
       if (options.cleanDockerVolumes) {
+        jobProgress(55, 'Đang dọn dẹp Docker Volumes mồ côi...');
         jobLog('➜ [Docker] Dọn dẹp volume mồ côi...');
         try {
           const out = await this.docker.prune('volumes');
@@ -188,9 +193,16 @@ export class CleanService {
     }
 
     // 2. Hệ điều hành & RAM Cache
+    jobProgress(70, 'Đang dọn dẹp Thùng rác, file tạm và nhật ký log hệ điều hành...');
     jobLog('\n➜ [Hệ điều hành] Dọn dẹp tạp vụ OS...');
-    await this.adapter.cleanSystem(options, (msg) => jobLog(`  ${msg}`));
+    await this.adapter.cleanSystem(options, (msg) => {
+      if (msg.includes('RAM') || msg.includes('WorkingSet')) {
+        jobProgress(88, 'Đang kích hoạt thu hồi bộ nhớ RAM...');
+      }
+      jobLog(`  ${msg}`);
+    });
 
+    jobProgress(100, 'Dọn dẹp hệ thống hoàn tất thành công!');
     jobLog('\n═══════════════════════════════════════════════════');
     jobLog('  ✔ DỌN DẸP HỆ THỐNG HOÀN TẤT THÀNH CÔNG');
     jobLog('═══════════════════════════════════════════════════');

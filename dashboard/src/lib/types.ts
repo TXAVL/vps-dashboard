@@ -155,6 +155,10 @@ export interface AppView {
   publicLink: (TunnelState & { enabled: boolean }) | null;
   status: 'running' | 'stopped' | 'partial' | 'not-installed';
   containers: DockerContainer[];
+  isCompatible?: boolean;
+  platform?: 'all' | 'windows' | 'linux';
+  requiresGui?: boolean;
+  appType?: 'docker' | 'native';
 }
 
 export interface DatabaseServer {

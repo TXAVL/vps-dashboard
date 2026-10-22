@@ -881,6 +881,13 @@ export class LinuxAdapter implements OSAdapter {
       }
     }
 
+    if (options.cleanSystemLogs) {
+      onLog('Đang xoá các file log nén cũ trong /var/log (*.gz, *.1)...');
+      await exec('sh', ['-c', 'find /var/log -type f \\( -name "*.gz" -o -name "*.[0-9]" -o -name "*.old" \\) -delete 2>/dev/null || true']);
+      await exec('sh', ['-c', 'rm -rf /var/crash/* 2>/dev/null || true']);
+      onLog('Đã dọn dẹp các tệp log lưu trữ và crash dump.');
+    }
+
     if (options.cleanTempFiles) {
       onLog('Đang dọn các file tạm cũ trong /tmp và /var/tmp...');
       await exec('sh', ['-c', 'find /tmp /var/tmp -mindepth 1 -maxdepth 2 -type f -atime +1 -delete 2>/dev/null || true']);

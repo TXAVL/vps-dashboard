@@ -26,6 +26,7 @@ import {
   Leaf,
   Link2,
   MessagesSquare,
+  Monitor,
   NotebookPen,
   Newspaper,
   Package,
@@ -58,15 +59,17 @@ import { DockerMissing } from './Docker';
 
 const ICONS: Record<string, LucideIcon> = {
   Globe, Newspaper, Database, Zap, Leaf, Table, Table2, Container, Activity, Workflow, GitBranch, HardDrive, FolderOpen, Code, KeyRound, Cloud,
-  Clapperboard, ChartLine, ScrollText, Download, RefreshCw, NotebookPen, Wrench, Waypoints, MessagesSquare, Cpu, Bot, BrainCircuit,
+  Clapperboard, ChartLine, ScrollText, Download, RefreshCw, NotebookPen, Wrench, Waypoints, MessagesSquare, Cpu, Bot, BrainCircuit, Monitor,
 };
 
 const CATEGORIES = [
   { id: 'all', label: 'Tất cả' },
+  { id: 'compatible', label: '★ Tương thích' },
   { id: 'installed', label: 'Đã cài' },
   { id: 'ai', label: 'AI Agent' },
   { id: 'web', label: 'Web' },
   { id: 'database', label: 'Database' },
+  { id: 'native', label: 'App Native' },
   { id: 'tools', label: 'Công cụ' },
   { id: 'devops', label: 'DevOps' },
   { id: 'storage', label: 'Lưu trữ' },
@@ -137,7 +140,7 @@ function InstallModal({ app, onClose, onInstalled }: { app: AppView; onClose: ()
   const mainDisk = latest?.disks?.[0];
   const freeBytes = mainDisk ? mainDisk.total - mainDisk.used : 0;
   const freeGb = freeBytes > 0 ? (freeBytes / (1024 * 1024 * 1024)).toFixed(1) : '0';
-  const requiredBytes = (app.category === 'ai' ? 4.0 : 2.5) * 1024 * 1024 * 1024;
+  const requiredBytes = (app.appType === 'native' ? 0.5 : app.category === 'ai' ? 4.0 : 2.5) * 1024 * 1024 * 1024;
   const requiredGb = (requiredBytes / (1024 * 1024 * 1024)).toFixed(1);
   const isInsufficient = freeBytes > 0 && freeBytes < requiredBytes;
   const isCritical = freeBytes > 0 && freeBytes < 1.5 * 1024 * 1024 * 1024;
@@ -163,7 +166,14 @@ function InstallModal({ app, onClose, onInstalled }: { app: AppView; onClose: ()
       <form onSubmit={submit} className="space-y-4">
         <div className="flex items-start gap-3">
           <AppIcon app={app} />
-          <p className="text-sm text-slate-400">{app.description}</p>
+          <div>
+            <p className="text-sm text-slate-300">{app.description}</p>
+            {app.isCompatible === false && (
+              <p className="mt-1 text-xs text-amber-300">
+                ⚠️ Chú ý: Ứng dụng này yêu cầu {app.platform === 'windows' ? 'Windows' : 'Linux'}{app.requiresGui ? ' có giao diện Desktop (GUI)' : ''}.
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Cảnh báo kiểm tra dung lượng ổ đĩa tránh full disk */}
@@ -591,11 +601,14 @@ export default function AppStore() {
   const list = useMemo(() => {
     const q = query.toLowerCase();
     return (apps.data ?? [])
-      .filter(
-        (a) =>
-          (category === 'all' || (category === 'installed' ? Boolean(a.installed) : a.category === category)) &&
-          (!q || a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q)),
-      )
+      .filter((a) => {
+        if (category === 'compatible') return a.isCompatible !== false;
+        if (category === 'installed') return Boolean(a.installed);
+        if (category === 'native') return a.appType === 'native';
+        if (category !== 'all') return a.category === category;
+        return true;
+      })
+      .filter((a) => !q || a.name.toLowerCase().includes(q) || a.description.toLowerCase().includes(q))
       .sort((a, b) => Number(Boolean(b.installed)) - Number(Boolean(a.installed)) || a.name.localeCompare(b.name));
   }, [apps.data, category, query]);
 
@@ -629,7 +642,7 @@ export default function AppStore() {
     <>
       <PageHeader
         title="App Store"
-        description={`Cài ứng dụng bằng 1 click qua Docker Compose · đã cài ${installedCount}`}
+        description={`Cài ứng dụng 1-Click (Docker Compose & Native System Apps) · đã cài ${installedCount}`}
         icon={LayoutGrid}
         actions={
           <Button icon={RefreshCw} onClick={() => void apps.reload()} loading={apps.loading}>
@@ -657,6 +670,13 @@ export default function AppStore() {
               </Notice>
             </div>
           )}
+          {category === 'compatible' && (
+            <div className="mb-4">
+              <Notice icon={CheckCircle2}>
+                Danh sách hiển thị các ứng dụng <b>hoàn toàn tương thích</b> với hệ điều hành và môi trường hiện tại của máy chủ.
+              </Notice>
+            </div>
+          )}
           {apps.error && <ErrorBox message={apps.error} onRetry={apps.reload} />}
           {!apps.data ? (
             <Spinner />
@@ -674,6 +694,23 @@ export default function AppStore() {
                           <Badge tone={status.tone}>{status.label}</Badge>
                         </div>
                         <p className="mt-1 line-clamp-2 text-sm text-slate-400">{app.description}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {app.appType === 'native' ? (
+                            <span className="inline-flex items-center gap-1 rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-purple-300 border border-purple-500/20">
+                              ⚡ Native {app.platform === 'windows' ? 'Windows' : 'Linux'}
+                              {app.requiresGui ? ' (GUI)' : ''}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300 border border-blue-500/20">
+                              🐳 Docker
+                            </span>
+                          )}
+                          {app.isCompatible === false && (
+                            <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 border border-amber-500/20">
+                              ⚠️ Không khớp OS
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                     {app.installed && (
@@ -694,14 +731,28 @@ export default function AppStore() {
                     )}
                     <div className="mt-auto flex flex-wrap items-center gap-1 pt-4">
                       {!app.installed ? (
-                        <Button size="sm" variant="primary" icon={Download} onClick={() => setInstalling(app)} className="w-full">
-                          Cài đặt
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          icon={Download}
+                          onClick={() => setInstalling(app)}
+                          className="w-full"
+                          disabled={app.isCompatible === false}
+                          title={app.isCompatible === false ? 'Ứng dụng không tương thích với máy này' : undefined}
+                        >
+                          {app.isCompatible === false ? 'Không tương thích' : 'Cài đặt'}
                         </Button>
                       ) : (
                         <>
-                          <Button size="sm" variant="primary" icon={ExternalLink} onClick={() => setAccess(app.id)}>
-                            Truy cập
-                          </Button>
+                          {app.webPort ? (
+                            <Button size="sm" variant="primary" icon={ExternalLink} onClick={() => setAccess(app.id)}>
+                              Truy cập
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="primary" icon={Play} onClick={() => void act(app, 'start', 'Khởi chạy')}>
+                              Khởi chạy
+                            </Button>
+                          )}
                           {app.id === 'n8n' && (
                             <Button size="sm" variant="soft" icon={Wand2} onClick={() => setWizard(app)}>
                               Thiết lập
@@ -715,17 +766,23 @@ export default function AppStore() {
                             </Link>
                           )}
                           <div className="ml-auto flex">
-                            {app.status === 'running' || app.status === 'partial' ? (
+                            {app.appType !== 'native' && (app.status === 'running' || app.status === 'partial') ? (
                               <>
                                 <IconButton icon={RotateCw} title="Khởi động lại" onClick={() => void act(app, 'restart', 'Khởi động lại')} />
                                 <IconButton icon={Square} title="Dừng" onClick={() => void act(app, 'stop', 'Dừng')} />
                               </>
-                            ) : (
+                            ) : app.appType !== 'native' ? (
                               <IconButton icon={Play} title="Khởi động" onClick={() => void act(app, 'start', 'Khởi động')} />
+                            ) : (
+                              <IconButton icon={Square} title="Dừng ứng dụng" onClick={() => void act(app, 'stop', 'Dừng')} />
                             )}
-                            <IconButton icon={Settings2} title="Cấu hình lại (đổi cổng, mật khẩu, API key)" onClick={() => setReconfig(app)} />
-                            <IconButton icon={Download} title="Cập nhật image lên bản mới nhất" onClick={() => void act(app, 'update', 'Cập nhật')} />
-                            <IconButton icon={FileCode} title="Xem docker-compose.yml" onClick={() => void composePath(app)} />
+                            {app.appType !== 'native' && (
+                              <>
+                                <IconButton icon={Settings2} title="Cấu hình lại (đổi cổng, mật khẩu, API key)" onClick={() => setReconfig(app)} />
+                                <IconButton icon={Download} title="Cập nhật image lên bản mới nhất" onClick={() => void act(app, 'update', 'Cập nhật')} />
+                                <IconButton icon={FileCode} title="Xem docker-compose.yml" onClick={() => void composePath(app)} />
+                              </>
+                            )}
                             <IconButton icon={Trash2} title="Gỡ cài đặt" className="hover:text-zen-red" onClick={() => setUninstall({ app, removeData: false })} />
                           </div>
                         </>

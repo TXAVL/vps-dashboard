@@ -25,6 +25,10 @@ export interface AppView extends Omit<AppDefinition, 'compose' | 'files'> {
   containers: DockerContainer[];
   guide: AppGuide | null;
   publicLink: (TunnelState & { enabled: boolean }) | null;
+  isCompatible: boolean;
+  platform: 'all' | 'windows' | 'linux';
+  requiresGui: boolean;
+  appType: 'docker' | 'native';
 }
 
 const installed = new JsonCollection<InstalledApp>('apps.json');
@@ -51,19 +55,41 @@ export class AppStoreService {
     return installed.all();
   }
 
+  systemInfo(): { platform: 'windows' | 'linux'; hasGui: boolean } {
+    const isWindows = process.platform === 'win32';
+    const hasGui = isWindows ? true : Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+    return { platform: isWindows ? 'windows' : 'linux', hasGui };
+  }
+
   async list(): Promise<AppView[]> {
     const containers = await this.docker.containers().catch(() => [] as DockerContainer[]);
+    const sys = this.systemInfo();
+
     return APP_CATALOG.map(({ compose: _compose, files: _files, ...app }) => {
       const record = installed.get(app.id) ?? null;
       const own = containers.filter((c) => c.project === projectName(app.id));
       const running = own.filter((c) => c.state === 'running').length;
-      const status: AppView['status'] = !record ? 'not-installed' : running === 0 ? 'stopped' : running === own.length ? 'running' : 'partial';
+
+      let status: AppView['status'] = !record ? 'not-installed' : running === 0 ? 'stopped' : running === own.length ? 'running' : 'partial';
+      if (record && app.appType === 'native') {
+        status = 'running';
+      }
+
+      const isCompatible =
+        (app.platform === undefined || app.platform === 'all' || app.platform === sys.platform) &&
+        (!app.requiresGui || sys.hasGui);
+
       // Không trả mật khẩu ra danh sách; xem lại trong "Cấu hình lại" hoặc mục Databases
       const safeRecord = record
         ? { ...record, params: Object.fromEntries(Object.entries(record.params).filter(([key]) => app.params.find((p) => p.key === key)?.type !== 'password')) }
         : null;
+
       return {
         ...app,
+        platform: app.platform ?? 'all',
+        requiresGui: Boolean(app.requiresGui),
+        appType: app.appType ?? 'docker',
+        isCompatible,
         installed: safeRecord,
         status,
         containers: own,
@@ -171,9 +197,98 @@ export class AppStoreService {
       await writeFile(path.join(dir, name), content, { mode: 0o600 });
       jobLog(`Đã tạo ${path.join(dir, name)}`);
     }
-    await writeFile(path.join(dir, 'docker-compose.yml'), app.compose(params, containerName(app.id), ctx), { mode: 0o600 });
-    jobLog(`Đã tạo ${path.join(dir, 'docker-compose.yml')}`);
+    if (app.compose) {
+      await writeFile(path.join(dir, 'docker-compose.yml'), app.compose(params, containerName(app.id), ctx), { mode: 0o600 });
+      jobLog(`Đã tạo ${path.join(dir, 'docker-compose.yml')}`);
+    }
     return dir;
+  }
+
+  /** Cài đặt Native App (Windows hoặc Linux GUI/CLI) */
+  private async installNativeApp(app: AppDefinition, dir: string): Promise<void> {
+    const isWindows = process.platform === 'win32';
+    await mkdir(dir, { recursive: true });
+
+    if (isWindows) {
+      const { exec } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execAsync = promisify(exec);
+
+      if (app.id === 'tdrop') {
+        jobLog('Đang tải T-Drop từ GitHub release (TXAVL/T-Drop)...');
+        const exePath = path.join(dir, 'T-Drop.exe');
+        const script = `
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $url = "https://github.com/TXAVL/T-Drop/releases/latest/download/T-Drop.exe"
+          Invoke-WebRequest -Uri $url -OutFile "${exePath}" -UseBasicParsing
+        `;
+        await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
+        jobLog(`✓ T-Drop đã được tải thành công về: ${exePath}`);
+        // Tạo shortcut trên Desktop
+        const desktopShortcut = `
+          $WshShell = New-Object -ComObject WScript.Shell
+          $Shortcut = $WshShell.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\\T-Drop.lnk')
+          $Shortcut.TargetPath = '${exePath}'
+          $Shortcut.WorkingDirectory = '${dir}'
+          $Shortcut.Save()
+        `;
+        await execAsync(`powershell -NoProfile -Command "${desktopShortcut.replace(/\r?\n/g, ' ')}"`);
+        jobLog('✓ Đã tạo Shortcut T-Drop ngoài Desktop');
+      } else if (app.id === 'unikey') {
+        jobLog('Đang tải UniKey Windows 64-bit...');
+        const zipPath = path.join(dir, 'unikey.zip');
+        const script = `
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $url = "https://www.unikey.org/assets/release/unikey43RC5-200929-win64.zip"
+          Invoke-WebRequest -Uri $url -OutFile "${zipPath}" -UseBasicParsing
+          Expand-Archive -Path "${zipPath}" -DestinationPath "${dir}" -Force
+          Remove-Item -Path "${zipPath}" -Force -ErrorAction SilentlyContinue
+        `;
+        await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
+        jobLog(`✓ UniKey đã được giải nén sẵn sàng trong: ${dir}`);
+      } else if (app.id === '7zip') {
+        jobLog('Đang tải và cài đặt 7-Zip silent...');
+        const installerPath = path.join(dir, '7z-installer.exe');
+        const script = `
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $url = "https://www.7-zip.org/a/7z2408-x64.exe"
+          Invoke-WebRequest -Uri $url -OutFile "${installerPath}" -UseBasicParsing
+          Start-Process -FilePath "${installerPath}" -ArgumentList "/S" -Wait
+          Remove-Item -Path "${installerPath}" -Force -ErrorAction SilentlyContinue
+        `;
+        await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
+        jobLog('✓ 7-Zip đã được cài đặt thành công vào hệ thống Windows');
+      } else if (app.id === 'notepadplusplus') {
+        jobLog('Đang tải và cài đặt Notepad++ silent...');
+        const installerPath = path.join(dir, 'npp-installer.exe');
+        const script = `
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+          $url = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.6.9/npp.8.6.9.Installer.x64.exe"
+          Invoke-WebRequest -Uri $url -OutFile "${installerPath}" -UseBasicParsing
+          Start-Process -FilePath "${installerPath}" -ArgumentList "/S" -Wait
+          Remove-Item -Path "${installerPath}" -Force -ErrorAction SilentlyContinue
+        `;
+        await execAsync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`);
+        jobLog('✓ Notepad++ đã được cài đặt thành công vào hệ thống Windows');
+      }
+    } else {
+      // Linux
+      const { exec } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execAsync = promisify(exec);
+
+      if (app.id === 'coccoc') {
+        jobLog('Đang tải gói Cốc Cốc (.deb)...');
+        await execAsync('curl -fsSL https://files.coccoc.com/browser/coccoc.deb -o /tmp/coccoc.deb');
+        jobLog('Đang cài đặt trình duyệt Cốc Cốc qua dpkg / apt...');
+        await execAsync('dpkg -i /tmp/coccoc.deb || apt-get install -fy');
+        jobLog('✓ Trình duyệt Cốc Cốc đã cài đặt thành công!');
+      } else if (app.id === 'ibus-bamboo') {
+        jobLog('Đang thêm PPA ibus-bamboo và cài đặt bộ gõ tiếng Việt...');
+        await execAsync('add-apt-repository -y ppa:bamboo-engine/ibus-bamboo && apt-get update && apt-get install -y ibus-bamboo');
+        jobLog('✓ Bộ gõ tiếng Việt IBus-Bamboo đã cài đặt thành công!');
+      }
+    }
   }
 
   async install(id: string, params: Record<string, string>): Promise<void> {
@@ -188,6 +303,15 @@ export class AppStoreService {
       jobLog(`✘ LỖI Ổ ĐĨA: ${(err as Error).message}`);
       throw err;
     }
+
+    if (app.appType === 'native') {
+      const dir = appDir(app.id);
+      await this.installNativeApp(app, dir);
+      installed.upsert({ id, params, installedAt: new Date().toISOString() });
+      jobLog(`\n🎉 Cài đặt hoàn tất ${app.name}!`);
+      return;
+    }
+
     const dir = await this.writeFiles(app, params);
     jobLog('Đang tải image và khởi động container (lần đầu có thể mất vài phút)...');
     try {
@@ -205,6 +329,10 @@ export class AppStoreService {
   async reconfigure(id: string, params: Record<string, string>): Promise<void> {
     const app = findApp(id);
     const record = this.config(id);
+    if (app.appType === 'native') {
+      installed.upsert({ ...record, params });
+      return;
+    }
     const dir = await this.writeFiles(app, params);
     await this.docker.compose(['-p', projectName(id), 'up', '-d', '--remove-orphans'], dir);
     installed.upsert({ ...record, params });
@@ -225,8 +353,28 @@ export class AppStoreService {
   }
 
   async action(id: string, action: 'start' | 'stop' | 'restart' | 'update'): Promise<void> {
-    findApp(id);
+    const app = findApp(id);
     if (!installed.get(id)) throw badRequest('Ứng dụng chưa được cài đặt');
+
+    if (app.appType === 'native') {
+      const isWindows = process.platform === 'win32';
+      if (isWindows && app.nativeInstall?.targetExe) {
+        const { exec } = await import('node:child_process');
+        const { promisify } = await import('node:util');
+        const execAsync = promisify(exec);
+        const exeName = app.nativeInstall.targetExe.replace(/\.exe$/i, '');
+        const exePath = path.join(appDir(id), app.nativeInstall.targetExe);
+
+        if (action === 'stop' || action === 'restart') {
+          await execAsync(`powershell -NoProfile -Command "Stop-Process -Name '${exeName}' -Force -ErrorAction SilentlyContinue"`).catch(() => undefined);
+        }
+        if (action === 'start' || action === 'restart') {
+          await execAsync(`powershell -NoProfile -Command "Start-Process -FilePath '${exePath}' -WorkingDirectory '${appDir(id)}' -ErrorAction SilentlyContinue"`).catch(() => undefined);
+        }
+      }
+      return;
+    }
+
     const dir = appDir(id);
     const project = ['-p', projectName(id)];
     if (action === 'update') {
@@ -250,17 +398,26 @@ export class AppStoreService {
   }
 
   async uninstall(id: string, removeData: boolean): Promise<void> {
-    findApp(id);
+    const app = findApp(id);
     const dir = appDir(id);
     this.tunnels.disable(id);
+
+    if (app.appType === 'native') {
+      await this.action(id, 'stop').catch(() => undefined);
+      installed.remove(id);
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      return;
+    }
+
     await this.docker.compose(['-p', projectName(id), 'down', ...(removeData ? ['-v'] : [])], dir).catch(() => undefined);
     installed.remove(id);
     await rm(dir, { recursive: true, force: true });
   }
 
   async composeFile(id: string): Promise<string> {
-    findApp(id);
+    const app = findApp(id);
     if (!installed.get(id)) throw badRequest('Ứng dụng chưa được cài đặt');
+    if (app.appType === 'native') throw badRequest('Ứng dụng native không sử dụng docker-compose.yml');
     return path.join(appDir(id), 'docker-compose.yml');
   }
 }

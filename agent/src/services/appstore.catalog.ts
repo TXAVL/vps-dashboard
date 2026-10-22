@@ -41,9 +41,21 @@ export interface AppDefinition {
   webScheme?: 'http' | 'https';
   /** Dùng API key AI đã lưu: đổi key thì cần "Cấu hình lại" */
   usesAiKeys?: boolean;
+  /** Nền tảng hệ điều hành hỗ trợ: 'all' | 'windows' | 'linux' (mặc định 'all') */
+  platform?: 'all' | 'windows' | 'linux';
+  /** Yêu cầu môi trường Desktop có màn hình đồ họa (GUI) */
+  requiresGui?: boolean;
+  /** Loại ứng dụng: 'docker' | 'native' (mặc định 'docker') */
+  appType?: 'docker' | 'native';
+  /** Lệnh / URL tải hoặc script cài đặt app native */
+  nativeInstall?: {
+    downloadUrl?: string;
+    command?: string;
+    targetExe?: string;
+  };
   /** File cấu hình đi kèm docker-compose.yml (tên file -> nội dung) */
   files?(p: Record<string, string>, ctx: ComposeContext): Record<string, string>;
-  compose(p: Record<string, string>, container: string, ctx: ComposeContext): string;
+  compose?(p: Record<string, string>, container: string, ctx: ComposeContext): string;
 }
 
 const q = (value: string) => JSON.stringify(value);
@@ -284,6 +296,14 @@ export const APP_CATALOG: AppDefinition[] = [
         TZ: 'Asia/Ho_Chi_Minh',
         N8N_RUNNERS_ENABLED: 'true',
         N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: 'true',
+        // Tối ưu hóa tiết kiệm RAM cho máy chủ 2GB - 4GB RAM
+        NODE_OPTIONS: '--max-old-space-size=256',
+        EXECUTIONS_DATA_PRUNE: 'true',
+        EXECUTIONS_DATA_MAX_AGE: '48',
+        EXECUTIONS_DATA_SAVE_ON_ERROR: 'all',
+        EXECUTIONS_DATA_SAVE_ON_SUCCESS: 'none',
+        N8N_METRICS: 'false',
+        DB_SQLITE_VACUUM_ON_STARTUP: 'true',
       };
       // Webhook URL phải là địa chỉ public thì webhook / OAuth callback mới hoạt động từ bên ngoài
       if (p.webhookUrl) {
@@ -301,7 +321,14 @@ export const APP_CATALOG: AppDefinition[] = [
         ports: [`${p.port}:5678`],
         env,
         volumes: { data: '/home/node/.n8n' },
-        extra: ['extra_hosts:', '  - "host.docker.internal:host-gateway"'],
+        extra: [
+          'deploy:',
+          '  resources:',
+          '    limits:',
+          '      memory: 512M',
+          'extra_hosts:',
+          '  - "host.docker.internal:host-gateway"',
+        ],
       });
     },
   },
@@ -637,5 +664,87 @@ export const APP_CATALOG: AppDefinition[] = [
     params: [{ key: 'token', label: 'Tunnel Token', type: 'password' }],
     compose: (p, c) =>
       service({ container: c, image: 'cloudflare/cloudflared:latest', command: q(`tunnel --no-autoupdate run --token ${p.token}`), extra: ['network_mode: host'] }),
+  },
+  // --- Ứng dụng dành riêng cho Windows VPS & Máy chủ Windows ---
+  {
+    id: 'tdrop',
+    name: 'T-Drop',
+    description: 'Chia sẻ tệp tin P2P / LAN nội bộ tốc độ cao, không giới hạn dung lượng do TXAVL phát triển. Tự động tải từ GitHub release.',
+    category: 'storage',
+    icon: 'Share2',
+    website: 'https://github.com/TXAVL/T-Drop',
+    platform: 'windows',
+    requiresGui: true,
+    appType: 'native',
+    params: [],
+    nativeInstall: {
+      downloadUrl: 'https://github.com/TXAVL/T-Drop/releases/latest/download/T-Drop.exe',
+    },
+  },
+  {
+    id: 'unikey',
+    name: 'UniKey',
+    description: 'Bộ gõ tiếng Việt chuẩn quốc dân cho Windows. Nhẹ, chuẩn gõ Telex & VNI.',
+    category: 'tools',
+    icon: 'Keyboard',
+    website: 'https://www.unikey.org',
+    platform: 'windows',
+    requiresGui: true,
+    appType: 'native',
+    params: [],
+  },
+  {
+    id: '7zip',
+    name: '7-Zip',
+    description: 'Trình nén và giải nén tệp tin siêu nhanh, tỷ lệ nén cao, hỗ trợ 7z, ZIP, RAR, TAR...',
+    category: 'tools',
+    icon: 'Archive',
+    website: 'https://7-zip.org',
+    platform: 'windows',
+    appType: 'native',
+    params: [],
+  },
+  {
+    id: 'notepadplusplus',
+    name: 'Notepad++',
+    description: 'Trình soạn thảo mã nguồn và văn bản nhẹ, đa năng, mở file dung lượng lớn cực nhanh.',
+    category: 'tools',
+    icon: 'FileCode',
+    website: 'https://notepad-plus-plus.org',
+    platform: 'windows',
+    requiresGui: true,
+    appType: 'native',
+    params: [],
+  },
+  // --- Ứng dụng dành cho Linux Desktop (Ubuntu có giao diện đồ họa) ---
+  {
+    id: 'coccoc',
+    name: 'Cốc Cốc Browser',
+    description: 'Trình duyệt Cốc Cốc cho Linux Desktop (Ubuntu có giao diện đồ họa GUI). Tải video nhanh, tích hợp AI.',
+    category: 'tools',
+    icon: 'Globe',
+    website: 'https://coccoc.com',
+    platform: 'linux',
+    requiresGui: true,
+    appType: 'native',
+    params: [],
+    nativeInstall: {
+      command: 'curl -fsSL https://files.coccoc.com/browser/coccoc.deb -o /tmp/coccoc.deb && dpkg -i /tmp/coccoc.deb || apt-get install -f -y',
+    },
+  },
+  {
+    id: 'ibus-bamboo',
+    name: 'IBus Bamboo',
+    description: 'Bộ gõ tiếng Việt số 1 cho các bản phân phối Linux có giao diện đồ họa (Ubuntu Desktop, GNOME, XFCE).',
+    category: 'tools',
+    icon: 'Keyboard',
+    website: 'https://github.com/BambooEngine/ibus-bamboo',
+    platform: 'linux',
+    requiresGui: true,
+    appType: 'native',
+    params: [],
+    nativeInstall: {
+      command: 'add-apt-repository ppa:bamboo-engine/ibus-bamboo -y && apt-get update && apt-get install ibus-bamboo -y',
+    },
   },
 ];

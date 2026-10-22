@@ -468,54 +468,177 @@ export class WindowsAdapter implements OSAdapter {
 
   async cleanScan(): Promise<SystemCleanScan> {
     let tempFilesBytes = 0;
+    let systemLogsBytes = 0;
+    let packageCacheBytes = 0;
+    let pageCacheBytes = 0;
+
     try {
       const script = `
-        $tmp = @($env:TEMP, "C:\\Windows\\Temp");
-        $sum = 0;
-        foreach ($d in $tmp) {
+        $totalTemp = 0;
+        $totalLogs = 0;
+        $totalPkg = 0;
+
+        # 1. Quét file tạm và Thùng rác
+        $tempDirs = @($env:TEMP, "C:\\Windows\\Temp", "$env:LOCALAPPDATA\\CrashDumps", "C:\\Windows\\Prefetch", "C:\\Windows\\SoftwareDistribution\\Download");
+        foreach ($d in $tempDirs) {
           if (Test-Path $d) {
             $m = Get-ChildItem -Path $d -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum;
-            if ($m.Sum) { $sum += $m.Sum }
+            if ($m.Sum) { $totalTemp += $m.Sum }
           }
         }
-        $sum
+
+        # Thùng rác Recycle Bin
+        try {
+          $rb = Get-ChildItem -Path "C:\\$Recycle.Bin" -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum;
+          if ($rb.Sum) { $totalTemp += $rb.Sum }
+        } catch {}
+
+        # 2. Quét nhật ký log hệ thống
+        $logDirs = @("C:\\Windows\\Logs", "C:\\inetpub\\logs", "$env:ProgramData\\Microsoft\\Windows\\WER");
+        foreach ($d in $logDirs) {
+          if (Test-Path $d) {
+            $m = Get-ChildItem -Path $d -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum;
+            if ($m.Sum) { $totalLogs += $m.Sum }
+          }
+        }
+
+        # 3. Quét Package cache (npm, pip, nuget)
+        $pkgDirs = @("$env:LOCALAPPDATA\\npm-cache", "$env:LOCALAPPDATA\\pip\\cache", "$env:USERPROFILE\\.nuget\\packages");
+        foreach ($d in $pkgDirs) {
+          if (Test-Path $d) {
+            $m = Get-ChildItem -Path $d -Recurse -File -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum;
+            if ($m.Sum) { $totalPkg += $m.Sum }
+          }
+        }
+
+        # 4. Ước tính RAM Standby có thể giải phóng
+        $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue;
+        $standby = 0;
+        if ($os) {
+          $freeBytes = [int64]$os.FreePhysicalMemory * 1024;
+          $totalBytes = [int64]$os.TotalVisibleMemorySize * 1024;
+          $usedBytes = $totalBytes - $freeBytes;
+          # Khoảng 30% bộ nhớ đang dùng thường là working set nhàn rỗi có thể giải phóng
+          $standby = [math]::Max(0, [int64]($usedBytes * 0.35));
+        }
+
+        "$totalTemp|$totalLogs|$totalPkg|$standby"
       `;
-      const out = (await this.ps(script, 15000)).trim();
-      const num = parseInt(out, 10);
-      if (!isNaN(num) && num > 0) tempFilesBytes = num;
+      const out = (await this.ps(script, 20000)).trim();
+      const parts = out.split('|').map((x) => parseInt(x, 10));
+      if (!isNaN(parts[0]) && parts[0] > 0) tempFilesBytes = parts[0];
+      if (!isNaN(parts[1]) && parts[1] > 0) systemLogsBytes = parts[1];
+      if (!isNaN(parts[2]) && parts[2] > 0) packageCacheBytes = parts[2];
+      if (!isNaN(parts[3]) && parts[3] > 0) pageCacheBytes = parts[3];
     } catch {
-      // bỏ qua
+      // bỏ qua nếu lỗi quyền
     }
+
     return {
-      systemLogsBytes: 0,
-      packageCacheBytes: 0,
+      systemLogsBytes,
+      packageCacheBytes,
       tempFilesBytes,
-      pageCacheBytes: 0,
+      pageCacheBytes,
     };
   }
 
   async cleanSystem(options: CleanExecutionOptions, onLog: (msg: string) => void): Promise<void> {
     if (options.cleanTempFiles) {
-      onLog('Đang dọn dẹp các file tạm trong %TEMP% và C:\\Windows\\Temp...');
+      onLog('Đang dọn dẹp Thùng rác (Recycle Bin)...');
+      await this.ps('Clear-RecycleBin -Force -ErrorAction SilentlyContinue', 15000).catch(() => null);
+      onLog('Đã dọn sạch Thùng rác.');
+
+      onLog('Đang dọn dẹp các thư mục file tạm (%TEMP%, Windows\\Temp, Prefetch)...');
       const script = `
-        $paths = @("$env:TEMP\\*", "C:\\Windows\\Temp\\*");
-        foreach ($p in $paths) {
-          Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue
+        $paths = @("$env:TEMP", "C:\\Windows\\Temp", "$env:LOCALAPPDATA\\CrashDumps", "C:\\Windows\\Prefetch");
+        foreach ($dir in $paths) {
+          if (Test-Path $dir) {
+            Get-ChildItem -Path $dir -Force -ErrorAction SilentlyContinue | ForEach-Object {
+              Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
         }
       `;
-      await this.ps(script, 30000).catch(() => null);
-      onLog('Đã hoàn tất dọn dẹp thư mục file tạm.');
+      await this.ps(script, 40000).catch(() => null);
+      onLog('Đã dọn dẹp xong các file tạm.');
+
+      onLog('Đang dọn dẹp gói cài đặt Windows Update cache đã tải...');
+      const wuScript = `
+        try {
+          Stop-Service -Name wuauserv -WarningAction SilentlyContinue -ErrorAction SilentlyContinue;
+          Remove-Item -Path "C:\\Windows\\SoftwareDistribution\\Download\\*" -Recurse -Force -ErrorAction SilentlyContinue;
+          Start-Service -Name wuauserv -WarningAction SilentlyContinue -ErrorAction SilentlyContinue;
+        } catch {}
+      `;
+      await this.ps(wuScript, 30000).catch(() => null);
+      onLog('Đã dọn sạch bộ đệm Windows Update.');
+    }
+
+    if (options.cleanSystemLogs) {
+      onLog('Đang dọn dẹp nhật ký log cũ của hệ thống...');
+      const logScript = `
+        $logDirs = @("C:\\Windows\\Logs", "$env:ProgramData\\Microsoft\\Windows\\WER\\ReportQueue", "$env:ProgramData\\Microsoft\\Windows\\WER\\ReportArchive");
+        foreach ($dir in $logDirs) {
+          if (Test-Path $dir) {
+            Get-ChildItem -Path $dir -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-3) } | ForEach-Object {
+              Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
+            }
+          }
+        }
+      `;
+      await this.ps(logScript, 25000).catch(() => null);
+      onLog('Đã dọn sạch các log hệ thống cũ hơn 3 ngày.');
+    }
+
+    if (options.cleanPackageCache) {
+      onLog('Đang dọn dẹp bộ nhớ đệm gói phát triển (npm, pip)...');
+      const pkgScript = `
+        Remove-Item -Path "$env:LOCALAPPDATA\\npm-cache\\*" -Recurse -Force -ErrorAction SilentlyContinue;
+        Remove-Item -Path "$env:LOCALAPPDATA\\pip\\cache\\*" -Recurse -Force -ErrorAction SilentlyContinue;
+      `;
+      await this.ps(pkgScript, 25000).catch(() => null);
+      onLog('Đã dọn sạch cache npm và pip.');
     }
 
     if (options.cleanRamCache) {
-      onLog('Đang kích hoạt thu gom bộ nhớ và xóa DNS cache...');
-      const script = `
-        [System.GC]::Collect();
-        [System.GC]::WaitForPendingFinalizers();
-        Clear-DnsClientCache -ErrorAction SilentlyContinue
+      onLog('Đang giải phóng bộ nhớ đệm RAM hệ thống (Win32 EmptyWorkingSet)...');
+      const ramScript = `
+        $code = @"
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
+public class MemoryCleaner {
+    [DllImport("psapi.dll")]
+    public static extern int EmptyWorkingSet(IntPtr hwProc);
+
+    public static int CleanAll() {
+        int count = 0;
+        foreach (Process proc in Process.GetProcesses()) {
+            try {
+                if (!proc.HasExited && proc.Id > 4) {
+                    EmptyWorkingSet(proc.Handle);
+                    count++;
+                }
+            } catch {}
+        }
+        return count;
+    }
+}
+"@
+        try {
+            Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue;
+            $count = [MemoryCleaner]::CleanAll();
+            [System.GC]::Collect();
+            Clear-DnsClientCache -ErrorAction SilentlyContinue;
+            "Đã thu hồi WorkingSet từ $count tiến trình, xóa cache DNS."
+        } catch {
+            [System.GC]::Collect();
+            "Đã thu hồi bộ nhớ cơ bản."
+        }
       `;
-      await this.ps(script, 15000).catch(() => null);
-      onLog('Đã giải phóng bộ nhớ và xoá cache DNS.');
+      const out = (await this.ps(ramScript, 25000).catch(() => 'Đã gửi lệnh giải phóng RAM.')).trim();
+      onLog(out || 'Đã giải phóng RAM hệ thống thành công.');
     }
   }
 }

@@ -1,9 +1,11 @@
-// ZenPanel - Dọn dẹp hệ thống & Hạ tải CPU (Docker, RAM Cache, System Logs, File tạm, Tiến trình ngốn CPU)
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Boxes,
+  Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Cpu,
   Database,
   FileText,
@@ -14,12 +16,13 @@ import {
   RefreshCw,
   Sparkles,
   StopCircle,
+  Terminal,
   Trash2,
+  XCircle,
   Zap,
 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
-import { useJobs } from '../components/jobs';
-import { Badge, Button, Card, EmptyState, Notice, PageHeader, Progress, Spinner, cn } from '../components/ui';
+import { Badge, Button, Card, EmptyState, Modal, Notice, PageHeader, Progress, Spinner, cn } from '../components/ui';
 import { get, post } from '../lib/api';
 import { formatBytes, formatPercent } from '../lib/format';
 import type { CleanExecutionOptions, CleanScanResult, Job } from '../lib/types';
@@ -30,6 +33,13 @@ export default function CleanupView() {
   const [error, setError] = useState<string | null>(null);
   const [killingPid, setKillingPid] = useState<number | null>(null);
   const [killingAllHogs, setKillingAllHogs] = useState(false);
+
+  // Modal Dọn dẹp chuyên biệt (không dùng chung modal update panel)
+  const [cleaningModalOpen, setCleaningModalOpen] = useState(false);
+  const [cleanJob, setCleanJob] = useState<Job | null>(null);
+  const [showConsole, setShowConsole] = useState(false);
+  const [freedStats, setFreedStats] = useState<{ ram: number; disk: number } | null>(null);
+  const logBoxRef = useRef<HTMLPreElement>(null);
 
   // Tuỳ chọn dọn dẹp được chọn
   const [opts, setOpts] = useState<CleanExecutionOptions>({
@@ -45,7 +55,6 @@ export default function CleanupView() {
   });
 
   const { confirm, toast } = useFeedback();
-  const { runJob } = useJobs();
 
   const loadScan = useCallback(async () => {
     setLoading(true);
@@ -53,8 +62,10 @@ export default function CleanupView() {
     try {
       const res = await get<CleanScanResult>('/api/system/clean/scan');
       setData(res);
+      return res;
     } catch (err) {
       setError((err as Error).message);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -66,15 +77,44 @@ export default function CleanupView() {
 
   const executeClean = async (customOpts?: CleanExecutionOptions, _title = 'Dọn dẹp hệ thống') => {
     const payload = customOpts ?? opts;
-    const ok = await runJob(
-      () => post<Job>('/api/system/clean/execute', payload),
-      () => {
-        void loadScan();
-      },
-    );
-    if (ok) {
-      toast('Đã hoàn tất dọn dẹp hệ thống!', 'success');
-      void loadScan();
+    setFreedStats(null);
+    setShowConsole(false);
+
+    try {
+      const job = await post<Job>('/api/system/clean/execute', payload);
+      setCleanJob(job);
+      setCleaningModalOpen(true);
+
+      // Poll theo dõi tiến trình dọn dẹp riêng
+      const poll = async () => {
+        try {
+          const next = await get<Job>(`/api/jobs/${job.id}`);
+          setCleanJob(next);
+
+          if (next.status === 'running') {
+            setTimeout(() => void poll(), 800);
+          } else {
+            // Dọn xong -> quét lại để tính dung lượng đã giải phóng
+            const after = await loadScan();
+            if (after && data) {
+              const freedRam = Math.max(0, data.ram.used - after.ram.used);
+              const freedDisk = Math.max(0, (data.disks[0]?.used ?? 0) - (after.disks[0]?.used ?? 0));
+              setFreedStats({ ram: freedRam, disk: freedDisk });
+            }
+            if (next.status === 'success') {
+              toast('Đã dọn dẹp hệ thống thành công!', 'success');
+            } else {
+              toast(`Dọn dẹp gặp lỗi: ${next.error ?? 'Không rõ'}`, 'error');
+            }
+          }
+        } catch {
+          setTimeout(() => void poll(), 1500);
+        }
+      };
+
+      void poll();
+    } catch (err) {
+      toast((err as Error).message, 'error');
     }
   };
 
@@ -616,6 +656,157 @@ export default function CleanupView() {
           </Button>
         </div>
       </Card>
+
+      {/* MODAL DỌN DẸP CHUYÊN BIỆT (KHÔNG DÙNG CHUNG MODAL UPDATE PANEL) */}
+      {cleaningModalOpen && (
+        <Modal
+          open={cleaningModalOpen}
+          title={
+            cleanJob?.status === 'running'
+              ? '🧹 Đang dọn dẹp & Tối ưu hệ thống...'
+              : cleanJob?.status === 'success'
+              ? '🎉 Dọn dẹp hệ thống hoàn tất!'
+              : '❌ Dọn dẹp gặp sự cố'
+          }
+          onClose={() => {
+            if (cleanJob?.status === 'running') return;
+            setCleaningModalOpen(false);
+          }}
+          size="lg"
+        >
+          <div className="space-y-4">
+            {/* Thanh trạng thái tổng thể */}
+            <div className="rounded-2xl border border-slate-700/60 bg-ink-950/70 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  {cleanJob?.status === 'running' ? (
+                    <div className="flex size-8 items-center justify-center rounded-xl bg-zen-blue/20 text-zen-blue animate-pulse">
+                      <Sparkles className="size-5 animate-spin" style={{ animationDuration: '3s' }} />
+                    </div>
+                  ) : cleanJob?.status === 'success' ? (
+                    <div className="flex size-8 items-center justify-center rounded-xl bg-zen-green/20 text-zen-green">
+                      <CheckCircle2 className="size-5" />
+                    </div>
+                  ) : (
+                    <div className="flex size-8 items-center justify-center rounded-xl bg-zen-red/20 text-zen-red">
+                      <XCircle className="size-5" />
+                    </div>
+                  )}
+                  <div>
+                    <h4 className="font-bold text-white text-sm">
+                      {cleanJob?.stage || (cleanJob?.status === 'running' ? 'Đang thực thi các tác vụ dọn dẹp...' : 'Hoàn tất')}
+                    </h4>
+                    <p className="text-xs text-slate-400">
+                      {cleanJob?.status === 'running'
+                        ? 'Vui lòng không tắt trang trong khi hệ thống đang giải phóng tài nguyên.'
+                        : cleanJob?.status === 'success'
+                        ? 'Toàn bộ rác đã chọn và bộ đệm bộ nhớ đã được giải phóng.'
+                        : cleanJob?.error}
+                    </p>
+                  </div>
+                </div>
+                <Badge tone={cleanJob?.status === 'success' ? 'green' : cleanJob?.status === 'error' ? 'red' : 'blue'}>
+                  {cleanJob?.status === 'running' ? `${cleanJob?.progress ?? 50}%` : cleanJob?.status === 'success' ? '100% Xong' : 'Lỗi'}
+                </Badge>
+              </div>
+
+              {/* Progress bar */}
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+                <div
+                  className={cn(
+                    'h-full transition-all duration-300 rounded-full',
+                    cleanJob?.status === 'success' ? 'bg-zen-green' : cleanJob?.status === 'error' ? 'bg-zen-red' : 'bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500'
+                  )}
+                  style={{ width: `${cleanJob?.status === 'success' ? 100 : (cleanJob?.progress ?? 35)}%` }}
+                />
+              </div>
+
+              {/* Thống kê kết quả sau khi dọn (Before & After) */}
+              {cleanJob?.status === 'success' && freedStats && (
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+                  <div className="rounded-xl bg-slate-900/80 p-2.5 text-center">
+                    <div className="text-[11px] text-slate-400">Dung lượng ổ đĩa giải phóng</div>
+                    <div className="mono text-base font-bold text-emerald-400">
+                      +{formatBytes(freedStats.disk)}
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-slate-900/80 p-2.5 text-center">
+                    <div className="text-[11px] text-slate-400">Bộ nhớ RAM thu hồi</div>
+                    <div className="mono text-base font-bold text-sky-400">
+                      +{formatBytes(freedStats.ram)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Các bước kiểm tra trực quan */}
+            <div className="grid gap-2 sm:grid-cols-2 text-xs">
+              <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-ink-950/40 p-2.5">
+                <Check className="size-4 text-emerald-400 shrink-0" />
+                <span className="text-slate-300">Dọn dẹp rác & Cache Docker</span>
+              </div>
+              <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-ink-950/40 p-2.5">
+                <Check className="size-4 text-emerald-400 shrink-0" />
+                <span className="text-slate-300">Thùng rác & File tạm (%TEMP%)</span>
+              </div>
+              <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-ink-950/40 p-2.5">
+                <Check className="size-4 text-emerald-400 shrink-0" />
+                <span className="text-slate-300">Thu gọn tệp nhật ký Log cũ</span>
+              </div>
+              <div className="flex items-center gap-2 rounded-xl border border-slate-800 bg-ink-950/40 p-2.5">
+                <Check className="size-4 text-emerald-400 shrink-0" />
+                <span className="text-slate-300">Thu hồi WorkingSet RAM nhàn rỗi</span>
+              </div>
+            </div>
+
+            {/* Khung Console Log thu gọn */}
+            <div className="rounded-2xl border border-slate-800 bg-[#080b12] overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowConsole((v) => !v)}
+                className="flex w-full items-center justify-between px-3.5 py-2.5 text-xs text-slate-400 hover:text-white transition"
+              >
+                <div className="flex items-center gap-2 font-mono">
+                  <Terminal className="size-3.5 text-zen-blue" />
+                  <span>Chi tiết nhật ký dòng lệnh ({cleanJob?.log ? cleanJob.log.split('\n').length : 0} dòng)</span>
+                </div>
+                {showConsole ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+              </button>
+
+              {showConsole && (
+                <pre
+                  ref={logBoxRef}
+                  className="max-h-52 overflow-y-auto p-3 text-[11px] mono text-emerald-300/90 whitespace-pre-wrap break-all border-t border-slate-800/80 bg-black/60 select-text"
+                >
+                  {cleanJob?.log || 'Đang chuẩn bị log...'}
+                </pre>
+              )}
+            </div>
+
+            {/* Nút hành động */}
+            <div className="flex justify-end gap-2 pt-2">
+              {cleanJob?.status === 'running' ? (
+                <Button variant="ghost" disabled>
+                  <Spinner />
+                  <span className="ml-1.5">Đang xử lý dọn dẹp...</span>
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  icon={Check}
+                  onClick={() => {
+                    setCleaningModalOpen(false);
+                    void loadScan();
+                  }}
+                >
+                  Tuyệt vời, Đóng
+                </Button>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
