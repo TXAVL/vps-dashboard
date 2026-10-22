@@ -1,13 +1,14 @@
-// ZenPanel - File Manager: duyệt, kéo thả upload, sửa file bằng Monaco Editor, nén/giải nén, xem trước media, tải từ URL, chmod
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import Editor from '@monaco-editor/react';
 import {
+  ArrowLeft,
   ArrowUp,
   CheckCircle2,
   ChevronRight,
   ClipboardPaste,
   Clock,
+  Compass,
   Copy,
   Download,
   ExternalLink,
@@ -16,12 +17,16 @@ import {
   FileArchive,
   FileCode,
   FilePlus,
+  FileText,
   Folder,
   FolderOpen,
   FolderPlus,
   Globe,
   HardDrive,
+  Home,
+  Laptop,
   Link2,
+  Monitor,
   Music,
   PackageOpen,
   Pencil,
@@ -29,7 +34,9 @@ import {
   RefreshCw,
   Save,
   Scissors,
+  Server,
   Shield,
+  SlidersHorizontal,
   Sparkles,
   TextCursorInput,
   Trash2,
@@ -38,14 +45,105 @@ import {
   X,
 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
-import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, SearchInput, Select, Spinner, cn, td, th, tr } from '../components/ui';
+import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, SearchInput, Select, Spinner, cn } from '../components/ui';
 import { WindowMockup } from '../components/layout/WindowMockup';
 import { Highlight } from '../components/Highlight';
 import { txaformat } from '../lib/txaformat';
 import { api, downloadFile, getDownloadTicket, get, post, put } from '../lib/api';
 import { formatBytes, formatDate } from '../lib/format';
 import { useApi } from '../lib/hooks';
+import { usePanel } from '../lib/panel';
 import type { AppView, FileEntry } from '../lib/types';
+
+export function getFileTypeLabel(name: string, isDirectory: boolean, osStyle: 'windows' | 'ubuntu' | 'macos'): string {
+  if (isDirectory) {
+    if (osStyle === 'windows') return 'File folder';
+    if (osStyle === 'macos') return 'Folder';
+    return 'Thư mục';
+  }
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  if (osStyle === 'windows') {
+    const map: Record<string, string> = {
+      txt: 'Text Document',
+      json: 'JSON Document',
+      js: 'JavaScript File',
+      ts: 'TypeScript File',
+      tsx: 'TypeScript JSX File',
+      jsx: 'JavaScript JSX File',
+      html: 'HTML Document',
+      css: 'Cascading Style Sheet',
+      scss: 'Sass Stylesheet',
+      md: 'Markdown Document',
+      png: 'PNG Image',
+      jpg: 'JPEG Image',
+      jpeg: 'JPEG Image',
+      gif: 'GIF Image',
+      svg: 'SVG Document',
+      webp: 'WebP Image',
+      mp4: 'MP4 Video',
+      webm: 'WebM Video',
+      mp3: 'MP3 Audio',
+      wav: 'WAV Audio',
+      zip: 'Compressed (zipped) Folder',
+      tar: 'TAR Archive',
+      gz: 'GZ Archive',
+      rar: 'WinRAR Archive',
+      '7z': '7-Zip Archive',
+      pdf: 'PDF Document',
+      sh: 'Shell Script',
+      bash: 'Bash Script',
+      ps1: 'PowerShell Script',
+      bat: 'Windows Batch File',
+      cmd: 'Windows Command Script',
+      exe: 'Application',
+      msi: 'Windows Installer Package',
+      log: 'Text Document (Log)',
+      conf: 'Configuration File',
+      env: 'Environment Config',
+      yml: 'YAML Document',
+      yaml: 'YAML Document',
+      sql: 'SQL Database Script',
+    };
+    return map[ext] || (ext ? `${ext.toUpperCase()} File` : 'File');
+  }
+  if (osStyle === 'macos') {
+    const map: Record<string, string> = {
+      txt: 'Plain Text',
+      json: 'JSON File',
+      js: 'JavaScript Source',
+      ts: 'TypeScript Source',
+      html: 'HTML Document',
+      css: 'CSS Stylesheet',
+      md: 'Markdown Document',
+      png: 'PNG image',
+      jpg: 'JPEG image',
+      zip: 'ZIP archive',
+      pdf: 'PDF document',
+      sh: 'Shell Script',
+      dmg: 'Apple Disk Image',
+    };
+    return map[ext] || (ext ? `${ext.toUpperCase()} document` : 'Document');
+  }
+  // Linux / Ubuntu
+  const map: Record<string, string> = {
+    txt: 'Văn bản (plain text)',
+    json: 'Tài liệu JSON',
+    js: 'Mã nguồn JavaScript',
+    ts: 'Mã nguồn TypeScript',
+    html: 'Trang HTML',
+    css: 'Bảng kiểu CSS',
+    md: 'Tài liệu Markdown',
+    png: 'Ảnh PNG',
+    jpg: 'Ảnh JPEG',
+    zip: 'Tệp nén Zip',
+    gz: 'Tệp nén Gzip',
+    pdf: 'Tài liệu PDF',
+    sh: 'Tập lệnh Shell',
+    log: 'Nhật ký Log',
+    conf: 'Tệp cấu hình',
+  };
+  return map[ext] || (ext ? `Tệp ${ext.toUpperCase()}` : 'Tệp tin');
+}
 
 interface Listing {
   path: string;
@@ -482,12 +580,18 @@ function ChmodModal({
 
 function ProUpgradeModal({
   isInstalled,
+  isRunning,
   proUrl,
   onClose,
+  onStart,
+  onSwitchToPro,
 }: {
   isInstalled: boolean;
+  isRunning: boolean;
   proUrl: string | null;
   onClose: () => void;
+  onStart?: () => void;
+  onSwitchToPro?: () => void;
 }) {
   const navigate = useNavigate();
   const [copiedCompose, setCopiedCompose] = useState(false);
@@ -523,7 +627,7 @@ volumes:
             <h3 className="text-base font-bold text-white">Trình Quản lý Tệp tin Cao cấp ZenFile Pro</h3>
           </div>
           <p className="text-sm text-slate-300">
-            ZenFile Explorer Pro (dựa trên FileBrowser) mang đến trải nghiệm duyệt tệp mượt mà, chuyên nghiệp và đầy đủ tính năng cho máy chủ VPS.
+            ZenFile Explorer Pro mang đến trải nghiệm duyệt tệp mượt mà, chuyên nghiệp và đầy đủ tính năng cho máy chủ VPS.
           </p>
           <div className="grid gap-2.5 pt-1 text-xs text-slate-200 sm:grid-cols-2">
             <div className="flex items-start gap-2 rounded-lg bg-ink-950/40 p-2.5">
@@ -546,21 +650,58 @@ volumes:
         </div>
 
         {isInstalled ? (
-          <div className="flex items-center justify-between rounded-xl border border-emerald-500/40 bg-emerald-950/30 p-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 font-semibold text-emerald-300">
-                <CheckCircle2 className="size-4" /> ZenFile Pro đã được cài đặt và đang chạy
+          isRunning ? (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/30 p-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 font-semibold text-emerald-300">
+                  <CheckCircle2 className="size-4" /> ZenFile Pro đã được cài đặt và đang chạy
+                </div>
+                <p className="text-xs text-slate-400">Tài khoản mặc định: <code className="mono text-white">admin / admin</code></p>
               </div>
-              <p className="text-xs text-slate-400">Tài khoản mặc định: <code className="mono text-white">admin / admin</code></p>
+              <div className="flex items-center gap-2">
+                {onSwitchToPro && (
+                  <Button
+                    variant="primary"
+                    icon={Sparkles}
+                    onClick={() => {
+                      onSwitchToPro();
+                      onClose();
+                    }}
+                  >
+                    Mở giao diện Pro
+                  </Button>
+                )}
+                {proUrl && (
+                  <a href={proUrl} target="_blank" rel="noreferrer">
+                    <Button variant="secondary" icon={ExternalLink}>
+                      Tab riêng
+                    </Button>
+                  </a>
+                )}
+              </div>
             </div>
-            {proUrl && (
-              <a href={proUrl} target="_blank" rel="noreferrer">
-                <Button variant="success" icon={ExternalLink}>
-                  Mở ZenFile Pro
+          ) : (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 font-semibold text-amber-300">
+                  <Play className="size-4" /> ZenFile Pro đã cài đặt nhưng đang tạm dừng
+                </div>
+                <p className="text-xs text-slate-400">Bấm nút bên cạnh để khởi động container và duyệt tệp ngay lập tức.</p>
+              </div>
+              {onStart && (
+                <Button
+                  variant="primary"
+                  icon={Play}
+                  onClick={() => {
+                    onStart();
+                    onClose();
+                  }}
+                >
+                  Khởi động ngay
                 </Button>
-              </a>
-            )}
-          </div>
+              )}
+            </div>
+          )
         ) : (
           <div className="space-y-3">
             <div className="space-y-3 rounded-xl border border-slate-700/60 bg-ink-950/50 p-4">
@@ -726,11 +867,26 @@ export default function FileManager() {
   const fileInput = useRef<HTMLInputElement>(null);
   const { confirm, prompt, run, toast } = useFeedback();
 
+  // Nhận diện hệ điều hành của VPS để áp dụng giao diện giống 100%
+  const { info } = usePanel();
+  const osFamily = info?.os.family || 'linux';
+  const osName = (info?.os.name || '').toLowerCase();
+  const defaultOsStyle: 'windows' | 'ubuntu' | 'macos' =
+    osFamily === 'windows' ? 'windows' : osName.includes('ubuntu') || osName.includes('debian') ? 'ubuntu' : 'ubuntu';
+
+  const [osStyle, setOsStyle] = useState<'windows' | 'ubuntu' | 'macos'>(defaultOsStyle);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    setOsStyle(defaultOsStyle);
+  }, [defaultOsStyle]);
+
   const apps = useApi<AppView[]>('/api/apps');
-  const proApp = apps.data?.find((a) => a.id === 'filebrowser');
+  const proApp = apps.data?.find((a) => a.id === 'filebrowser' || a.id === 'zen-file-explorer' || a.name?.toLowerCase().includes('filebrowser'));
+  const isProInstalled = Boolean(proApp?.installed || (proApp && proApp.status !== 'not-installed'));
   const isProRunning = proApp?.status === 'running';
-  const proPort = proApp?.installed?.params.port;
-  const proUrl = proApp?.publicLink?.url ?? (proPort ? `http://${window.location.hostname}:${proPort}` : null);
+  const proPort = proApp?.installed?.params.port || '8084';
+  const proUrl = proApp?.publicLink?.url ?? `http://${window.location.hostname}:${proPort}`;
 
   const startPro = async () => {
     await run(() => post('/api/apps/filebrowser/start'), 'Khởi động ZenFile Pro');
@@ -752,14 +908,14 @@ export default function FileManager() {
 
   // Tự động mở ZenFile Pro nếu đã cài đặt ở App Store (trừ khi người dùng chỉ định ?mode=standard trong URL)
   useEffect(() => {
-    if (proApp?.installed) {
+    if (isProInstalled) {
       if (params.get('mode') !== 'standard') {
         setViewMode('pro');
       }
     } else {
       setViewMode('standard');
     }
-  }, [proApp?.installed, params]);
+  }, [isProInstalled, params]);
 
   const sep = roots?.separator ?? '/';
   const currentPath = params.get('path') ?? roots?.roots[0] ?? null;
@@ -921,11 +1077,30 @@ export default function FileManager() {
     <>
       <PageHeader
         title="File Manager"
-        description="Kéo thả để tải lên · Xem trước ảnh/video/nhạc · Tải từ URL · Chmod · Monaco Editor"
+        description="Quản lý tệp tin thích ứng theo hệ điều hành (Windows / Ubuntu / macOS) · Kéo thả upload · Xem trước ảnh/video/nhạc · Chmod · Monaco Editor"
         icon={FolderOpen}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {proApp?.installed ? (
+            {/* Bộ chọn phong cách hệ điều hành */}
+            <div className="flex items-center rounded-xl border border-slate-700/60 bg-ink-950/70 px-2.5 py-1 text-xs text-slate-300 shadow-sm">
+              <span className="text-[11px] text-slate-400 mr-2 flex items-center gap-1">
+                {osStyle === 'windows' ? <Laptop className="size-3.5 text-blue-400" /> : osStyle === 'ubuntu' ? <Server className="size-3.5 text-orange-400" /> : <Monitor className="size-3.5 text-purple-400" />}
+                <span className="hidden sm:inline">Giao diện:</span>
+              </span>
+              <select
+                value={osStyle}
+                onChange={(e) => setOsStyle(e.target.value as typeof osStyle)}
+                className="bg-transparent text-xs font-semibold text-slate-200 focus:outline-none cursor-pointer"
+                title="Chọn phong cách giao diện File Manager theo ý thích"
+              >
+                <option value="windows" className="bg-slate-900 text-white">Windows 11 Explorer</option>
+                <option value="ubuntu" className="bg-slate-900 text-white">Ubuntu Files (Yaru)</option>
+                <option value="macos" className="bg-slate-900 text-white">macOS Finder</option>
+              </select>
+            </div>
+
+            {/* Chuyển đổi giữa Duyệt chuẩn OS và ZenFile Pro UI */}
+            {isProInstalled ? (
               <div className="flex items-center rounded-xl border border-slate-700/60 bg-ink-950/60 p-0.5 text-xs">
                 <button
                   type="button"
@@ -941,7 +1116,9 @@ export default function FileManager() {
                     viewMode === 'standard' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200',
                   )}
                 >
-                  <Folder className="size-3.5" /> Duyệt cơ bản
+                  <Folder className="size-3.5" />
+                  <span className="hidden md:inline">{osStyle === 'windows' ? 'Windows Explorer' : osStyle === 'ubuntu' ? 'Ubuntu Files' : 'macOS Finder'}</span>
+                  <span className="md:hidden">Mặc định</span>
                 </button>
                 <button
                   type="button"
@@ -960,7 +1137,7 @@ export default function FileManager() {
                   )}
                 >
                   <Sparkles className="size-3 text-amber-300" /> ZenFile Pro UI
-                  <span className={cn('size-1.5 rounded-full', isProRunning ? 'bg-emerald-400 animate-pulse' : 'bg-red-400')} />
+                  <span className={cn('size-1.5 rounded-full', isProRunning ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400')} />
                 </button>
               </div>
             ) : (
@@ -968,8 +1145,10 @@ export default function FileManager() {
                 ✨ Cài ZenFile Pro
               </Button>
             )}
+
+            {/* Chọn ổ đĩa trên Windows / Multi-roots */}
             {roots && roots.roots.length > 1 && (
-              <Select value={roots.roots.find((r) => currentPath?.startsWith(r)) ?? roots.roots[0]} onChange={(e) => navigate(e.target.value)} className="w-28">
+              <Select value={roots.roots.find((r) => currentPath?.startsWith(r)) ?? roots.roots[0]} onChange={(e) => navigate(e.target.value)} className="w-28 text-xs">
                 {roots.roots.map((root) => (
                   <option key={root} value={root}>
                     {root}
@@ -981,8 +1160,8 @@ export default function FileManager() {
         }
       />
 
-      {/* CHẾ ĐỘ PRO: Nhúng trực tiếp giao diện ZenFile Pro thiết kế mới toàn màn hình */}
-      {viewMode === 'pro' && proApp?.installed ? (
+      {/* CHẾ ĐỘ PRO: Nhúng trực tiếp giao diện ZenFile Pro toàn màn hình */}
+      {viewMode === 'pro' && isProInstalled ? (
         isProRunning && proUrl ? (
           <div className="space-y-3 animate-fadeIn">
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zen-purple/40 bg-ink-950/70 px-4 py-2.5 backdrop-blur-md">
@@ -991,7 +1170,7 @@ export default function FileManager() {
                 <span className="font-semibold text-white">ZenFile Explorer Pro</span>
                 <Badge tone="green" className="text-[11px]">Đang chạy</Badge>
                 <span className="text-xs text-slate-400">
-                  · Tài khoản: <code className="mono text-white">admin</code> / Mật khẩu: <code className="mono text-white">{proApp.installed.params.password || 'admin'}</code>
+                  · Tài khoản mặc định: <code className="mono text-white">admin</code> / Mật khẩu: <code className="mono text-white">{proApp?.installed?.params.password || 'admin'}</code>
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -1037,12 +1216,12 @@ export default function FileManager() {
               <Sparkles className="size-7" />
             </div>
             <div className="space-y-1">
-              <h3 className="text-lg font-bold text-white">ZenFile Pro đã được cài đặt nhưng đang tạm dừng</h3>
-              <p className="text-sm text-slate-400">Khởi động lại container để bắt đầu duyệt tệp với giao diện Pro toàn màn hình.</p>
+              <h3 className="text-lg font-bold text-white">ZenFile Pro đã được cài đặt nhưng container đang tạm dừng</h3>
+              <p className="text-sm text-slate-400">Khởi động container để bắt đầu duyệt tệp với giao diện Pro toàn màn hình.</p>
             </div>
             <div className="flex justify-center gap-3 pt-2">
               <Button variant="primary" icon={Play} onClick={() => void startPro()}>
-                Khởi động ZenFile Pro
+                Khởi động ZenFile Pro ngay
               </Button>
               <Button variant="secondary" onClick={() => setViewMode('standard')}>
                 Quay về Duyệt cơ bản
@@ -1054,215 +1233,722 @@ export default function FileManager() {
           </Card>
         )
       ) : (
-      <Card bodyClassName="p-0">
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-700/40 p-3">
-          <IconButton icon={ArrowUp} title="Lên thư mục cha" disabled={!listing?.parent} onClick={() => listing?.parent && navigate(listing.parent)} />
-          <IconButton icon={RefreshCw} title="Làm mới" onClick={() => void load()} />
-          <div className="mx-1 hidden h-6 w-px bg-slate-700 sm:block" />
-          <Button size="sm" icon={FilePlus} onClick={() => void create('file')}>
-            File
-          </Button>
-          <Button size="sm" icon={FolderPlus} onClick={() => void create('directory')}>
-            Thư mục
-          </Button>
-          <Button size="sm" variant="primary" icon={Upload} loading={uploading} onClick={() => fileInput.current?.click()}>
-            Tải lên
-          </Button>
-          <Button size="sm" variant="soft" icon={Globe} onClick={() => setRemoteModal(true)}>
-            Tải từ URL
-          </Button>
-          <input ref={fileInput} type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files).then(() => (e.target.value = ''))} />
-          {selectedEntries.length > 0 && (
-            <>
-              <div className="mx-1 hidden h-6 w-px bg-slate-700 sm:block" />
-              <span className="text-xs font-semibold text-slate-400">Đã chọn {selectedEntries.length}</span>
-              <Button size="sm" icon={Copy} onClick={() => setClipboard({ paths: selectedEntries.map((e) => e.path), mode: 'copy' })}>
-                Sao chép
-              </Button>
-              <Button size="sm" icon={Scissors} onClick={() => setClipboard({ paths: selectedEntries.map((e) => e.path), mode: 'move' })}>
-                Cắt
-              </Button>
-              <Button size="sm" icon={Shield} onClick={() => setChmodEntries(selectedEntries)}>
-                Đổi quyền
-              </Button>
-              <Button
-                size="sm"
-                icon={Copy}
-                onClick={() => {
-                  navigator.clipboard.writeText(selectedEntries.map((e) => e.path).join('\n'));
-                  toast(`Đã sao chép đường dẫn của ${selectedEntries.length} mục`);
-                }}
-              >
-                Chép path
-              </Button>
-              <Button size="sm" icon={FileArchive} loading={compressing} onClick={() => void compress('zip')}>
-                Nén .zip
-              </Button>
-              <Button size="sm" icon={FileArchive} onClick={() => void compress('tar.gz')}>
-                .tar.gz
-              </Button>
-              <Button size="sm" variant="danger" icon={Trash2} onClick={() => void remove(selectedEntries)}>
-                Xóa
-              </Button>
-            </>
-          )}
-          {clipboard && (
-            <Button size="sm" variant="success" icon={ClipboardPaste} onClick={() => void paste()}>
-              Dán {clipboard.paths.length} mục ({clipboard.mode === 'copy' ? 'sao chép' : 'di chuyển'})
-            </Button>
-          )}
-          <SearchInput value={query} onChange={setQuery} placeholder="Lọc trong thư mục" className="ml-auto w-full sm:w-56" />
-        </div>
-
-        {/* Thanh bộ lọc nhanh */}
-        <div className="flex items-center gap-1.5 overflow-x-auto border-b border-slate-700/40 bg-ink-950/40 px-3 py-1.5 text-xs">
-          <span className="px-1 text-slate-500 font-medium">Lọc tệp:</span>
-          {[
-            { id: 'all', label: 'Tất cả' },
-            { id: 'dirs', label: 'Thư mục' },
-            { id: 'images', label: 'Hình ảnh' },
-            { id: 'media', label: 'Video & Âm thanh' },
-            { id: 'code', label: 'Code & Văn bản' },
-            { id: 'archives', label: 'File nén' },
-          ].map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setTypeFilter(f.id as typeof typeFilter)}
-              className={cn(
-                'rounded-md px-2.5 py-1 font-medium transition',
-                typeFilter === f.id
-                  ? 'bg-zen-blue text-white shadow-sm'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200',
-              )}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-1 overflow-x-auto border-b border-slate-700/40 px-4 py-2.5 text-sm">
-          <HardDrive className="size-4 shrink-0 text-slate-500" />
-          {sep === '/' && (
-            <button className="mono rounded px-1.5 py-0.5 text-slate-300 hover:bg-slate-800" onClick={() => navigate('/')}>
-              /
-            </button>
-          )}
-          {breadcrumbs.map((crumb, i) => (
-            <span key={crumb.path} className="flex shrink-0 items-center gap-1">
-              {(i > 0 || sep === '/') && <ChevronRight className="size-3.5 text-slate-600" />}
-              <button className={cn('mono rounded px-1.5 py-0.5 hover:bg-slate-800', i === breadcrumbs.length - 1 ? 'font-semibold text-white' : 'text-slate-400')} onClick={() => navigate(crumb.path)}>
-                {crumb.name}
-              </button>
-            </span>
-          ))}
-        </div>
-
+        /* GIAO DIỆN DUYỆT TỆP THÍCH ỨNG THEO HỆ ĐIỀU HÀNH */
         <div
-          className={cn('relative min-h-[360px] transition', dragging && 'bg-zen-blue/5 ring-2 ring-inset ring-zen-blue/50')}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
+          className={cn(
+            'overflow-hidden rounded-2xl shadow-2xl transition-all',
+            osStyle === 'windows' && 'border border-slate-700/80 bg-[#0b121e]',
+            osStyle === 'ubuntu' && 'border border-neutral-700/80 bg-[#1e1e1e]',
+            osStyle === 'macos' && 'border border-slate-700/60 bg-[#161a22]',
+          )}
         >
-          {dragging && (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-              <div className="glass flex items-center gap-3 px-6 py-4 font-semibold text-blue-200">
-                <Upload className="size-5" /> Thả file vào đây để tải lên {listing?.path}
+          {/* HEADER / TOOLBAR THEO TỪNG HỆ ĐIỀU HÀNH */}
+          {osStyle === 'windows' && (
+            /* ======================================================== WINDOWS 11 FILE EXPLORER */
+            <div className="border-b border-slate-700/60 bg-[#101927]">
+              {/* Windows 11 Fluent Command Bar (Ribbon) */}
+              <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-slate-800/80 px-3 py-2 text-xs">
+                <div className="flex flex-wrap items-center gap-1">
+                  <div className="flex items-center gap-1 rounded-lg bg-zen-blue/20 px-2.5 py-1 text-blue-300 hover:bg-zen-blue/30 cursor-pointer font-medium" onClick={() => void create('file')}>
+                    <FilePlus className="size-3.5 text-blue-400" /> File mới
+                  </div>
+                  <div className="flex items-center gap-1 rounded-lg bg-amber-500/15 px-2.5 py-1 text-amber-300 hover:bg-amber-500/25 cursor-pointer font-medium" onClick={() => void create('directory')}>
+                    <FolderPlus className="size-3.5 text-amber-400" /> Thư mục mới
+                  </div>
+                  <div className="mx-1 h-4 w-px bg-slate-700/70" />
+                  <button
+                    type="button"
+                    onClick={() => fileInput.current?.click()}
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-slate-200 hover:bg-slate-800"
+                    title="Tải tệp lên"
+                  >
+                    <Upload className="size-3.5 text-emerald-400" /> Tải lên
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRemoteModal(true)}
+                    className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-slate-200 hover:bg-slate-800"
+                    title="Tải từ URL"
+                  >
+                    <Globe className="size-3.5 text-cyan-400" /> Tải URL
+                  </button>
+                  {selectedEntries.length > 0 && (
+                    <>
+                      <div className="mx-1 h-4 w-px bg-slate-700/70" />
+                      <button
+                        type="button"
+                        onClick={() => setClipboard({ paths: selectedEntries.map((e) => e.path), mode: 'copy' })}
+                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-slate-200 hover:bg-slate-800"
+                        title="Sao chép (Ctrl+C)"
+                      >
+                        <Copy className="size-3.5 text-blue-400" /> Copy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setClipboard({ paths: selectedEntries.map((e) => e.path), mode: 'move' })}
+                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-slate-200 hover:bg-slate-800"
+                        title="Cắt (Ctrl+X)"
+                      >
+                        <Scissors className="size-3.5 text-amber-400" /> Cut
+                      </button>
+                      {selectedEntries.length === 1 && (
+                        <button
+                          type="button"
+                          onClick={() => void rename(selectedEntries[0])}
+                          className="flex items-center gap-1 rounded-lg px-2 py-1 text-slate-200 hover:bg-slate-800"
+                          title="Đổi tên"
+                        >
+                          <TextCursorInput className="size-3.5 text-slate-300" /> Đổi tên
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void compress('zip')}
+                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-slate-200 hover:bg-slate-800"
+                        title="Nén tệp tin .zip"
+                      >
+                        <FileArchive className="size-3.5 text-purple-400" /> Nén Zip
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void remove(selectedEntries)}
+                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-rose-400 hover:bg-rose-950/40"
+                        title="Xóa vĩnh viễn"
+                      >
+                        <Trash2 className="size-3.5" /> Xóa ({selectedEntries.length})
+                      </button>
+                    </>
+                  )}
+                  {clipboard && (
+                    <button
+                      type="button"
+                      onClick={() => void paste()}
+                      className="flex items-center gap-1 rounded-lg bg-emerald-950/50 px-2.5 py-1 text-emerald-300 hover:bg-emerald-900/60 font-semibold"
+                    >
+                      <ClipboardPaste className="size-3.5 text-emerald-400" /> Dán ({clipboard.paths.length})
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen((v) => !v)}
+                    className={cn('rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white', sidebarOpen && 'text-blue-400')}
+                    title="Ẩn/hiện thanh Quick Access"
+                  >
+                    <SlidersHorizontal className="size-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Windows 11 Address Bar kép (This PC > Local Disk (C:) > ...) */}
+              <div className="flex items-center gap-2 p-2">
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={!listing?.parent}
+                    onClick={() => listing?.parent && navigate(listing.parent)}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white disabled:opacity-40"
+                    title="Lên thư mục cha"
+                  >
+                    <ArrowUp className="size-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void load()}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+                    title="Làm mới"
+                  >
+                    <RefreshCw className="size-4" />
+                  </button>
+                </div>
+
+                {/* Ô địa chỉ chuẩn Windows Explorer */}
+                <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg border border-slate-700/80 bg-ink-950/80 px-2.5 py-1 text-xs shadow-inner">
+                  <Laptop className="size-3.5 shrink-0 text-blue-400" />
+                  <span className="text-slate-400 font-semibold shrink-0">This PC</span>
+                  <ChevronRight className="size-3 shrink-0 text-slate-600" />
+                  <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                    {breadcrumbs.map((crumb, idx) => (
+                      <span key={crumb.path} className="flex shrink-0 items-center gap-1">
+                        {idx > 0 && <ChevronRight className="size-3 text-slate-600" />}
+                        <button
+                          type="button"
+                          onClick={() => navigate(crumb.path)}
+                          className={cn(
+                            'rounded px-1.5 py-0.5 font-medium transition hover:bg-slate-800',
+                            idx === breadcrumbs.length - 1 ? 'font-semibold text-white' : 'text-slate-300',
+                          )}
+                        >
+                          {crumb.name}
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (currentPath) {
+                        navigator.clipboard.writeText(currentPath);
+                        toast(`Đã chép: ${currentPath}`);
+                      }
+                    }}
+                    className="rounded p-1 text-slate-500 hover:text-slate-200"
+                    title="Sao chép đường dẫn này"
+                  >
+                    <Copy className="size-3" />
+                  </button>
+                </div>
+
+                {/* Ô tìm kiếm góc phải */}
+                <div className="w-40 sm:w-56 shrink-0">
+                  <SearchInput
+                    value={query}
+                    onChange={setQuery}
+                    placeholder={`Tìm kiếm trong thư mục`}
+                    className="w-full text-xs"
+                  />
+                </div>
               </div>
             </div>
           )}
-          {error ? (
-            <div className="p-4">
-              <ErrorBox message={error} onRetry={load} />
-            </div>
-          ) : !listing || (loading && !listing) ? (
-            <Spinner />
-          ) : entries.length === 0 ? (
-            <EmptyState icon={Folder} title="Thư mục trống hoặc không có file phù hợp" description="Kéo thả file vào đây, tải từ URL hoặc chọn bộ lọc Tất cả." />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
-                <thead>
-                  <tr>
-                    <th className={cn(th, 'w-10')}>
-                      <input
-                        type="checkbox"
-                        className="accent-zen-blue"
-                        checked={entries.length > 0 && selectedEntries.length === entries.length}
-                        onChange={(e) => setSelected(e.target.checked ? new Set(entries.map((x) => x.path)) : new Set())}
-                        aria-label="Chọn tất cả"
-                      />
-                    </th>
-                    <th className={th}>Tên</th>
-                    <th className={cn(th, 'text-right')}>Kích thước</th>
-                    <th className={th}>Sửa đổi</th>
-                    <th className={th}>Quyền</th>
-                    <th className={cn(th, 'text-right')}>Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((entry) => {
-                    const isMed = Boolean(mediaTypeOf(entry.name));
-                    const Icon = entry.type === 'directory' ? Folder : isArchive(entry.name) ? FileArchive : isMed ? (mediaTypeOf(entry.name) === 'video' ? Video : mediaTypeOf(entry.name) === 'audio' ? Music : Eye) : languageOf(entry.name) !== 'plaintext' ? FileCode : File;
-                    return (
-                      <tr key={entry.path} className={cn(tr, selected.has(entry.path) && 'bg-zen-blue/10')} onDoubleClick={() => openEntry(entry)}>
-                        <td className={td}>
-                          <input type="checkbox" className="accent-zen-blue" checked={selected.has(entry.path)} onChange={() => toggle(entry.path)} aria-label={`Chọn ${entry.name}`} />
-                        </td>
-                        <td className={td}>
-                          <button className="flex max-w-[420px] items-center gap-2.5 text-left" onClick={() => openEntry(entry)}>
-                            <Icon className={cn('size-4 shrink-0', entry.type === 'directory' ? 'text-zen-amber' : isMed ? 'text-zen-purple' : 'text-slate-400')} />
-                            <Highlight text={entry.name} query={query} className="truncate font-medium text-slate-100 hover:text-blue-300" />
-                          </button>
-                        </td>
-                        <td className={cn(td, 'mono text-right text-xs text-slate-400')}>{entry.type === 'directory' ? '—' : txaformat.size(entry.size)}</td>
-                        <td className={cn(td, 'text-xs text-slate-500')}>{formatDate(entry.modified)}</td>
-                        <td className={cn(td, 'mono text-xs text-slate-500')}>
-                          <button
-                            type="button"
-                            onClick={() => setChmodEntries([entry])}
-                            className="rounded px-1.5 py-0.5 hover:bg-slate-800 hover:text-blue-300"
-                            title="Bấm để đổi quyền"
-                          >
-                            {entry.mode}
-                          </button>
-                        </td>
-                        <td className={cn(td, 'whitespace-nowrap text-right')}>
-                          {isMed ? (
-                            <IconButton icon={Eye} title="Xem trước" onClick={() => setPreviewFile(entry)} />
-                          ) : (
-                            entry.type !== 'directory' && <IconButton icon={Pencil} title="Sửa" onClick={() => setEditing(entry)} />
-                          )}
-                          {isArchive(entry.name) && <IconButton icon={PackageOpen} title="Giải nén" onClick={() => void extract(entry)} />}
-                          {entry.type !== 'directory' && (
-                            <>
-                              <IconButton icon={Download} title="Tải về" onClick={() => void run(() => downloadFile(entry.path))} />
-                              <IconButton icon={Link2} title="Link tải an toàn (5 phút, chặn IDM)" onClick={() => setShareFile(entry)} />
-                            </>
-                          )}
-                          <IconButton
-                            icon={Copy}
-                            title="Sao chép đường dẫn tuyệt đối"
-                            onClick={() => {
-                              navigator.clipboard.writeText(entry.path);
-                              toast(`Đã sao chép: ${entry.path}`);
-                            }}
-                          />
-                          <IconButton icon={TextCursorInput} title="Đổi tên" onClick={() => void rename(entry)} />
-                          <IconButton icon={Trash2} title="Xóa" className="hover:text-zen-red" onClick={() => void remove([entry])} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+
+          {osStyle === 'ubuntu' && (
+            /* ======================================================== UBUNTU GNOME FILES (NAUTILUS) */
+            <div className="border-b border-neutral-700/80 bg-[#242424] p-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={!listing?.parent}
+                    onClick={() => listing?.parent && navigate(listing.parent)}
+                    className="rounded-full bg-neutral-800 p-1.5 text-neutral-300 hover:bg-neutral-700 hover:text-white disabled:opacity-40"
+                    title="Lên thư mục cha"
+                  >
+                    <ArrowUp className="size-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void load()}
+                    className="rounded-full bg-neutral-800 p-1.5 text-neutral-300 hover:bg-neutral-700 hover:text-white"
+                    title="Tải lại"
+                  >
+                    <RefreshCw className="size-4" />
+                  </button>
+
+                  {/* Pathbar dạng Pill Buttons (viên thuốc) chuẩn Nautilus GNOME */}
+                  <div className="flex items-center gap-1 overflow-x-auto rounded-full bg-black/40 p-1">
+                    <button
+                      type="button"
+                      onClick={() => navigate('/')}
+                      className={cn(
+                        'flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition',
+                        currentPath === '/' ? 'bg-[#E95420] text-white' : 'text-neutral-400 hover:bg-neutral-800 hover:text-white',
+                      )}
+                    >
+                      <Home className="size-3 text-orange-300" /> /
+                    </button>
+                    {breadcrumbs.map((crumb, idx) => (
+                      <button
+                        key={crumb.path}
+                        type="button"
+                        onClick={() => navigate(crumb.path)}
+                        className={cn(
+                          'rounded-full px-2.5 py-0.5 text-xs font-medium transition shrink-0',
+                          idx === breadcrumbs.length - 1
+                            ? 'bg-[#E95420] text-white font-semibold shadow'
+                            : 'text-neutral-300 hover:bg-neutral-800 hover:text-white',
+                        )}
+                      >
+                        {crumb.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button size="xs" variant="primary" icon={Upload} onClick={() => fileInput.current?.click()} className="bg-[#E95420] hover:bg-[#d84819]">
+                    Tải lên
+                  </Button>
+                  <Button size="xs" icon={FilePlus} onClick={() => void create('file')}>
+                    File
+                  </Button>
+                  <Button size="xs" icon={FolderPlus} onClick={() => void create('directory')}>
+                    Thư mục
+                  </Button>
+                  <div className="w-36 sm:w-48 shrink-0">
+                    <SearchInput value={query} onChange={setQuery} placeholder="Tìm kiếm..." className="text-xs" />
+                  </div>
+                </div>
+              </div>
             </div>
           )}
+
+          {osStyle === 'macos' && (
+            /* ======================================================== MACOS FINDER */
+            <div className="border-b border-slate-700/60 bg-[#1e2330]/90 backdrop-blur-md p-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {/* 3 nút Traffic Lights tròn đặc trưng */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 pr-2">
+                    <span className="size-3 rounded-full bg-[#FF5F56] border border-[#E0443E]/40" />
+                    <span className="size-3 rounded-full bg-[#FFBD2E] border border-[#DEA123]/40" />
+                    <span className="size-3 rounded-full bg-[#27C93F] border border-[#1AAB29]/40" />
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={!listing?.parent}
+                    onClick={() => listing?.parent && navigate(listing.parent)}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-slate-700 hover:text-white disabled:opacity-40"
+                    title="Lên cấp"
+                  >
+                    <ArrowLeft className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void load()}
+                    className="rounded-lg p-1 text-slate-400 hover:bg-slate-700 hover:text-white"
+                    title="Tải lại"
+                  >
+                    <RefreshCw className="size-3.5" />
+                  </button>
+
+                  <div className="flex items-center gap-1 text-xs font-semibold text-white ml-1">
+                    <Folder className="size-3.5 text-blue-400" />
+                    <span>{listing?.path.split(sep).filter(Boolean).pop() || (sep === '/' ? 'Macintosh HD' : 'This PC')}</span>
+                  </div>
+                </div>
+
+                {/* macOS Toolbar Actions */}
+                <div className="flex items-center gap-2">
+                  <Button size="xs" variant="secondary" icon={FilePlus} onClick={() => void create('file')}>
+                    File mới
+                  </Button>
+                  <Button size="xs" variant="secondary" icon={FolderPlus} onClick={() => void create('directory')}>
+                    Thư mục mới
+                  </Button>
+                  <Button size="xs" variant="primary" icon={Upload} onClick={() => fileInput.current?.click()} className="bg-blue-600 hover:bg-blue-500">
+                    Upload
+                  </Button>
+                  <div className="w-36 sm:w-52">
+                    <SearchInput value={query} onChange={setQuery} placeholder="Search" className="rounded-full text-xs" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* THANH BỘ LỌC TỆP TIN NHANH */}
+          <div className="flex items-center justify-between border-b border-slate-700/50 bg-black/30 px-3 py-1.5 text-xs text-slate-400">
+            <div className="flex items-center gap-1.5 overflow-x-auto">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Lọc:</span>
+              {[
+                { id: 'all', label: 'Tất cả' },
+                { id: 'dirs', label: 'Thư mục' },
+                { id: 'images', label: 'Hình ảnh' },
+                { id: 'media', label: 'Video & Audio' },
+                { id: 'code', label: 'Code & Doc' },
+                { id: 'archives', label: 'File nén' },
+              ].map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setTypeFilter(f.id as typeof typeFilter)}
+                  className={cn(
+                    'rounded-md px-2 py-0.5 font-medium transition',
+                    typeFilter === f.id
+                      ? osStyle === 'ubuntu'
+                        ? 'bg-[#E95420] text-white'
+                        : 'bg-zen-blue text-white'
+                      : 'hover:bg-slate-800 hover:text-slate-200',
+                  )}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {uploading && (
+                <span className="flex items-center gap-1 text-xs text-amber-300 font-semibold animate-pulse">
+                  <RefreshCw className="size-3 animate-spin" /> Đang tải file lên...
+                </span>
+              )}
+              {compressing && (
+                <span className="flex items-center gap-1 text-xs text-purple-300 font-semibold animate-pulse">
+                  <RefreshCw className="size-3 animate-spin" /> Đang xử lý nén/giải nén...
+                </span>
+              )}
+              {selectedEntries.length > 0 && (
+                <span className="text-xs text-blue-300 font-semibold shrink-0">
+                  Đã chọn {selectedEntries.length} mục
+                </span>
+              )}
+            </div>
+          </div>
+
+          <input ref={fileInput} type="file" multiple hidden onChange={(e) => e.target.files && void upload(e.target.files).then(() => (e.target.value = ''))} />
+
+          {/* VÙNG NỘI DUNG CHÍNH (SIDEBAR + FILE LISTING) */}
+          <div className="flex min-h-[460px]">
+            {/* SIDEBAR ĐIỀU HƯỚNG THEO PHONG CÁCH HỆ ĐIỀU HÀNH */}
+            {sidebarOpen && (
+              <div
+                className={cn(
+                  'w-48 shrink-0 border-r text-xs p-3 space-y-4 select-none hidden md:block',
+                  osStyle === 'windows' && 'border-slate-800 bg-[#0d1522]/90',
+                  osStyle === 'ubuntu' && 'border-neutral-800 bg-[#1a1a1a]',
+                  osStyle === 'macos' && 'border-slate-800/80 bg-[#12161f]/90',
+                )}
+              >
+                {osStyle === 'windows' && (
+                  <>
+                    <div className="space-y-1">
+                      <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Quick access</span>
+                      <button
+                        type="button"
+                        onClick={() => navigate(roots?.roots[0] ? `${roots.roots[0]}\\Users` : '/')}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                      >
+                        <Laptop className="size-3.5 text-blue-400" /> Desktop
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(currentPath || '/')}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                      >
+                        <Download className="size-3.5 text-emerald-400" /> Downloads
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(currentPath || '/')}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                      >
+                        <FileText className="size-3.5 text-amber-400" /> Documents
+                      </button>
+                    </div>
+
+                    <div className="space-y-1 pt-1">
+                      <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500">This PC</span>
+                      {(roots?.roots ?? ['C:\\']).map((drive) => (
+                        <button
+                          key={drive}
+                          type="button"
+                          onClick={() => navigate(drive)}
+                          className={cn(
+                            'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 font-medium transition',
+                            currentPath?.startsWith(drive) ? 'bg-zen-blue/20 text-blue-300' : 'text-slate-300 hover:bg-slate-800 hover:text-white',
+                          )}
+                        >
+                          <HardDrive className="size-3.5 text-cyan-400" /> Local Disk ({drive})
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {osStyle === 'ubuntu' && (
+                  <div className="space-y-1">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-orange-400/80">Vị trí (Places)</span>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/')}
+                      className={cn(
+                        'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 transition font-medium',
+                        currentPath === '/' ? 'bg-[#E95420]/20 text-orange-300' : 'text-neutral-300 hover:bg-neutral-800 hover:text-white',
+                      )}
+                    >
+                      <HardDrive className="size-3.5 text-orange-400" /> Hệ thống tệp (/)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/var/www')}
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white transition"
+                    >
+                      <Globe className="size-3.5 text-blue-400" /> Web Server (/var/www)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/etc')}
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white transition"
+                    >
+                      <Server className="size-3.5 text-amber-400" /> Cấu hình (/etc)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/var/log')}
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white transition"
+                    >
+                      <FileText className="size-3.5 text-purple-400" /> Nhật ký (/var/log)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate('/tmp')}
+                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-neutral-300 hover:bg-neutral-800 hover:text-white transition"
+                    >
+                      <Folder className="size-3.5 text-rose-400" /> Tạm (/tmp)
+                    </button>
+                  </div>
+                )}
+
+                {osStyle === 'macos' && (
+                  <>
+                    <div className="space-y-1">
+                      <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Favorites</span>
+                      <button
+                        type="button"
+                        onClick={() => navigate(currentPath || '/')}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                      >
+                        <Compass className="size-3.5 text-blue-400" /> Applications
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(currentPath || '/')}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                      >
+                        <FileText className="size-3.5 text-cyan-400" /> Documents
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(currentPath || '/')}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition"
+                      >
+                        <Download className="size-3.5 text-purple-400" /> Downloads
+                      </button>
+                    </div>
+
+                    <div className="space-y-1 pt-2">
+                      <span className="block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Locations</span>
+                      <button
+                        type="button"
+                        onClick={() => navigate(roots?.roots[0] || '/')}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-slate-300 hover:bg-slate-800 hover:text-white transition font-medium"
+                      >
+                        <HardDrive className="size-3.5 text-slate-400" /> Macintosh HD
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* BẢNG DANH SÁCH FILE CHÍNH */}
+            <div
+              className={cn('relative flex-1 transition min-h-[420px]', dragging && 'bg-zen-blue/5 ring-2 ring-inset ring-zen-blue/50')}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+            >
+              {dragging && (
+                <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                  <div className="glass flex items-center gap-3 rounded-2xl px-6 py-4 font-semibold text-blue-200 shadow-2xl">
+                    <Upload className="size-6 text-emerald-400 animate-bounce" /> Thả file vào đây để tải lên {listing?.path}
+                  </div>
+                </div>
+              )}
+
+              {error ? (
+                <div className="p-6">
+                  <ErrorBox message={error} onRetry={load} />
+                </div>
+              ) : !listing || (loading && !listing) ? (
+                <Spinner label="Đang nạp danh sách tệp tin..." />
+              ) : entries.length === 0 ? (
+                <EmptyState
+                  icon={Folder}
+                  title="Thư mục trống hoặc không có file phù hợp"
+                  description="Kéo thả tệp vào đây, bấm nút Tải lên hoặc chọn bộ lọc Tất cả."
+                />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-xs">
+                    <thead>
+                      <tr className={cn('border-b text-slate-400', osStyle === 'ubuntu' ? 'border-neutral-800 bg-neutral-900/60' : 'border-slate-800 bg-ink-950/60')}>
+                        <th className="w-10 px-3 py-2 text-left">
+                          <input
+                            type="checkbox"
+                            className="accent-zen-blue"
+                            checked={entries.length > 0 && selectedEntries.length === entries.length}
+                            onChange={(e) => setSelected(e.target.checked ? new Set(entries.map((x) => x.path)) : new Set())}
+                            aria-label="Chọn tất cả"
+                          />
+                        </th>
+                        <th className="px-3 py-2 text-left font-semibold">Tên (Name)</th>
+                        {osStyle === 'windows' && <th className="px-3 py-2 text-left font-semibold">Loại (Type)</th>}
+                        {osStyle === 'ubuntu' && <th className="px-3 py-2 text-left font-semibold">Quyền (Permissions)</th>}
+                        <th className="px-3 py-2 text-right font-semibold">Kích thước (Size)</th>
+                        <th className="px-3 py-2 text-left font-semibold">{osStyle === 'windows' ? 'Date modified' : 'Ngày sửa'}</th>
+                        {osStyle === 'macos' && <th className="px-3 py-2 text-left font-semibold">Kind</th>}
+                        <th className="px-3 py-2 text-right font-semibold">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/40">
+                      {entries.map((entry) => {
+                        const isMed = Boolean(mediaTypeOf(entry.name));
+                        const isDir = entry.type === 'directory';
+
+                        // Icon màu sắc theo phong cách OS
+                        const folderColor = osStyle === 'windows' ? 'text-amber-400' : osStyle === 'ubuntu' ? 'text-[#E95420]' : 'text-blue-400';
+                        const Icon = isDir
+                          ? Folder
+                          : isArchive(entry.name)
+                            ? FileArchive
+                            : isMed
+                              ? mediaTypeOf(entry.name) === 'video'
+                                ? Video
+                                : mediaTypeOf(entry.name) === 'audio'
+                                  ? Music
+                                  : Eye
+                              : languageOf(entry.name) !== 'plaintext'
+                                ? FileCode
+                                : File;
+
+                        return (
+                          <tr
+                            key={entry.path}
+                            className={cn(
+                              'group transition hover:bg-slate-800/40 cursor-pointer',
+                              selected.has(entry.path) && 'bg-zen-blue/15 hover:bg-zen-blue/20',
+                            )}
+                            onDoubleClick={() => openEntry(entry)}
+                          >
+                            <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                className="accent-zen-blue"
+                                checked={selected.has(entry.path)}
+                                onChange={() => toggle(entry.path)}
+                                aria-label={`Chọn ${entry.name}`}
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <button
+                                type="button"
+                                className="flex max-w-[380px] items-center gap-2.5 text-left"
+                                onClick={() => openEntry(entry)}
+                              >
+                                <Icon className={cn('size-4 shrink-0', isDir ? folderColor : isMed ? 'text-purple-400' : 'text-slate-400')} />
+                                <Highlight text={entry.name} query={query} className="truncate font-medium text-slate-100 group-hover:text-blue-300" />
+                              </button>
+                            </td>
+
+                            {/* Cột Type theo phong cách Windows */}
+                            {osStyle === 'windows' && (
+                              <td className="px-3 py-2 text-slate-400 text-[11px] truncate max-w-[160px]">
+                                {getFileTypeLabel(entry.name, isDir, 'windows')}
+                              </td>
+                            )}
+
+                            {/* Cột Quyền theo phong cách Ubuntu */}
+                            {osStyle === 'ubuntu' && (
+                              <td className="px-3 py-2 mono text-[11px] text-slate-400" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  onClick={() => setChmodEntries([entry])}
+                                  className="rounded bg-black/40 px-1.5 py-0.5 text-emerald-400 hover:bg-neutral-700 hover:text-white"
+                                  title="Bấm để phân quyền Chmod"
+                                >
+                                  {entry.mode || '0755'}
+                                </button>
+                              </td>
+                            )}
+
+                            <td className="px-3 py-2 text-right mono text-slate-400 text-[11px]">
+                              {isDir ? '—' : txaformat.size(entry.size)}
+                            </td>
+
+                            <td className="px-3 py-2 text-slate-500 text-[11px] whitespace-nowrap">
+                              {formatDate(entry.modified)}
+                            </td>
+
+                            {/* Cột Kind theo phong cách macOS */}
+                            {osStyle === 'macos' && (
+                              <td className="px-3 py-2 text-slate-400 text-[11px] truncate max-w-[140px]">
+                                {getFileTypeLabel(entry.name, isDir, 'macos')}
+                              </td>
+                            )}
+
+                            <td className="px-3 py-1.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center justify-end gap-1">
+                                {isMed ? (
+                                  <IconButton icon={Eye} title="Xem trước media" onClick={() => setPreviewFile(entry)} />
+                                ) : (
+                                  !isDir && <IconButton icon={Pencil} title="Sửa code" onClick={() => setEditing(entry)} />
+                                )}
+                                {isArchive(entry.name) && <IconButton icon={PackageOpen} title="Giải nén" onClick={() => void extract(entry)} />}
+                                {!isDir && (
+                                  <>
+                                    <IconButton icon={Download} title="Tải về" onClick={() => void run(() => downloadFile(entry.path))} />
+                                    <IconButton icon={Link2} title="Link tải an toàn (5 phút, chặn IDM)" onClick={() => setShareFile(entry)} />
+                                  </>
+                                )}
+                                <IconButton
+                                  icon={Copy}
+                                  title="Sao chép đường dẫn"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(entry.path);
+                                    toast(`Đã sao chép: ${entry.path}`);
+                                  }}
+                                />
+                                <IconButton icon={TextCursorInput} title="Đổi tên" onClick={() => void rename(entry)} />
+                                <IconButton icon={Trash2} title="Xóa" className="hover:text-zen-red" onClick={() => void remove([entry])} />
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* STATUS BAR CHÂN TRANG THÍCH ỨNG THEO HỆ ĐIỀU HÀNH */}
+          <div
+            className={cn(
+              'flex flex-wrap items-center justify-between border-t px-3 py-1.5 text-xs text-slate-400 select-none',
+              osStyle === 'windows' && 'border-slate-800 bg-[#0c1421] text-slate-400',
+              osStyle === 'ubuntu' && 'border-neutral-800 bg-[#161616] text-neutral-400',
+              osStyle === 'macos' && 'border-slate-800 bg-[#131722] text-slate-400',
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <span>{entries.length} mục</span>
+              {selectedEntries.length > 0 && (
+                <>
+                  <span>·</span>
+                  <span className="text-blue-300 font-semibold">{selectedEntries.length} mục đã chọn</span>
+                  <span>({formatBytes(selectedEntries.reduce((sum, e) => sum + e.size, 0))})</span>
+                </>
+              )}
+            </div>
+
+            {/* Breadcrumb Path bar kiểu macOS Finder ở đáy */}
+            {osStyle === 'macos' && (
+              <div className="flex items-center gap-1 font-mono text-[10px] text-slate-500 overflow-x-auto max-w-[50%]">
+                <span>Macintosh HD</span>
+                {breadcrumbs.map((b) => (
+                  <span key={b.path} className="flex items-center gap-1 shrink-0">
+                    <ChevronRight className="size-3" />
+                    <span>{b.name}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+              <span>Đường dẫn:</span>
+              <code className="mono text-slate-300 truncate max-w-xs">{listing?.path || '/'}</code>
+            </div>
+          </div>
         </div>
-      </Card>
       )}
 
       {editing && <CodeEditorModal file={editing} onClose={() => setEditing(null)} />}
@@ -1275,7 +1961,14 @@ export default function FileManager() {
         <ChmodModal entries={chmodEntries} onClose={() => setChmodEntries(null)} onSuccess={() => void load()} />
       )}
       {proModal && (
-        <ProUpgradeModal isInstalled={Boolean(isProRunning)} proUrl={proUrl} onClose={() => setProModal(false)} />
+        <ProUpgradeModal
+          isInstalled={isProInstalled}
+          isRunning={isProRunning}
+          proUrl={proUrl}
+          onClose={() => setProModal(false)}
+          onStart={() => void startPro()}
+          onSwitchToPro={() => setViewMode('pro')}
+        />
       )}
     </>
   );
