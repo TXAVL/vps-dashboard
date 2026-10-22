@@ -12,6 +12,7 @@ import type { SpeedtestService } from '../services/speedtest.service.js';
 import type { TaskService } from '../services/task.service.js';
 import { listShellAliases, saveShellAlias } from '../services/terminal.service.js';
 import type { UpdateService } from '../services/update.service.js';
+import { nodeService } from '../services/nodejs.service.js';
 
 let publicIpCache: { at: number; ipv4: string | null; ipv6: string | null; reverseDns: string | null } | null = null;
 
@@ -83,6 +84,17 @@ export async function panelRoutes(
       tunnelStatus: tunnel?.status ?? 'disabled',
       startedAt: ctx.startedAt,
     };
+  });
+
+  // ------------------------------------------------------------ Node.js Runtime & Bảo mật
+  app.get('/api/system/node', async (req) => {
+    const force = Boolean((req.query as { refresh?: string })?.refresh);
+    return nodeService.getStatus(force);
+  });
+  app.post('/api/system/node/check', async () => nodeService.getStatus(true));
+  app.post('/api/system/node/upgrade', async (req) => {
+    const target = (req.body as { version?: string } | undefined)?.version;
+    return nodeService.upgrade(target);
   });
 
   // ------------------------------------------------------------ Tác vụ định kỳ

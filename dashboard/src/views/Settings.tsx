@@ -34,6 +34,8 @@ import {
   Sparkles,
   Trash2,
   Copy,
+  Cpu,
+  ShieldAlert,
 } from 'lucide-react';
 import { useJobs } from '../components/jobs';
 import { useFeedback } from '../components/feedback';
@@ -44,7 +46,7 @@ import { txaformat } from '../lib/txaformat';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
 import { PASSWORD_RULES, RANDOM_DEFAULT_LENGTH, RANDOM_MAX_LENGTH, RANDOM_MIN_LENGTH } from '../lib/password';
-import type { Job, LoginRecord, NetworkInfo, PanelPrefs, RemoteVersion, VersionPackage } from '../lib/types';
+import type { Job, LoginRecord, NetworkInfo, NodeStatusResponse, PanelPrefs, RemoteVersion, VersionPackage } from '../lib/types';
 
 type Mode = 'random' | 'custom';
 
@@ -410,6 +412,251 @@ function VpsCard() {
   );
 }
 
+function NodeRuntimeCard() {
+  const nodeApi = useApi<NodeStatusResponse>('/api/system/node');
+  const [checking, setChecking] = useState(false);
+  const [selectedVer, setSelectedVer] = useState('');
+  const { runJob } = useJobs();
+  const { confirm, toast } = useFeedback();
+
+  const check = async () => {
+    setChecking(true);
+    try {
+      const res = await post<NodeStatusResponse>('/api/system/node/check');
+      if (res) nodeApi.setData(res);
+      toast('Đã kiểm tra bảo mật Node.js từ nodejs.org', 'success');
+    } catch (err: any) {
+      toast(err?.message || 'Không thể kiểm tra Node.js', 'error');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const upgradeNode = async (ver?: string) => {
+    const target = ver || selectedVer || nodeApi.data?.latestLts?.version || 'lts';
+    const ok = await confirm({
+      title: `Nâng cấp Node.js lên ${target}`,
+      message: `Hệ thống sẽ tải và cài đặt Node.js ${target} từ trang chủ nodejs.org. Tiến trình sẽ được thực hiện tự động và an toàn. Bạn có muốn tiếp tục?`,
+      confirmLabel: 'Nâng cấp ngay',
+    });
+    if (!ok) return;
+
+    try {
+      await runJob(
+        () => post<Job>('/api/system/node/upgrade', { version: target }),
+        () => {
+          void nodeApi.reload();
+          toast(`Đã hoàn tất nâng cấp Node.js lên ${target}`, 'success');
+        },
+      );
+    } catch (err: any) {
+      toast(err?.message || 'Không thể bắt đầu nâng cấp Node.js', 'error');
+    }
+  };
+
+  if (!nodeApi.data) return null;
+  const data = nodeApi.data;
+  const installed = data.installed;
+  const targetLts = data.latestLts;
+  const targetVer = selectedVer || targetLts?.version || '';
+
+  return (
+    <Card
+      title="Runtime Node.js & Cảnh báo bảo mật (Node.js Security)"
+      icon={Cpu}
+      actions={
+        <div className="flex items-center gap-2">
+          <Button size="xs" variant="ghost" icon={RefreshCw} loading={checking} onClick={() => void check()}>
+            Kiểm tra bảo mật
+          </Button>
+          <a
+            href="https://nodejs.org/en/blog/vulnerability"
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs font-semibold text-blue-300 hover:underline flex items-center gap-1"
+          >
+            <span>Node.js Advisories</span>
+            <ExternalLink className="size-3" />
+          </a>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        {/* BANNER CẢNH BÁO NẾU ĐANG CHẠY BẢN EOL / LỖI HỔNG (VÍ DỤ V21.10) */}
+        {installed.hasSecurityRisk ? (
+          <div className="rounded-2xl border-2 border-red-500/50 bg-gradient-to-r from-red-950/70 via-slate-900 to-red-950/40 p-4 shadow-xl">
+            <div className="flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-red-600/30 text-xl ring-1 ring-red-400/40">
+                <ShieldAlert className="size-6 text-red-400" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-sm font-extrabold text-white">
+                    Cảnh báo bảo mật nghiêm trọng: Phiên bản Node.js {installed.version}
+                  </h4>
+                  {installed.isEol && (
+                    <Badge tone="red" className="font-bold uppercase tracking-wider text-[10px]">
+                      End-of-Life (Đã hết hạn hỗ trợ)
+                    </Badge>
+                  )}
+                  {installed.isOddRelease && (
+                    <Badge tone="amber" className="text-[10px]">
+                      Bản thử nghiệm số lẻ
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-xs text-red-200/90 leading-relaxed">
+                  {installed.isOddRelease
+                    ? `Dòng Node.js ${installed.major}.x (như ${installed.version}) là bản thử nghiệm số lẻ đã chính thức kết thúc vòng đời (EOL). Bản này chứa các lỗ hổng bảo mật nghiêm trọng như HTTP Request Smuggling, Command Injection và rò rỉ bộ nhớ chưa được vá.`
+                    : `Phiên bản Node.js ${installed.version} của máy chủ đã cũ hơn bản vá bảo mật mới nhất từ Node.js Foundation.`}
+                </p>
+                <div className="pt-2 flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon={Rocket}
+                    onClick={() => void upgradeNode(targetLts?.version)}
+                    className="bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold shadow-lg shadow-red-950/50"
+                  >
+                    Nâng cấp ngay lên {targetLts?.version || 'LTS mới nhất'} (Khuyên dùng)
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-emerald-500/40 bg-emerald-950/20 p-3.5 flex items-center justify-between gap-3 text-xs text-emerald-300">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
+              <span>
+                Node.js <b>{installed.version}</b> đang ở trạng thái ổn định và bảo mật.
+              </span>
+            </div>
+            <Badge tone="green">An toàn</Badge>
+          </div>
+        )}
+
+        {/* THÔNG TIN SO SÁNH PHIÊN BẢN */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 p-3.5 space-y-1">
+            <div className="text-xs text-slate-400 font-medium">Phiên bản đang chạy</div>
+            <div className="flex items-center gap-2">
+              <span className="mono text-lg font-black text-white">{installed.version}</span>
+              <Badge tone={installed.hasSecurityRisk ? 'red' : 'green'}>
+                {installed.isEol ? 'Hết hạn (EOL)' : 'Đang dùng'}
+              </Badge>
+            </div>
+            <div className="mono text-[11px] text-slate-500 truncate" title={installed.execPath}>
+              {installed.platform} ({installed.arch}) • {installed.execPath}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-3.5 space-y-1">
+            <div className="text-xs text-indigo-300 font-medium">Bản Active LTS mới nhất</div>
+            <div className="flex items-center gap-2">
+              <span className="mono text-lg font-black text-emerald-300">
+                {targetLts?.version || 'Đang tải...'}
+              </span>
+              {targetLts?.lts && (
+                <Badge tone="blue" className="text-[10px]">
+                  LTS {targetLts.lts}
+                </Badge>
+              )}
+            </div>
+            <div className="text-[11px] text-slate-400">
+              Phát hành: {targetLts?.date || '—'} {targetLts?.security && '• Có bản vá bảo mật'}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 p-3.5 flex flex-col justify-between gap-2">
+            <div>
+              <div className="text-xs text-slate-400 font-medium">Nâng cấp phiên bản tùy chọn</div>
+              <div className="text-[11px] text-slate-500">Chọn bản LTS mong muốn</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select
+                value={targetVer}
+                onChange={(e) => setSelectedVer(e.target.value)}
+                className="h-8 py-0 text-xs mono"
+              >
+                {data.availableLtsVersions.map((v) => (
+                  <option key={v.version} value={v.version}>
+                    {v.version} (LTS {v.lts})
+                  </option>
+                ))}
+                {data.latestCurrent && (
+                  <option value={data.latestCurrent.version}>
+                    {data.latestCurrent.version} (Current mới nhất)
+                  </option>
+                )}
+              </Select>
+              <Button
+                size="xs"
+                variant="primary"
+                icon={Rocket}
+                disabled={targetVer === installed.version}
+                onClick={() => void upgradeNode(targetVer)}
+              >
+                Cài
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* DANH SÁCH LỖ HỔNG BẢO MẬT (SECURITY ADVISORIES TỪ BLOGS) */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+            <div className="flex items-center gap-1.5">
+              <ShieldAlert className="size-4 text-amber-400" />
+              <span>Các lỗ hổng bảo mật tiêu biểu cần khắc phục:</span>
+            </div>
+            <span className="text-[11px] font-normal text-slate-500">Nguồn: Node.js Security Team</span>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            {data.securityAdvisories.map((adv) => (
+              <div
+                key={adv.cve}
+                className="rounded-xl border border-slate-800 bg-black/40 p-3 space-y-1 text-xs"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="mono font-bold text-indigo-300">{adv.cve}</span>
+                  <Badge tone={adv.severity === 'critical' ? 'red' : adv.severity === 'high' ? 'amber' : 'slate'} className="uppercase text-[9px]">
+                    {adv.severity}
+                  </Badge>
+                </div>
+                <div className="font-semibold text-slate-200 line-clamp-1">{adv.title}</div>
+                <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">{adv.description}</p>
+                <div className="text-[10px] text-amber-300/80 pt-0.5 truncate">
+                  💡 {adv.recommendation}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CHANGELOG TÓM TẮT */}
+        {data.changelogSummary && data.changelogSummary.length > 0 && (
+          <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3.5 space-y-2 text-xs">
+            <div className="font-bold text-slate-200 flex items-center gap-1.5">
+              <Sparkles className="size-4 text-indigo-400" />
+              <span>Điểm mới & Bản sửa lỗi trên Node.js mới:</span>
+            </div>
+            <ul className="grid gap-1.5 sm:grid-cols-2 text-[11px] text-slate-400">
+              {data.changelogSummary[0].highlights.map((item, idx) => (
+                <li key={idx} className="flex items-start gap-1.5">
+                  <Check className="size-3.5 shrink-0 text-emerald-400 mt-0.5" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function UpdateCard() {
   const { update, refreshUpdate, prefs, savePrefs } = usePanel();
   const packages = useApi<VersionPackage[]>('/api/update/packages');
@@ -572,6 +819,7 @@ function UpdateCard() {
 
   return (
     <div className="space-y-4">
+      <NodeRuntimeCard />
       <Card
         title="Cập nhật ZenPanel"
         icon={Sparkles}

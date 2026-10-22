@@ -456,3 +456,45 @@ export interface CleanExecutionOptions {
   cleanTempFiles?: boolean;
   cleanRamCache?: boolean;
 }
+
+export interface NodeSecurityAdvisory {
+  cve: string;
+  title: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  description: string;
+  affectedVersions: string;
+  recommendation: string;
+}
+
+export interface NodeVersionInfo {
+  version: string;
+  major: number;
+  date: string;
+  lts: string | false;
+  security: boolean;
+  npm?: string;
+  v8?: string;
+}
+
+export interface NodeStatusResponse {
+  installed: {
+    version: string;
+    major: number;
+    execPath: string;
+    arch: string;
+    platform: string;
+    isEol: boolean;
+    isOddRelease: boolean;
+    hasSecurityRisk: boolean;
+  };
+  latestLts: NodeVersionInfo | null;
+  latestCurrent: NodeVersionInfo | null;
+  availableLtsVersions: NodeVersionInfo[];
+  securityAdvisories: NodeSecurityAdvisory[];
+  changelogSummary: {
+    version: string;
+    date: string;
+    highlights: string[];
+  }[];
+  checkedAt: string;
+}
