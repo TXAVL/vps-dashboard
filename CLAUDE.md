@@ -64,51 +64,52 @@ Người dùng chỉ cần "vứt" agent ZenPanel vào bất kỳ VPS nào, hệ
 
 ```
 vps-dashboard/ (ZenPanel)
-├── agent/                       # Core Daemon chạy trên VPS (Siêu nhẹ < 15MB)
+├── agent/                         # Core Daemon chạy trên VPS (Node.js + Fastify)
 │   ├── src/
+│   │   ├── server.ts              # Fastify API Server + phục vụ dashboard/dist
+│   │   ├── config.ts              # Đọc biến môi trường ZENPANEL_*
 │   │   ├── core/
-│   │   │   ├── detector.ts      # Engine tự nhận diện OS (Windows vs Linux distro)
-│   │   │   ├── banner.ts        # In Public URL / Local URL ra console khi khởi động
-│   │   │   └── metrics.ts       # Thu thập chỉ số CPU, RAM, Disk, Net realtime
+│   │   │   ├── detector.ts        # Tự nhận diện OS -> nạp adapter
+│   │   │   ├── auth.ts            # Mật khẩu scrypt, token HMAC, vé tải file, khóa đăng nhập
+│   │   │   ├── metrics.ts         # Thu thập CPU, RAM, Disk, Net + lịch sử
+│   │   │   ├── banner.ts          # In Public URL / Local URL / mật khẩu ra console
+│   │   │   ├── exec.ts            # Helper chạy lệnh (chỉ adapter được dùng)
+│   │   │   ├── store.ts           # Lưu JSON trong ZENPANEL_DATA_DIR
+│   │   │   ├── download.ts        # Tìm/tải binary (cloudflared, caddy)
+│   │   │   ├── validate.ts        # Kiểm tra input, HttpError
+│   │   │   └── context.ts         # AppContext dùng chung cho routes
 │   │   ├── adapters/
-│   │   │   ├── base.adapter.ts  # Interface quy chuẩn chung
-│   │   │   ├── windows.adapter.ts # PowerShell, WMI/CIM, sc.exe, netsh
-│   │   │   └── linux.adapter.ts   # Systemctl, procfs, ufw, iptables
+│   │   │   ├── base.adapter.ts    # Interface quy chuẩn chung
+│   │   │   ├── windows.adapter.ts # PowerShell, CIM, Windows Firewall, IIS
+│   │   │   ├── linux.adapter.ts   # procfs, systemd/OpenRC, ufw/firewalld/iptables
+│   │   │   └── web/               # Driver web server: nginx, caddy, iis
 │   │   ├── services/
-│   │   │   ├── process.service.ts # Quản lý tiến trình & Task Manager
-│   │   │   ├── file.service.ts    # File Manager API (Upload, Download, Edit)
-│   │   │   ├── site.service.ts    # Quản lý Domain & Website isolation
-│   │   │   ├── firewall.service.ts# Quản lý port & firewall rules
-│   │   │   ├── docker.service.ts  # Quản lý Containers & App Store
-│   │   │   └── tunnel.service.ts  # Cloudflare Quick Tunnel -> domain *.trycloudflare.com
-│   │   ├── ws/                  # WebSocket truyền thông tin Realtime & Web Terminal
-│   │   ├── config.ts            # Đọc biến môi trường ZENPANEL_*
-│   │   └── server.ts            # Fastify API Server
+│   │   │   ├── file.service.ts    # File Manager (đọc/ghi, zip/tar.gz)
+│   │   │   ├── site.service.ts    # Website isolation + SSL
+│   │   │   ├── docker.service.ts  # Docker CLI
+│   │   │   ├── appstore.catalog.ts / appstore.service.ts # App Store 1-click (compose)
+│   │   │   ├── database.service.ts# Database trong container App Store
+│   │   │   ├── cloudflare.service.ts # Cloudflare API (Anti-DDoS, DNS)
+│   │   │   └── tunnel.service.ts  # Cloudflare Quick Tunnel -> *.trycloudflare.com
+│   │   ├── routes/                # auth, system, files, docker, sites (REST API)
+│   │   ├── ws/realtime.ts         # WebSocket metrics + Web Terminal (node-pty)
+│   │   └── cli/reset-password.ts  # npm run reset-password
 │   └── scripts/
-│       ├── install.sh           # Script 1 dòng cho Linux (như vpanel.vn)
-│       └── install.ps1          # Script 1 dòng cho Windows
+│       ├── install.sh             # Cài 1 dòng cho Linux (systemd/OpenRC)
+│       └── install.ps1            # Cài 1 dòng cho Windows (Scheduled Task SYSTEM)
 │
-├── dashboard/                   # Web Dashboard UI (React + Tailwind + Lucide)
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── layout/          # Header, Sidebar kiểu Jupiter, WindowMockup
-│   │   │   ├── cards/           # StatCard, ResourceProgress, ServiceCard
-│   │   │   └── modals/          # Modal xác nhận, Add Domain, Open Port
-│   │   ├── views/
-│   │   │   ├── Overview.tsx     # Dashboard tổng quan chỉ số máy chủ
-│   │   │   ├── Websites.tsx     # Quản lý Domain & Website isolation
-│   │   │   ├── FileManager.tsx  # Trình quản lý file + Code Editor
-│   │   │   ├── Databases.tsx    # MySQL / MariaDB / Redis GUI
-│   │   │   ├── AppStore.tsx     # Kho ứng dụng 1-click
-│   │   │   ├── Firewall.tsx     # Quản lý Tường lửa & Port
-│   │   │   └── Terminal.tsx     # Web Terminal mô phỏng xterm.js
-│   │   ├── hooks/
-│   │   └── App.tsx
-│   └── package.json
-│
-├── .gitignore
-├── CLAUDE.md                    # Bản thiết kế chi tiết (Dành cho AI & Developer)
-└── README.md                    # Tài liệu hướng dẫn sử dụng chính thức
+├── dashboard/                     # Web UI (React + Vite + Tailwind v4 + Lucide)
+│   └── src/
+│       ├── App.tsx, main.tsx
+│       ├── lib/                   # api.ts, types.ts, hooks.ts, format.ts, panel.tsx (WS metrics)
+│       ├── components/
+│       │   ├── ui.tsx, charts.tsx, feedback.tsx (toast/confirm/prompt), TerminalPanel.tsx
+│       │   └── layout/            # Shell, nav, WindowMockup
+│       └── views/                 # Login, Overview, Processes, Services, Firewall, Docker,
+│                                  # AppStore, Terminal, Websites, FileManager, Databases,
+│                                  # Security, Settings
+├── CLAUDE.md
+└── README.md
 ```
 
 ---
