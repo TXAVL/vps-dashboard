@@ -154,7 +154,10 @@ export async function fileDownloadRoute(app: FastifyInstance): Promise<void> {
       .header('Content-Type', 'application/octet-stream')
       .header('Content-Length', info.size)
       .header('Content-Disposition', `attachment; filename*=UTF-8''${name}`)
-      .header('Cache-Control', 'no-store')
+      .header('Cache-Control', 'no-store, no-cache, must-revalidate')
+      .header('Accept-Ranges', 'none')
+      .header('X-Accel-Buffering', 'no')
+      .header('X-Content-Type-Options', 'nosniff')
       .send(createReadStream(file));
   });
 

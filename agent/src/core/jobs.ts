@@ -28,8 +28,8 @@ class Job {
   status: JobStatus = 'running';
   endedAt: string | null = null;
   error: string | null = null;
-  progress = 0;
-  stage = 'Đang khởi tạo...';
+  progress: number | null = null;
+  stage: string | null = null;
   etaSeconds: number | null = null;
   private log = '';
 
@@ -60,8 +60,8 @@ class Job {
       startedAt: this.startedAt,
       endedAt: this.endedAt,
       error: this.error,
-      progress: this.progress,
-      stage: this.stage,
+      progress: this.progress !== null ? this.progress : undefined,
+      stage: this.stage !== null ? this.stage : undefined,
       etaSeconds: this.etaSeconds,
       log: withLog ? this.log : '',
     };

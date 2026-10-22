@@ -215,7 +215,13 @@ export class WindowsAdapter implements OSAdapter {
   }
 
   async killProcess(pid: number, force: boolean): Promise<void> {
-    await execOk('taskkill', ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])]);
+    try {
+      await execOk('taskkill', ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])]);
+    } catch (err: unknown) {
+      const msg = String((err as Error)?.message || '');
+      if (msg.includes('not found') || msg.includes('không tìm thấy') || msg.includes('ESRCH') || msg.includes('128')) return;
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------- Windows Services

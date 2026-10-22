@@ -27,7 +27,7 @@ import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, Notice, PageHeader, ResourceBar, Spinner, cn, td, th, tr } from '../components/ui';
 import { ALL_NAV } from '../components/layout/nav';
 import { post } from '../lib/api';
-import { formatBytes, formatDate, formatDuration, formatPercent, formatRate } from '../lib/format';
+import { formatBytes, formatDate, formatDuration, formatPercent, formatRate, txaformat } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { useLiveUptime, useNow, usePanel } from '../lib/panel';
 import type { NetworkInfo, ProcessInfo } from '../lib/types';
@@ -199,10 +199,10 @@ export default function Overview() {
             <Sparkles className="size-5 shrink-0 text-zen-amber" />
             <span>
               {latest.cpu.usage >= 70 && diskPct >= 85
-                ? `CPU đang quá tải (${latest.cpu.usage}%) và ổ đĩa gần đầy (${diskPct}%).`
+                ? `CPU đang quá tải (${txaformat.percent(latest.cpu.usage, 1)}) và ổ đĩa gần đầy (${txaformat.percent(diskPct, 1)}).`
                 : latest.cpu.usage >= 70
-                  ? `CPU đang hoạt động ở mức cao (${latest.cpu.usage}%). Hãy kiểm tra tiến trình để hạ tải.`
-                  : `Ổ đĩa máy chủ đang sắp đầy (${diskPct}%). Cần dọn dẹp để tránh đầy ổ đĩa (full disk).`}
+                  ? `CPU đang hoạt động ở mức cao (${txaformat.percent(latest.cpu.usage, 1)}). Hãy kiểm tra tiến trình để hạ tải.`
+                  : `Ổ đĩa máy chủ đang sắp đầy (${txaformat.percent(diskPct, 1)}). Cần dọn dẹp để tránh đầy ổ đĩa (full disk).`}
             </span>
           </div>
           <Link to="/cleanup">

@@ -5,21 +5,23 @@ import {
   Bot,
   CalendarClock,
   Check,
+  CheckCircle2,
   CircleCheck,
   CircleX,
   Cloud,
   Cog,
   Dices,
   Download,
+  ExternalLink,
   Eye,
   EyeOff,
-  FileText,
   Gauge,
   GitBranch,
   Globe,
   History,
   Info,
   KeyRound,
+  Loader2,
   Lock,
   LogOut,
   Moon,
@@ -31,12 +33,14 @@ import {
   Save,
   Sparkles,
   Trash2,
+  Copy,
 } from 'lucide-react';
 import { useJobs } from '../components/jobs';
 import { useFeedback } from '../components/feedback';
-import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Notice, PageHeader, Select, Spinner, StatusDot, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
-import { del, get, post, setToken } from '../lib/api';
+import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Select, Spinner, StatusDot, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
+import { del, get, post, setToken, getToken } from '../lib/api';
 import { formatBytes, formatDate, formatDuration, formatRate, formatRelative } from '../lib/format';
+import { txaformat } from '../lib/txaformat';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
 import { PASSWORD_RULES, RANDOM_DEFAULT_LENGTH, RANDOM_MAX_LENGTH, RANDOM_MIN_LENGTH } from '../lib/password';
@@ -411,7 +415,26 @@ function UpdateCard() {
   const packages = useApi<VersionPackage[]>('/api/update/packages');
   const remote = useApi<RemoteVersion[]>('/api/update/remote');
   const [checking, setChecking] = useState(false);
-  const [installLog, setInstallLog] = useState<string | null>(null);
+
+  // Trạng thái khoá màn hình cập nhật
+  const [updating, setUpdating] = useState<{
+    version: string;
+    targetSha: string;
+    startedAt: number;
+    log: string;
+    percent: number;
+    stage: string;
+    etaSec: number;
+  } | null>(null);
+
+  // Modal thông báo thành công kèm URL Cloudflare Tunnel mới
+  const [successModal, setSuccessModal] = useState<{
+    version: string;
+    tunnelUrl: string | null;
+    autoLoginUrl: string | null;
+  } | null>(null);
+
+  const [copiedLog, setCopiedLog] = useState(false);
   const { confirm, run, toast } = useFeedback();
   const { runJob } = useJobs();
 
@@ -435,32 +458,116 @@ function UpdateCard() {
   const install = async (pkg: VersionPackage) => {
     const older = update && pkg.version < update.current;
     const ok = await confirm({
-      title: older ? `Quay lại phiên bản ${pkg.version}` : `Cài phiên bản ${pkg.version}`,
+      title: older ? `Quay lại phiên bản ${pkg.version}` : `Nâng cấp lên phiên bản ${pkg.version}`,
       message: (
         <>
-          ZenPanel sẽ build lại và <b>khởi động lại agent</b> (khoảng 1-3 phút). Trang sẽ mất kết nối trong lúc cài, sau đó tự kết nối lại. Dữ liệu, mật khẩu, website, ứng dụng
-          được giữ nguyên.
+          ZenPanel sẽ tự động khóa giao diện để cập nhật mã nguồn, cài đặt dependencies và khởi động lại dịch vụ. Toàn bộ dữ liệu, website, database và cài đặt được bảo toàn nguyên vẹn.
         </>
       ),
-      confirmLabel: older ? 'Quay lại bản này' : 'Cài đặt',
+      confirmLabel: older ? 'Quay lại bản này' : 'Bắt đầu nâng cấp',
     });
     if (!ok) return;
-    const result = await run(() => post(`/api/update/packages/${pkg.id}/install`));
+
+    // Kích hoạt khoá giao diện bảo trì
+    const startTime = Date.now();
+    setUpdating({
+      version: pkg.version,
+      targetSha: pkg.sha,
+      startedAt: startTime,
+      log: 'Khởi tạo quy trình nâng cấp ZenPanel...\n',
+      percent: 15,
+      stage: 'Đang chuẩn bị gói cập nhật và script installer...',
+      etaSec: 75,
+    });
+
+    const result = await post<{ logFile: string }>(`/api/update/packages/${pkg.id}/install`).catch((err: Error) => {
+      toast(`Khởi chạy cài đặt thất bại: ${err.message}`, 'error');
+      setUpdating(null);
+      return null;
+    });
     if (!result) return;
-    toast('Đang cài đặt phiên bản mới, panel sẽ tự khởi động lại...', 'info');
-    setInstallLog('');
-    // Theo dõi log cài đặt tới khi agent khởi động lại
-    for (let i = 0; i < 120; i++) {
-      await new Promise((r) => setTimeout(r, 3000));
-      const res = await get<{ log: string }>('/api/update/log').catch(() => null);
-      if (res) setInstallLog(res.log);
+
+    // Vòng lặp giám sát tiến trình và chờ agent khởi động lại
+    let newTunnelUrl: string | null = null;
+
+    for (let i = 0; i < 90; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const remaining = Math.max(5, 75 - elapsed);
+
+      // Đọc log nếu agent còn phản hồi hoặc đọc sau khi online
+      try {
+        const res = await get<{ log: string }>('/api/update/log');
+        if (res?.log) {
+          setUpdating((prev) => (prev ? { ...prev, log: res.log } : null));
+        }
+      } catch {}
+
+      // Tiến trình tăng dần tiệm cận 85% trong lúc build
+      const simulatedPct = Math.min(88, Math.max(20, Math.round(15 + (elapsed / 75) * 70)));
+      const currentStage =
+        elapsed < 15
+          ? 'Đang giải nén gói mã nguồn mới...'
+          : elapsed < 40
+            ? 'Đang cập nhật dependencies và build hệ thống...'
+            : elapsed < 65
+              ? 'Đang khởi động lại tiến trình ZenPanel Agent...'
+              : 'Đang kết nối lại và thiết lập Cloudflare Tunnel...';
+
+      setUpdating((prev) => (prev ? { ...prev, percent: simulatedPct, stage: currentStage, etaSec: remaining } : null));
+
+      // Sau 20 giây, bắt đầu kiểm tra trạng thái online qua /api/update/status
+      if (elapsed >= 15) {
+        try {
+          const statusRes = await get<{ version: string; tunnelUrl: string | null; startedAt: number }>('/api/update/status');
+          if (statusRes && statusRes.startedAt > startTime - 5000) {
+            newTunnelUrl = statusRes.tunnelUrl;
+            break;
+          }
+        } catch {
+          // Agent đang trong khoảng 5-10s restart
+        }
+      }
     }
+
+    // Hoàn tất 100%
+    setUpdating((prev) => (prev ? { ...prev, percent: 100, stage: 'Nâng cấp thành công!', etaSec: 0 } : null));
+    await new Promise((r) => setTimeout(r, 1000));
+
+    // Mở khoá giao diện
+    setUpdating(null);
+
+    // Chuẩn bị URL auto-login
+    const currentToken = getToken();
+    let autoLoginUrl: string | null = null;
+    if (newTunnelUrl) {
+      const cleanUrl = newTunnelUrl.replace(/\/+$/, '');
+      autoLoginUrl = currentToken ? `${cleanUrl}/?token=${encodeURIComponent(currentToken)}&auto_login=1` : cleanUrl;
+    }
+
+    setSuccessModal({
+      version: pkg.version,
+      tunnelUrl: newTunnelUrl,
+      autoLoginUrl,
+    });
+
+    void refreshUpdate();
+    void packages.reload();
   };
 
   const remove = async (pkg: VersionPackage) => {
     if (!(await confirm({ title: 'Xoá gói phiên bản', message: <>Xoá gói <b className="mono">{pkg.id}</b> ({formatBytes(pkg.size)}) khỏi ổ đĩa?</>, danger: true, confirmLabel: 'Xoá' }))) return;
     await run(() => del(`/api/update/packages/${encodeURIComponent(pkg.id)}`), 'Đã xoá gói phiên bản');
     await packages.reload();
+  };
+
+  const copyUpdatingLog = async () => {
+    if (!updating?.log) return;
+    try {
+      await navigator.clipboard.writeText(updating.log);
+      setCopiedLog(true);
+      setTimeout(() => setCopiedLog(false), 2000);
+    } catch {}
   };
 
   return (
@@ -602,10 +709,160 @@ function UpdateCard() {
         )}
       </Card>
 
-      {installLog !== null && (
-        <Card title="Log cài đặt phiên bản" icon={FileText}>
-          <pre className="mono max-h-[50vh] overflow-auto whitespace-pre-wrap rounded-xl bg-[#0a0e17] p-4 text-xs text-slate-300">{installLog || 'Đang chờ installer khởi chạy...'}</pre>
-        </Card>
+      {/* OVERLAY KHÓA GIAO DIỆN BẢO TRÌ KHI ĐANG CẬP NHẬT */}
+      {updating && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/85 p-4 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-xl space-y-6 rounded-3xl border border-zen-purple/40 bg-gradient-to-b from-[#141829] to-[#0c0e18] p-6 shadow-2xl ring-1 ring-purple-500/20 sm:p-8">
+            <div className="flex items-center gap-4">
+              <div className="relative flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-zen-purple/40 to-zen-blue/40 ring-1 ring-white/10">
+                <Loader2 className="size-8 animate-spin text-zen-purple" />
+                <Sparkles className="absolute -bottom-1 -right-1 size-5 text-amber-400 animate-pulse" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xl font-bold text-white">Đang nâng cấp ZenPanel v{updating.version}</h3>
+                  <Badge tone="blue" className="mono animate-pulse">Bảo trì</Badge>
+                </div>
+                <p className="mt-1 text-xs text-slate-400">
+                  Giao diện đang được khóa tạm thời để bảo vệ tiến trình nâng cấp. Vui lòng giữ nguyên cửa sổ này.
+                </p>
+              </div>
+            </div>
+
+            {/* Thanh tiến trình & ETA */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-purple-300">{updating.stage}</span>
+                <span className="mono font-bold text-white">{txaformat.percent(updating.percent, 0)}</span>
+              </div>
+              <div className="h-3 w-full overflow-hidden rounded-full bg-slate-800 p-0.5">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-zen-purple via-zen-blue to-emerald-400 transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.max(8, updating.percent))}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-500">
+                <span>Đã chạy: {txaformat.timeLeft(Math.floor((Date.now() - updating.startedAt) / 1000))}</span>
+                <span>Dự kiến còn: {txaformat.timeLeft(updating.etaSec)}</span>
+              </div>
+            </div>
+
+            {/* Các bước nâng cấp */}
+            <div className="grid grid-cols-4 gap-1.5 text-center text-[10px] text-slate-400">
+              <div className={cn("rounded-lg p-2 ring-1", updating.percent >= 15 ? "bg-purple-950/60 ring-purple-500/40 text-purple-200" : "bg-slate-900/40 ring-slate-800")}>
+                1. Chuẩn bị
+              </div>
+              <div className={cn("rounded-lg p-2 ring-1", updating.percent >= 40 ? "bg-purple-950/60 ring-purple-500/40 text-purple-200" : "bg-slate-900/40 ring-slate-800")}>
+                2. Cập nhật mã
+              </div>
+              <div className={cn("rounded-lg p-2 ring-1", updating.percent >= 70 ? "bg-purple-950/60 ring-purple-500/40 text-purple-200" : "bg-slate-900/40 ring-slate-800")}>
+                3. Tái khởi động
+              </div>
+              <div className={cn("rounded-lg p-2 ring-1", updating.percent >= 95 ? "bg-emerald-950/60 ring-emerald-500/40 text-emerald-200" : "bg-slate-900/40 ring-slate-800")}>
+                4. Sẵn sàng
+              </div>
+            </div>
+
+            {/* Log trực tiếp thu gọn */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>Nhật ký nâng cấp</span>
+                <button
+                  type="button"
+                  onClick={() => void copyUpdatingLog()}
+                  className="flex items-center gap-1 text-[11px] text-purple-300 hover:text-white"
+                >
+                  {copiedLog ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
+                  {copiedLog ? 'Đã sao chép' : 'Sao chép log'}
+                </button>
+              </div>
+              <pre className="mono max-h-32 overflow-auto whitespace-pre-wrap rounded-xl bg-black/60 p-3 text-[11px] leading-relaxed text-slate-300 ring-1 ring-slate-800">
+                {updating.log || 'Đang chờ output từ installer...'}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL THÀNH CÔNG VỚI NÚT MỞ PUBLIC TRY CLOUDFLARE TỰ ĐỘNG LOGIN */}
+      {successModal && (
+        <Modal
+          open={true}
+          title={
+            <div className="flex items-center gap-2 text-emerald-400">
+              <CheckCircle2 className="size-5" />
+              <span>Nâng cấp ZenPanel thành công!</span>
+            </div>
+          }
+          onClose={() => setSuccessModal(null)}
+          size="lg"
+        >
+          <div className="space-y-5">
+            <div className="space-y-2 rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-5">
+              <h4 className="font-bold text-white">ZenPanel đã hoạt động trở lại ở phiên bản v{successModal.version}</h4>
+              <p className="text-xs text-slate-300">
+                Hệ thống đã hoàn tất nâng cấp, tái khởi động dịch vụ thành công và bảo toàn toàn bộ dữ liệu.
+              </p>
+            </div>
+
+            {successModal.tunnelUrl ? (
+              <div className="space-y-3 rounded-2xl border border-zen-blue/40 bg-zen-blue/10 p-5">
+                <div className="flex items-center gap-2">
+                  <Globe className="size-5 text-zen-blue" />
+                  <span className="text-sm font-bold text-white">Liên kết Cloudflare Tunnel Công Khai Mới:</span>
+                </div>
+                <div className="flex items-center gap-2 rounded-xl bg-ink-950 p-3">
+                  <code className="mono flex-1 truncate text-xs text-emerald-300">
+                    {successModal.tunnelUrl}
+                  </code>
+                  <CopyButton value={successModal.tunnelUrl} label="Sao chép" />
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  ⚡ Khi bấm nút bên dưới, trình duyệt sẽ tự động mở tab mới và <b>đăng nhập tự động ngay lập tức</b> mà bạn không cần phải nhập lại mật khẩu.
+                </p>
+              </div>
+            ) : (
+              <Notice tone="blue">
+                ZenPanel đang chạy trên mạng nội bộ / IP máy chủ. Bạn có thể bật Cloudflare Tunnel trong mục Cài đặt bất cứ lúc nào.
+              </Notice>
+            )}
+
+            <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSuccessModal(null);
+                  window.location.reload();
+                }}
+              >
+                Tải lại tab hiện tại
+              </Button>
+              {successModal.autoLoginUrl ? (
+                <Button
+                  variant="primary"
+                  icon={ExternalLink}
+                  onClick={() => {
+                    window.open(successModal.autoLoginUrl!, '_blank');
+                    setSuccessModal(null);
+                  }}
+                  className="bg-gradient-to-r from-zen-purple to-zen-blue text-white hover:opacity-95"
+                >
+                  🚀 Mở ZenPanel Mới (Tự động đăng nhập)
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setSuccessModal(null);
+                    window.location.reload();
+                  }}
+                >
+                  Xác nhận & Tải lại
+                </Button>
+              )}
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

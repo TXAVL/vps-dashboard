@@ -37,6 +37,8 @@ import {
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, SearchInput, Select, Spinner, cn, td, th, tr } from '../components/ui';
 import { WindowMockup } from '../components/layout/WindowMockup';
+import { Highlight } from '../components/Highlight';
+import { txaformat } from '../lib/txaformat';
 import { api, downloadFile, get, post, put } from '../lib/api';
 import { formatBytes, formatDate } from '../lib/format';
 import { useApi } from '../lib/hooks';
@@ -508,6 +510,7 @@ export default function FileManager() {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [compressing, setCompressing] = useState(false);
+  const [viewMode, setViewMode] = useState<'standard' | 'pro'>('standard');
   const fileInput = useRef<HTMLInputElement>(null);
   const { confirm, prompt, run, toast } = useFeedback();
 
@@ -682,14 +685,33 @@ export default function FileManager() {
         actions={
           <div className="flex flex-wrap items-center gap-2">
             {isProRunning && proUrl ? (
-              <a href={proUrl} target="_blank" rel="noreferrer">
-                <Button size="sm" variant="success" icon={Sparkles}>
-                  🚀 Mở ZenFile Pro
-                </Button>
-              </a>
+              <div className="flex items-center rounded-xl border border-slate-700/60 bg-ink-950/60 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('standard')}
+                  className={cn(
+                    'rounded-lg px-2.5 py-1 font-semibold transition-all',
+                    viewMode === 'standard' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200',
+                  )}
+                >
+                  Duyệt chuẩn
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('pro')}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-semibold transition-all',
+                    viewMode === 'pro'
+                      ? 'bg-gradient-to-r from-zen-purple to-zen-blue text-white shadow'
+                      : 'text-purple-300 hover:text-white',
+                  )}
+                >
+                  <Sparkles className="size-3 text-amber-300" /> ZenFile Pro UI
+                </button>
+              </div>
             ) : (
               <Button size="sm" variant="soft" icon={Sparkles} onClick={() => setProModal(true)}>
-                ✨ ZenFile Pro (Bản nâng cấp)
+                ✨ Cài ZenFile Pro
               </Button>
             )}
             {roots && roots.roots.length > 1 && (
@@ -705,6 +727,48 @@ export default function FileManager() {
         }
       />
 
+      {/* CHẾ ĐỘ PRO: Nhúng trực tiếp giao diện ZenFile Pro thiết kế mới toàn màn hình */}
+      {viewMode === 'pro' && isProRunning && proUrl ? (
+        <div className="space-y-3 animate-fadeIn">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zen-purple/40 bg-ink-950/60 px-4 py-2.5 backdrop-blur-md">
+            <div className="flex items-center gap-2 text-sm text-purple-200">
+              <Sparkles className="size-4 text-zen-purple" />
+              <span className="font-semibold text-white">Giao diện ZenFile Explorer Pro</span>
+              <Badge tone="blue" className="text-[11px]">Docker</Badge>
+              <span className="text-xs text-slate-400">· Đăng nhập: <code className="mono text-white">admin / admin</code></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="xs"
+                variant="secondary"
+                icon={RefreshCw}
+                onClick={() => {
+                  const ifr = document.getElementById('zenfile-pro-iframe') as HTMLIFrameElement;
+                  if (ifr) ifr.src = ifr.src;
+                }}
+              >
+                Làm mới
+              </Button>
+              <a href={proUrl} target="_blank" rel="noreferrer">
+                <Button size="xs" variant="secondary" icon={ExternalLink}>
+                  Mở tab riêng
+                </Button>
+              </a>
+              <Button size="xs" variant="ghost" onClick={() => setViewMode('standard')}>
+                Quay lại Explorer Chuẩn
+              </Button>
+            </div>
+          </div>
+          <div className="relative h-[80vh] w-full overflow-hidden rounded-2xl border border-slate-800 bg-[#0c101a] shadow-2xl">
+            <iframe
+              id="zenfile-pro-iframe"
+              src={proUrl}
+              className="h-full w-full border-0"
+              title="ZenFile Explorer Pro"
+            />
+          </div>
+        </div>
+      ) : (
       <Card bodyClassName="p-0">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-700/40 p-3">
           <IconButton icon={ArrowUp} title="Lên thư mục cha" disabled={!listing?.parent} onClick={() => listing?.parent && navigate(listing.parent)} />
@@ -866,10 +930,10 @@ export default function FileManager() {
                         <td className={td}>
                           <button className="flex max-w-[420px] items-center gap-2.5 text-left" onClick={() => openEntry(entry)}>
                             <Icon className={cn('size-4 shrink-0', entry.type === 'directory' ? 'text-zen-amber' : isMed ? 'text-zen-purple' : 'text-slate-400')} />
-                            <span className="truncate font-medium text-slate-100 hover:text-blue-300">{entry.name}</span>
+                            <Highlight text={entry.name} query={query} className="truncate font-medium text-slate-100 hover:text-blue-300" />
                           </button>
                         </td>
-                        <td className={cn(td, 'mono text-right text-xs text-slate-400')}>{entry.type === 'directory' ? '—' : formatBytes(entry.size)}</td>
+                        <td className={cn(td, 'mono text-right text-xs text-slate-400')}>{entry.type === 'directory' ? '—' : txaformat.size(entry.size)}</td>
                         <td className={cn(td, 'text-xs text-slate-500')}>{formatDate(entry.modified)}</td>
                         <td className={cn(td, 'mono text-xs text-slate-500')}>
                           <button
@@ -909,6 +973,7 @@ export default function FileManager() {
           )}
         </div>
       </Card>
+      )}
 
       {editing && <CodeEditorModal file={editing} onClose={() => setEditing(null)} />}
       {previewFile && <MediaPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}

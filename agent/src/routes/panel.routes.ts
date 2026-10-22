@@ -74,6 +74,15 @@ export async function panelRoutes(
   });
   app.post('/api/update/packages/:id/install', async (req) => updates.install((req.params as { id: string }).id));
   app.get('/api/update/log', async () => ({ log: await updates.installLog() }));
+  app.get('/api/update/status', async () => {
+    const tunnel = ctx.tunnel?.getState() ?? null;
+    return {
+      version: updates.getState().current,
+      tunnelUrl: tunnel?.url ?? null,
+      tunnelStatus: tunnel?.status ?? 'disabled',
+      startedAt: ctx.startedAt,
+    };
+  });
 
   // ------------------------------------------------------------ Tác vụ định kỳ
   app.get('/api/tasks', async () => tasks.list());

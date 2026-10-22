@@ -3,6 +3,20 @@ const TOKEN_KEY = 'zenpanel.token';
 
 let token: string | null = (() => {
   try {
+    if (typeof window !== 'undefined' && window.location?.search) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const paramToken = urlParams.get('token') || urlParams.get('auth_token');
+      if (paramToken) {
+        localStorage.setItem(TOKEN_KEY, paramToken);
+        urlParams.delete('token');
+        urlParams.delete('auth_token');
+        urlParams.delete('auto_login');
+        const cleanSearch = urlParams.toString();
+        const newUrl = window.location.pathname + (cleanSearch ? `?${cleanSearch}` : '') + window.location.hash;
+        window.history.replaceState({}, '', newUrl);
+        return paramToken;
+      }
+    }
     return localStorage.getItem(TOKEN_KEY);
   } catch {
     return null;

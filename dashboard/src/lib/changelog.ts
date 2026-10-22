@@ -8,6 +8,61 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.5.3',
+    date: '2026-10-22',
+    highlights: [
+      {
+        title: 'Quy chuẩn Định dạng Dữ liệu toàn diện (Class txaformat)',
+        items: [
+          'Tích hợp class txaformat toàn bộ website: chuẩn hoá làm tròn 2 chữ số (twoDigits), dung lượng (size), tốc độ mạng (speed), tỷ lệ % (percent), ETA còn lại (timeLeft), ngày giờ (days, time, datetime).',
+          'Khắc phục triệt để lỗi hiển thị số thập phân dài vô tận ở cảnh báo ổ đĩa (85.43675536671441% → 85.4%).',
+        ],
+      },
+      {
+        title: 'Nâng cấp Quá trình Cập nhật ZenPanel & Khóa Bảo trì Toàn diện',
+        items: [
+          'Thanh tiến trình (Progress Bar) & ETA đếm ngược thông minh, hiển thị 4 giai đoạn trực quan thay vì chỉ log thô sơ.',
+          'Màn hình Khóa bảo trì toàn cục (Maintenance Lock Overlay): ngăn người dùng thao tác gây lỗi trong lúc cập nhật mã nguồn và khởi động lại dịch vụ.',
+          'Hộp thoại Hoàn tất Nâng cấp: tự động nhận diện URL Cloudflare Quick Tunnel mới (trycloudflare.com).',
+          'Hỗ trợ 1-Click mở tab mới kèm tính năng Tự động Đăng nhập (Auto-login) an toàn tuyệt đối, không cần nhập lại mật khẩu.',
+        ],
+      },
+      {
+        title: 'Theo dõi Tiến độ Cài đặt App Store Realtime (Hết kẹt 0%)',
+        items: [
+          'Tích hợp bộ phân tích log Docker Layer trực tiếp: tính toán chính xác số layer tải về (X/Y layers) và % thực tế của các ứng dụng lớn như AI Gateway (LiteLLM), n8n.',
+          'Giải quyết dứt điểm tình trạng thanh tiến trình bị treo cứng ở 0% và "Đang khởi tạo...".',
+        ],
+      },
+      {
+        title: 'Quản lý Docker nâng cao: Bulk Actions, Sao chép Log & Tìm kiếm Highlight',
+        items: [
+          'Thao tác Hàng loạt (Bulk Actions): chọn nhiều containers để Khởi động, Tạm dừng, Khởi động lại hoặc Xóa cùng lúc.',
+          'Modal xem log container mới: nút Sao chép logs nhanh với hiệu ứng check đổi màu xanh lá kèm nút tải file log .txt.',
+          'Bộ lọc tìm kiếm thông minh kết hợp component Highlight: bôi sáng tức thì tên container, image, ID, port khớp với từ khóa.',
+          'Khắc phục triệt để lỗi "kill ESRCH" khi dừng dịch vụ hoặc tiến trình đã thoát.',
+        ],
+      },
+      {
+        title: 'ZenFile Explorer Pro UI & Remote Download bảo mật',
+        items: [
+          'Tích hợp chuyển đổi linh hoạt giữa giao diện "Duyệt chuẩn" và "ZenFile Pro UI" nhúng trực tiếp toàn màn hình ngay trong tab File Manager.',
+          'Đồng bộ cấu hình tài khoản mặc định admin / admin chắc chắn hoạt động 100% cho FileBrowser.',
+          'Khắc phục lỗi "no container found for project zen-filebrowser": tự động phục hồi container bằng compose up -d khi bấm khởi động.',
+          'Remote Download: hỗ trợ tải nhanh link HTTP/HTTPS (kể cả link mã hoá Base64), bổ sung header chặn IDM bắt link chia luồng.',
+        ],
+      },
+      {
+        title: 'Hướng dẫn n8n & Kết nối AI Gateway (LiteLLM)',
+        items: [
+          'Giải thích rõ hiện tượng 502 Bad Gateway do n8n cần 30-45s khởi tạo DB ban đầu và cách khắc phục bằng F5 sau khi sẵn sàng.',
+          'Hướng dẫn cụ thể cách dùng Domain Public riêng qua Reverse Proxy / Cloudflare Tunnel cố định.',
+          'Hướng dẫn từng bước liên kết n8n với AI Gateway (LiteLLM): cấu hình Base URL http://host.docker.internal:4000/v1, master key và gọi các model Claude, Gemini, GPT-4o.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.5.2',
     date: '2026-10-22',
     highlights: [

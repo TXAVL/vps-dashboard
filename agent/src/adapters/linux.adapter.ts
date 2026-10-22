@@ -250,7 +250,12 @@ export class LinuxAdapter implements OSAdapter {
   }
 
   async killProcess(pid: number, force: boolean): Promise<void> {
-    process.kill(pid, force ? 'SIGKILL' : 'SIGTERM');
+    try {
+      process.kill(pid, force ? 'SIGKILL' : 'SIGTERM');
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException)?.code === 'ESRCH') return;
+      throw err;
+    }
   }
 
   // ---------------------------------------------------------------- Dịch vụ (systemd, fallback OpenRC)

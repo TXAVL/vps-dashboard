@@ -231,8 +231,22 @@ export class AppStoreService {
     const project = ['-p', projectName(id)];
     if (action === 'update') {
       await this.docker.compose([...project, 'pull'], dir);
+      await this.docker.compose([...project, 'up', '-d', '--remove-orphans'], dir);
+    } else if (action === 'start') {
+      // Dùng up -d để đảm bảo nếu container chưa được tạo hoặc bị xoá thì tự sinh lại thay vì báo lỗi "no container found"
       await this.docker.compose([...project, 'up', '-d'], dir);
-    } else await this.docker.compose([...project, action], dir);
+    } else {
+      try {
+        await this.docker.compose([...project, action], dir);
+      } catch (err: unknown) {
+        const msg = String((err as Error)?.message || '');
+        if (msg.includes('no container found')) {
+          // Container đã không còn tồn tại nên coi như đã dừng
+          return;
+        }
+        throw err;
+      }
+    }
   }
 
   async uninstall(id: string, removeData: boolean): Promise<void> {

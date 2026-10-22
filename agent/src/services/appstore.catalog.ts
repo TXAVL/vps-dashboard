@@ -76,7 +76,7 @@ function service(opts: {
 }
 
 const portParam = (key: string, label: string, def: number): AppParam => ({ key, label, type: 'port', default: def });
-const passwordParam = (key = 'password', label = 'Mật khẩu'): AppParam => ({ key, label, type: 'password', generate: true });
+const passwordParam = (key = 'password', label = 'Mật khẩu', def?: string): AppParam => ({ key, label, type: 'password', default: def, generate: !def });
 
 export const APP_CATALOG: AppDefinition[] = [
   {
@@ -277,16 +277,32 @@ export const APP_CATALOG: AppDefinition[] = [
     ],
     webPort: 'port',
     compose: (p, c) => {
-      const env: Record<string, string> = { N8N_SECURE_COOKIE: 'false', GENERIC_TIMEZONE: 'Asia/Ho_Chi_Minh', TZ: 'Asia/Ho_Chi_Minh', N8N_RUNNERS_ENABLED: 'true' };
+      const env: Record<string, string> = {
+        N8N_PORT: '5678',
+        N8N_SECURE_COOKIE: 'false',
+        GENERIC_TIMEZONE: 'Asia/Ho_Chi_Minh',
+        TZ: 'Asia/Ho_Chi_Minh',
+        N8N_RUNNERS_ENABLED: 'true',
+        N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: 'true',
+      };
       // Webhook URL phải là địa chỉ public thì webhook / OAuth callback mới hoạt động từ bên ngoài
       if (p.webhookUrl) {
         const url = p.webhookUrl.endsWith('/') ? p.webhookUrl : `${p.webhookUrl}/`;
         env.WEBHOOK_URL = url;
         env.N8N_EDITOR_BASE_URL = url;
-        env.N8N_HOST = new URL(url).hostname;
-        env.N8N_PROTOCOL = new URL(url).protocol.replace(':', '');
+        try {
+          env.N8N_HOST = new URL(url).hostname;
+          env.N8N_PROTOCOL = new URL(url).protocol.replace(':', '');
+        } catch {}
       }
-      return service({ container: c, image: 'n8nio/n8n:latest', ports: [`${p.port}:5678`], env, volumes: { data: '/home/node/.n8n' } });
+      return service({
+        container: c,
+        image: 'n8nio/n8n:latest',
+        ports: [`${p.port}:5678`],
+        env,
+        volumes: { data: '/home/node/.n8n' },
+        extra: ['extra_hosts:', '  - "host.docker.internal:host-gateway"'],
+      });
     },
   },
   {
@@ -328,6 +344,7 @@ export const APP_CATALOG: AppDefinition[] = [
     website: 'https://filebrowser.org',
     params: [
       portParam('port', 'Cổng HTTP', 8084),
+      passwordParam('password', 'Mật khẩu đăng nhập admin', 'admin'),
       { key: 'rootPath', label: 'Thư mục quản lý trên máy chủ', type: 'text', default: '/', hint: 'Thư mục máy chủ được gắn vào để duyệt tệp (mặc định / là toàn bộ VPS)' },
     ],
     webPort: 'port',
@@ -338,6 +355,7 @@ export const APP_CATALOG: AppDefinition[] = [
         ports: [`${p.port}:80`],
         volumes: { data: '/database' },
         binds: [`${p.rootPath || '/'}:/srv`],
+        command: `sh -c "/filebrowser config init -a 0.0.0.0 -p 80 -r /srv -d /database/filebrowser.db >/dev/null 2>&1 || true; /filebrowser users add admin '${p.password || 'admin'}' --perm.admin >/dev/null 2>&1 || /filebrowser users update admin -p '${p.password || 'admin'}' >/dev/null 2>&1 || true; exec /filebrowser -a 0.0.0.0 -p 80 -r /srv -d /database/filebrowser.db"`,
       }),
   },
   {

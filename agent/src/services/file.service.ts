@@ -268,11 +268,21 @@ export async function chmodEntry(file: string, modeStr: string): Promise<void> {
   });
 }
 
-/** Tải file từ internet (HTTP/HTTPS) trực tiếp về thư mục trên VPS */
 export async function downloadRemoteFile(urlStr: string, destDir: string, customName?: string): Promise<{ path: string; size: number }> {
+  let finalUrl = urlStr.trim();
+  // Giải mã link nếu được truyền dưới dạng Base64
+  if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+    try {
+      const decoded = Buffer.from(finalUrl, 'base64').toString('utf8');
+      if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+        finalUrl = decoded;
+      }
+    } catch {}
+  }
+
   let parsedUrl: URL;
   try {
-    parsedUrl = new URL(urlStr);
+    parsedUrl = new URL(finalUrl);
   } catch {
     throw badRequest('URL tải về không hợp lệ');
   }
@@ -280,8 +290,11 @@ export async function downloadRemoteFile(urlStr: string, destDir: string, custom
     throw badRequest('Chỉ hỗ trợ giao thức HTTP hoặc HTTPS');
   }
 
-  const res = await fetch(urlStr, {
-    headers: { 'User-Agent': 'ZenPanel-RemoteDownloader/1.0' },
+  const res = await fetch(finalUrl, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 ZenPanel/1.0',
+      Accept: '*/*',
+    },
   });
   if (!res.ok) throw badRequest(`Tải file thất bại: HTTP ${res.status} ${res.statusText}`);
 

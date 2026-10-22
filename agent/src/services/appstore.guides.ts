@@ -17,10 +17,15 @@ export const APP_GUIDES: Record<string, AppGuide> = {
   n8n: {
     steps: [
       OPEN,
-      'Bấm "Thiết lập n8n" để ZenPanel tự điền Webhook URL = link public (bắt buộc để webhook, form, OAuth hoạt động từ bên ngoài).',
-      'Mở n8n, tạo tài khoản Owner ở lần đầu truy cập.',
-      'Dùng AI: thêm credential "OpenAI" với Base URL của AI Gateway (http://host.docker.internal:4000/v1) và master key của gateway, hoặc nhập trực tiếp key ChatGPT / Claude / Gemini.',
-      'Lưu ý: link trycloudflare đổi khi agent khởi động lại → chạy lại "Thiết lập n8n" hoặc dùng domain riêng qua app Cloudflare Tunnel.',
+      '⏳ Lưu ý 502 Bad Gateway: n8n mất khoảng 30-45 giây để khởi tạo database lần đầu. Nếu thấy 502, hãy đợi thêm 30 giây rồi F5 làm mới lại trang.',
+      '🌐 Domain riêng cố định: Link *.trycloudflare.com là link tạm thời ngẫu nhiên. Để dùng domain riêng (ví dụ n8n.yourdomain.com), vào tab Websites → Thêm Website (Reverse Proxy) trỏ về cổng 5678.',
+      '🔗 Webhook URL: Bấm nút "Thiết lập n8n" để ZenPanel tự động đồng bộ Webhook URL khớp với link public (bắt buộc để webhook, form và trigger chạy từ bên ngoài).',
+      '🤖 KẾT NỐI AI GATEWAY (LiteLLM) VỚI N8N:',
+      '  1. Cài "AI Gateway (LiteLLM)" từ App Store. Lưu API key (OpenAI / Claude / Gemini / OpenRouter / NVIDIA) trong Cài đặt → AI Gateway.',
+      '  2. Trong n8n: Vào Credentials → New Credential → Chọn "OpenAI".',
+      '  3. Điền Base URL: http://host.docker.internal:4000/v1',
+      '  4. Điền API Key: sk-<master key> đã cấu hình lúc cài LiteLLM.',
+      '  5. Kéo node "AI Agent" hoặc "OpenAI Chat Model" vào workflow, sử dụng các model: anthropic/claude-sonnet-4-5, gemini/gemini-2.5-flash, openai/gpt-4o...',
     ],
   },
   wordpress: {

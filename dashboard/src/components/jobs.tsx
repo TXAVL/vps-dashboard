@@ -1,10 +1,50 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Copy, ListTodo, Loader2, Sparkles, Terminal, XCircle } from 'lucide-react';
 import { get } from '../lib/api';
 import { formatDate, formatDuration, formatRelative } from '../lib/format';
 import type { Job } from '../lib/types';
 import { useFeedback } from './feedback';
 import { Badge, Button, EmptyState, Modal, cn } from './ui';
+import { txaformat } from '../lib/txaformat';
+
+/** Phân tích log Docker Compose Pull để tính tỷ lệ % layers hoàn tất */
+function parseDockerProgress(log: string): { percent: number; stage: string } | null {
+  if (!log || (!log.includes('Pulling') && !log.includes('Downloaded') && !log.includes('Extracting'))) return null;
+
+  const layerStatus = new Map<string, string>();
+  const lines = log.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    // Bắt dòng dạng: 28c972c1431b Downloading 2.097MB hoặc 0fa0803f038c Pull complete 0B
+    const m = trimmed.match(/^([a-f0-9]{12})\s+(Pulling fs layer|Already exists|Download complete|Pull complete|Downloading|Extracting)/i);
+    if (m) {
+      layerStatus.set(m[1].toLowerCase(), m[2].toLowerCase());
+    }
+  }
+
+  const total = layerStatus.size;
+  if (total === 0) return null;
+
+  let completed = 0;
+  for (const status of layerStatus.values()) {
+    if (status === 'pull complete' || status === 'already exists') {
+      completed += 1;
+    } else if (status === 'download complete' || status === 'extracting') {
+      completed += 0.7;
+    } else if (status === 'downloading') {
+      completed += 0.35;
+    } else {
+      completed += 0.1;
+    }
+  }
+
+  // Tải layers chiếm từ 15% -> 88% của cả job
+  const ratio = Math.min(1, Math.max(0, completed / total));
+  const percent = Math.round(15 + ratio * 72);
+  const doneCount = Math.floor(completed);
+  const stage = `Đang tải Docker images (${doneCount}/${total} layers - ${txaformat.percent(percent, 0)})...`;
+  return { percent, stage };
+}
 
 interface JobsContextValue {
   /** Gọi API trả về job, mở cửa sổ log và resolve khi job kết thúc (true = thành công) */
@@ -72,18 +112,21 @@ function JobLog({ id, onClose }: { id: string; onClose: () => void }) {
   const expectedSec =
     job?.kind === 'clean' ? 12 : job?.kind === 'docker' || job?.kind === 'image' ? 25 : job?.kind === 'php' || job?.kind === 'webserver' ? 35 : job?.kind === 'app' ? 45 : 30;
 
+  // Phân tích tiến độ Docker layer từ log realtime
+  const dockerProgress = useMemo(() => parseDockerProgress(job?.log || ''), [job?.log]);
+
   // Tính phần trăm tiến độ
   let percent = 0;
   if (job?.status === 'success') {
     percent = 100;
-  } else if (job?.progress !== undefined && job.progress !== null) {
-    percent = Math.min(100, Math.max(0, job.progress));
-  } else if (job?.status === 'running') {
-    // Tăng dần theo hàm tiệm cận đến 95% trong khi vẫn đang xử lý
-    const simulated = Math.min(94, Math.max(8, Math.round((1 - Math.exp(-elapsedSec / (expectedSec * 0.45))) * 100)));
-    percent = simulated;
   } else if (job?.status === 'error') {
     percent = Math.min(90, Math.max(15, Math.round((elapsedSec / expectedSec) * 100)));
+  } else {
+    // Đang chạy: kết hợp backend progress, docker layer progress, và simulated progress
+    const simulated = Math.min(92, Math.max(10, Math.round((1 - Math.exp(-elapsedSec / (expectedSec * 0.45))) * 100)));
+    const backendProgress = job?.progress !== null && job?.progress !== undefined ? job.progress : 0;
+    const dockerPct = dockerProgress?.percent ?? 0;
+    percent = Math.min(95, Math.max(backendProgress, dockerPct, simulated));
   }
 
   // Tính ETA
@@ -94,20 +137,21 @@ function JobLog({ id, onClose }: { id: string; onClose: () => void }) {
         ? Math.max(0, expectedSec - elapsedSec)
         : 0;
 
-  // Giai đoạn hiện tại
+  // Giai đoạn hiện tại: ưu tiên dockerProgress -> backend stage -> stage suy luận
   const currentStage =
-    job?.stage ||
     (job?.status === 'success'
       ? 'Tác vụ đã hoàn tất thành công'
       : job?.status === 'error'
         ? `Lỗi: ${job.error || 'Đã xảy ra sự cố'}`
-        : percent < 30
-          ? 'Đang chuẩn bị môi trường và kiểm tra tài nguyên...'
-          : percent < 65
-            ? 'Đang tải xuống các gói cài đặt và tài nguyên...'
-            : percent < 90
-              ? 'Đang giải nén, tối ưu cấu hình và thiết lập dịch vụ...'
-              : 'Đang kiểm tra kết nối và khởi động hoàn tất...');
+        : dockerProgress?.stage ||
+          job?.stage ||
+          (percent < 30
+            ? 'Đang chuẩn bị môi trường và kiểm tra tài nguyên...'
+            : percent < 65
+              ? 'Đang tải xuống các gói cài đặt và tài nguyên...'
+              : percent < 90
+                ? 'Đang giải nén, tối ưu cấu hình và thiết lập dịch vụ...'
+                : 'Đang kiểm tra kết nối và khởi động hoàn tất...'));
 
   // 4 cột mốc trực quan
   const milestones = [
