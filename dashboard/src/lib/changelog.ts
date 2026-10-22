@@ -13,6 +13,16 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-23',
     highlights: [
       {
+        title: '🚀 API Tester Chuẩn Postman Siêu Cấp',
+        items: [
+          'Tab Body chuẩn Postman: Hỗ trợ đầy đủ các chế độ none, form-data, x-www-form-urlencoded, raw, binary. Khi chọn "raw", có ngay dropdown lựa chọn nhanh định dạng (JSON, Text, JavaScript, HTML, XML) kèm nút Beautify/Format JSON thông minh và tự động đồng bộ Content-Type tương ứng.',
+          'Nhập lệnh cURL (Import cURL): Dán lệnh cURL copy từ Chrome DevTools hoặc tài liệu API vào là hệ thống tự động bóc tách Method, URL, Query params, Headers và Body thành Request hoàn chỉnh.',
+          'Bộ sinh mã nguồn (Code Snippets) đa ngôn ngữ: Dropdown chọn sinh code mẫu lập tức cho 7 ngôn ngữ/thư viện (cURL, JavaScript Fetch, JavaScript Axios, Node.js fetch, Python Requests, PHP cURL, Go net/http) kèm nút sao chép tiện lợi.',
+          'Xem nhanh Biến Môi Trường (Quick Look 👁️): Nút con mắt bên cạnh thanh chọn môi trường giúp tra cứu nhanh toàn bộ giá trị biến ({{baseUrl}}, {{apiKey}}, v.v.) mà không cần mở cài đặt.',
+          'Tiện ích Response nâng cao: Bổ sung nút Tải kết quả (Download file .json/.txt), nút Xóa kết quả (Clear Response), và nút xem toàn màn hình.',
+        ],
+      },
+      {
         title: '📦 Kho Repos Sản Phẩm & Nhập Hàng Loạt Ứng Dụng (App Repositories)',
         items: [
           'Thêm kho ứng dụng bên ngoài dễ dàng: Chỉ cần dán đường dẫn link JSON (như raw GitHub hoặc máy chủ riêng) là hệ thống tự động nhận diện và nạp cả lô ứng dụng vào App Store.',

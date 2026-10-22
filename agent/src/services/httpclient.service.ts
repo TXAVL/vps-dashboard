@@ -22,7 +22,7 @@ export interface RequestDef {
   params: KeyValue[];
   headers: KeyValue[];
   auth: { type: 'none' | 'bearer' | 'basic' | 'apikey'; token?: string; username?: string; password?: string; key?: string; value?: string; in?: 'header' | 'query' };
-  body: { mode: 'none' | 'json' | 'text' | 'urlencoded' | 'form'; raw: string; form: KeyValue[] };
+  body: { mode: 'none' | 'json' | 'text' | 'raw' | 'urlencoded' | 'form'; rawType?: 'json' | 'text' | 'javascript' | 'html' | 'xml'; raw: string; form: KeyValue[] };
 }
 
 export interface Workspace {
@@ -156,6 +156,16 @@ export class HttpClientService {
       } else if (mode === 'text') {
         body = input.body?.raw ?? '';
         if (!headers.has('content-type')) headers.set('Content-Type', 'text/plain');
+      } else if (mode === 'raw') {
+        body = input.body?.raw ?? '';
+        if (!headers.has('content-type')) {
+          const rawType = (input.body as any)?.rawType || 'json';
+          if (rawType === 'json') headers.set('Content-Type', 'application/json');
+          else if (rawType === 'xml') headers.set('Content-Type', 'application/xml');
+          else if (rawType === 'html') headers.set('Content-Type', 'text/html');
+          else if (rawType === 'javascript') headers.set('Content-Type', 'application/javascript');
+          else headers.set('Content-Type', 'text/plain');
+        }
       } else if (mode === 'urlencoded') {
         body = new URLSearchParams((input.body?.form ?? []).filter((f) => f.key).map((f) => [f.key, f.value]));
       } else if (mode === 'form') {
