@@ -23,6 +23,7 @@ import {
   Music,
   PackageOpen,
   Pencil,
+  Play,
   RefreshCw,
   Save,
   Scissors,
@@ -520,6 +521,35 @@ export default function FileManager() {
   const proPort = proApp?.installed?.params.port;
   const proUrl = proApp?.publicLink?.url ?? (proPort ? `http://${window.location.hostname}:${proPort}` : null);
 
+  const startPro = async () => {
+    await run(() => post('/api/apps/filebrowser/start'), 'Khởi động ZenFile Pro');
+    await apps.reload();
+  };
+
+  const uninstallPro = async () => {
+    const ok = await confirm({
+      title: 'Gỡ cài đặt ZenFile Pro',
+      message: 'Bạn có chắc chắn muốn gỡ cài đặt ZenFile Pro? Sau khi gỡ, ZenPanel sẽ quay về giao diện File Manager tiêu chuẩn ban đầu.',
+      danger: true,
+      confirmLabel: 'Gỡ cài đặt',
+    });
+    if (!ok) return;
+    await run(() => post('/api/apps/filebrowser/uninstall', { removeData: false }), 'Đã gỡ cài đặt ZenFile Pro');
+    setViewMode('standard');
+    await apps.reload();
+  };
+
+  // Tự động mở ZenFile Pro nếu đã cài đặt ở App Store (trừ khi người dùng chỉ định ?mode=standard trong URL)
+  useEffect(() => {
+    if (proApp?.installed) {
+      if (params.get('mode') !== 'standard') {
+        setViewMode('pro');
+      }
+    } else {
+      setViewMode('standard');
+    }
+  }, [proApp?.installed, params]);
+
   const sep = roots?.separator ?? '/';
   const currentPath = params.get('path') ?? roots?.roots[0] ?? null;
 
@@ -684,21 +714,33 @@ export default function FileManager() {
         icon={FolderOpen}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {isProRunning && proUrl ? (
+            {proApp?.installed ? (
               <div className="flex items-center rounded-xl border border-slate-700/60 bg-ink-950/60 p-0.5 text-xs">
                 <button
                   type="button"
-                  onClick={() => setViewMode('standard')}
+                  onClick={() => {
+                    setViewMode('standard');
+                    setParams((p) => {
+                      p.set('mode', 'standard');
+                      return p;
+                    });
+                  }}
                   className={cn(
-                    'rounded-lg px-2.5 py-1 font-semibold transition-all',
+                    'flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-semibold transition-all',
                     viewMode === 'standard' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200',
                   )}
                 >
-                  Duyệt chuẩn
+                  <Folder className="size-3.5" /> Duyệt cơ bản
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewMode('pro')}
+                  onClick={() => {
+                    setViewMode('pro');
+                    setParams((p) => {
+                      p.delete('mode');
+                      return p;
+                    });
+                  }}
                   className={cn(
                     'flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-semibold transition-all',
                     viewMode === 'pro'
@@ -707,6 +749,7 @@ export default function FileManager() {
                   )}
                 >
                   <Sparkles className="size-3 text-amber-300" /> ZenFile Pro UI
+                  <span className={cn('size-1.5 rounded-full', isProRunning ? 'bg-emerald-400 animate-pulse' : 'bg-red-400')} />
                 </button>
               </div>
             ) : (
@@ -728,46 +771,77 @@ export default function FileManager() {
       />
 
       {/* CHẾ ĐỘ PRO: Nhúng trực tiếp giao diện ZenFile Pro thiết kế mới toàn màn hình */}
-      {viewMode === 'pro' && isProRunning && proUrl ? (
-        <div className="space-y-3 animate-fadeIn">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zen-purple/40 bg-ink-950/60 px-4 py-2.5 backdrop-blur-md">
-            <div className="flex items-center gap-2 text-sm text-purple-200">
-              <Sparkles className="size-4 text-zen-purple" />
-              <span className="font-semibold text-white">Giao diện ZenFile Explorer Pro</span>
-              <Badge tone="blue" className="text-[11px]">Docker</Badge>
-              <span className="text-xs text-slate-400">· Đăng nhập: <code className="mono text-white">admin / admin</code></span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="xs"
-                variant="secondary"
-                icon={RefreshCw}
-                onClick={() => {
-                  const ifr = document.getElementById('zenfile-pro-iframe') as HTMLIFrameElement;
-                  if (ifr) ifr.src = ifr.src;
-                }}
-              >
-                Làm mới
-              </Button>
-              <a href={proUrl} target="_blank" rel="noreferrer">
-                <Button size="xs" variant="secondary" icon={ExternalLink}>
-                  Mở tab riêng
+      {viewMode === 'pro' && proApp?.installed ? (
+        isProRunning && proUrl ? (
+          <div className="space-y-3 animate-fadeIn">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zen-purple/40 bg-ink-950/70 px-4 py-2.5 backdrop-blur-md">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-purple-200">
+                <Sparkles className="size-4 text-zen-purple" />
+                <span className="font-semibold text-white">ZenFile Explorer Pro</span>
+                <Badge tone="green" className="text-[11px]">Đang chạy</Badge>
+                <span className="text-xs text-slate-400">
+                  · Tài khoản: <code className="mono text-white">admin</code> / Mật khẩu: <code className="mono text-white">{proApp.installed.params.password || 'admin'}</code>
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="xs"
+                  variant="secondary"
+                  icon={RefreshCw}
+                  onClick={() => {
+                    const ifr = document.getElementById('zenfile-pro-iframe') as HTMLIFrameElement;
+                    if (ifr) ifr.src = ifr.src;
+                  }}
+                >
+                  Làm mới
                 </Button>
-              </a>
-              <Button size="xs" variant="ghost" onClick={() => setViewMode('standard')}>
-                Quay lại Explorer Chuẩn
-              </Button>
+                <a href={proUrl} target="_blank" rel="noreferrer">
+                  <Button size="xs" variant="secondary" icon={ExternalLink}>
+                    Mở tab riêng
+                  </Button>
+                </a>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="text-zen-red hover:bg-zen-red/10"
+                  icon={Trash2}
+                  onClick={() => void uninstallPro()}
+                >
+                  Gỡ cài đặt
+                </Button>
+              </div>
+            </div>
+            <div className="relative h-[calc(100dvh-10rem)] min-h-[580px] w-full overflow-hidden rounded-2xl border border-slate-800 bg-[#0c101a] shadow-2xl">
+              <iframe
+                id="zenfile-pro-iframe"
+                src={proUrl}
+                className="h-full w-full border-0"
+                title="ZenFile Explorer Pro"
+              />
             </div>
           </div>
-          <div className="relative h-[80vh] w-full overflow-hidden rounded-2xl border border-slate-800 bg-[#0c101a] shadow-2xl">
-            <iframe
-              id="zenfile-pro-iframe"
-              src={proUrl}
-              className="h-full w-full border-0"
-              title="ZenFile Explorer Pro"
-            />
-          </div>
-        </div>
+        ) : (
+          <Card className="text-center p-8 space-y-4">
+            <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-400">
+              <Sparkles className="size-7" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-white">ZenFile Pro đã được cài đặt nhưng đang tạm dừng</h3>
+              <p className="text-sm text-slate-400">Khởi động lại container để bắt đầu duyệt tệp với giao diện Pro toàn màn hình.</p>
+            </div>
+            <div className="flex justify-center gap-3 pt-2">
+              <Button variant="primary" icon={Play} onClick={() => void startPro()}>
+                Khởi động ZenFile Pro
+              </Button>
+              <Button variant="secondary" onClick={() => setViewMode('standard')}>
+                Quay về Duyệt cơ bản
+              </Button>
+              <Button variant="ghost" className="text-zen-red hover:bg-zen-red/10" icon={Trash2} onClick={() => void uninstallPro()}>
+                Gỡ cài đặt
+              </Button>
+            </div>
+          </Card>
+        )
       ) : (
       <Card bodyClassName="p-0">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-700/40 p-3">
