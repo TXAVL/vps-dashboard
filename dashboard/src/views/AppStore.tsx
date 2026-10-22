@@ -5,6 +5,7 @@ import {
   Activity,
   Archive,
   Bot,
+  Boxes,
   BrainCircuit,
   ChartLine,
   CheckCircle2,
@@ -63,6 +64,7 @@ import { usePanel, usePublicHost } from '../lib/panel';
 import type { AppView, DockerInfo, Job, TunnelState } from '../lib/types';
 import { DockerMissing } from './Docker';
 import { CustomAppModal } from './CustomAppModal';
+import { AppRepoModal } from './AppRepoModal';
 
 const ICONS: Record<string, LucideIcon> = {
   Globe, Newspaper, Database, Zap, Leaf, Table, Table2, Container, Activity, Workflow, GitBranch, HardDrive, FolderOpen, Code, KeyRound, Cloud,
@@ -606,6 +608,7 @@ export default function AppStore() {
   const [busy, setBusy] = useState<string | null>(null);
   const [uninstall, setUninstall] = useState<{ app: AppView; removeData: boolean } | null>(null);
   const [customModalOpen, setCustomModalOpen] = useState(false);
+  const [repoModalOpen, setRepoModalOpen] = useState(false);
   const { run, confirm, toast } = useFeedback();
   const { runJob } = useJobs();
   const navigate = useNavigate();
@@ -706,6 +709,9 @@ export default function AppStore() {
         icon={LayoutGrid}
         actions={
           <div className="flex items-center gap-2">
+            <Button variant="soft" icon={Boxes} onClick={() => setRepoModalOpen(true)}>
+              Kho Repos
+            </Button>
             <Button variant="primary" icon={Plus} onClick={() => setCustomModalOpen(true)}>
               Thêm app tùy chỉnh
             </Button>
@@ -838,6 +844,11 @@ export default function AppStore() {
                         </div>
                         <p className="mt-1 line-clamp-2 text-sm text-slate-400">{app.description}</p>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {app.repoName && (
+                            <span className="inline-flex items-center gap-1 rounded bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-300 border border-indigo-500/30">
+                              📦 {app.repoName}
+                            </span>
+                          )}
                           {app.isCustom && (
                             <span className="inline-flex items-center gap-1 rounded bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-300 border border-fuchsia-500/20">
                               ✨ Custom App
@@ -967,12 +978,14 @@ export default function AppStore() {
                             ) : (
                               <IconButton icon={Square} title="Dừng ứng dụng" onClick={() => void act(app, 'stop', 'Dừng')} />
                             )}
-                            {app.appType !== 'native' && (
+                            {app.appType !== 'native' ? (
                               <>
                                 <IconButton icon={Settings2} title="Cấu hình lại (đổi cổng, mật khẩu, API key)" onClick={() => setReconfig(app)} />
                                 <IconButton icon={Download} title="Cập nhật image lên bản mới nhất" onClick={() => void act(app, 'update', 'Cập nhật')} />
                                 <IconButton icon={FileCode} title="Xem docker-compose.yml" onClick={() => void composePath(app)} />
                               </>
+                            ) : (
+                              <IconButton icon={Download} title="Cập nhật ứng dụng native lên bản mới nhất" onClick={() => void act(app, 'update', 'Cập nhật')} />
                             )}
                             <IconButton icon={Trash2} title="Gỡ cài đặt" className="hover:text-zen-red" onClick={() => setUninstall({ app, removeData: false })} />
                           </div>
@@ -1011,6 +1024,7 @@ export default function AppStore() {
       {reconfig && <ReconfigureModal app={reconfig} onClose={() => setReconfig(null)} onDone={() => void apps.reload()} />}
       {wizard && <N8nWizard app={wizard} onClose={() => setWizard(null)} onDone={() => void apps.reload()} />}
       <CustomAppModal open={customModalOpen} onClose={() => setCustomModalOpen(false)} onCreated={() => void apps.reload()} />
+      <AppRepoModal open={repoModalOpen} onClose={() => setRepoModalOpen(false)} onReposChanged={() => void apps.reload()} />
 
       <Modal open={Boolean(uninstall)} onClose={() => setUninstall(null)} title={`Gỡ ${uninstall?.app.name ?? ''}`} size="sm">
         {uninstall && (

@@ -100,6 +100,15 @@ export async function dockerRoutes(app: FastifyInstance, ctx: AppContext, deps: 
   app.put('/api/apps/custom/:id', async (req) => apps.updateCustomApp((req.params as { id: string }).id, (req.body ?? {}) as any));
   app.delete('/api/apps/custom/:id', async (req) => apps.deleteCustomApp((req.params as { id: string }).id));
 
+  // ------------------------------------------------------------ Kho Repos Sản Phẩm (App Store Repositories)
+  app.get('/api/apps/repos', async () => apps.getRepos());
+  app.post('/api/apps/repos', async (req) => apps.addRepo((req.body ?? {}) as any));
+  app.post('/api/apps/repos/:id/sync', async (req) => apps.syncRepo((req.params as { id: string }).id));
+  app.delete('/api/apps/repos/:id', async (req) => {
+    apps.deleteRepo((req.params as { id: string }).id);
+    return { ok: true };
+  });
+
   // ------------------------------------------------------------ Docker Compose stacks
   app.get('/api/docker/stacks', async () => stacks.list());
   app.get('/api/docker/stacks/:name', async (req) => stacks.read((req.params as { name: string }).name));

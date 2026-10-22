@@ -3,7 +3,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { generatePassword } from '../core/auth.js';
 import { jobLog } from '../core/jobs.js';
-import { dataPath, JsonCollection } from '../core/store.js';
+import { dataPath, JsonCollection, readJson, writeJson } from '../core/store.js';
 import { badRequest, HttpError, isPort } from '../core/validate.js';
 import type { OSAdapter } from '../adapters/base.adapter.js';
 import type { AiService } from './ai.service.js';
@@ -19,6 +19,17 @@ export interface InstalledApp {
   installedAt: string;
 }
 
+export interface AppRepo {
+  id: string;
+  name: string;
+  url: string;
+  description?: string;
+  enabled: boolean;
+  appCount: number;
+  lastSynced?: string;
+  error?: string;
+}
+
 export interface CustomAppDefinition {
   id: string;
   name: string;
@@ -32,6 +43,8 @@ export interface CustomAppDefinition {
   defaultPort?: number;
   composeTemplate?: string;
   nativeCommand?: string;
+  repoId?: string;
+  repoName?: string;
   isCustom: true;
   createdAt: string;
 }
@@ -47,14 +60,34 @@ export interface AppView extends Omit<AppDefinition, 'compose' | 'files'> {
   requiresGui: boolean;
   appType: 'docker' | 'native';
   isCustom?: boolean;
+  repoId?: string;
+  repoName?: string;
 }
 
 const installed = new JsonCollection<InstalledApp>('apps.json');
 const customApps = new JsonCollection<CustomAppDefinition>('custom-apps.json');
+const appRepos = new JsonCollection<AppRepo>('app-repos.json');
 
 export const projectName = (id: string) => `zen-${id}`;
 export const containerName = (id: string) => `zen-${id}`;
 const appDir = (id: string) => dataPath('apps', id);
+
+function getAllRepoApps(): CustomAppDefinition[] {
+  const result: CustomAppDefinition[] = [];
+  const repos = appRepos.all().filter((r) => r.enabled);
+  for (const r of repos) {
+    const list = readJson<CustomAppDefinition[]>(`repo-cache/${r.id}.json`, []);
+    for (const a of list) {
+      result.push({
+        ...a,
+        repoId: r.id,
+        repoName: r.name,
+        isCustom: true,
+      });
+    }
+  }
+  return result;
+}
 
 function customToAppDef(c: CustomAppDefinition): AppDefinition {
   const params: AppDefinition['params'] = [];
@@ -99,6 +132,8 @@ function findApp(id: string): AppDefinition {
   if (app) return app;
   const custom = customApps.get(id);
   if (custom) return customToAppDef(custom);
+  const fromRepo = getAllRepoApps().find((a) => a.id === id);
+  if (fromRepo) return customToAppDef(fromRepo);
   throw new HttpError(404, 'Không tìm thấy ứng dụng');
 }
 
@@ -126,7 +161,12 @@ export class AppStoreService {
   async list(): Promise<AppView[]> {
     const containers = await this.docker.containers().catch(() => [] as DockerContainer[]);
     const sys = this.systemInfo();
-    const allDefs: AppDefinition[] = [...APP_CATALOG, ...customApps.all().map(customToAppDef)];
+    const repoApps = getAllRepoApps();
+    const allDefs: AppDefinition[] = [
+      ...APP_CATALOG,
+      ...customApps.all().map(customToAppDef),
+      ...repoApps.map(customToAppDef),
+    ];
 
     return allDefs.map(({ compose: _compose, files: _files, ...app }) => {
       const record = installed.get(app.id) ?? null;
@@ -147,9 +187,13 @@ export class AppStoreService {
         ? { ...record, params: Object.fromEntries(Object.entries(record.params).filter(([key]) => app.params.find((p) => p.key === key)?.type !== 'password')) }
         : null;
 
+      const meta = customApps.get(app.id) || repoApps.find((r) => r.id === app.id);
+
       return {
         ...app,
-        isCustom: Boolean(app.isCustom),
+        isCustom: Boolean(app.isCustom || meta),
+        repoId: meta?.repoId,
+        repoName: meta?.repoName,
         platform: app.platform ?? 'all',
         requiresGui: Boolean(app.requiresGui),
         appType: app.appType ?? 'docker',
@@ -230,6 +274,93 @@ export class AppStoreService {
       throw badRequest('Ứng dụng đang được cài đặt trên máy chủ. Vui lòng gỡ cài đặt trước khi xóa khỏi kho');
     }
     customApps.remove(id);
+  }
+
+  // ------------------------------------------------------------------ Quản lý Kho Repos Ứng Dụng (Community Repos)
+  getRepos(): AppRepo[] {
+    return appRepos.all();
+  }
+
+  async addRepo(input: { name?: string; url: string; description?: string }): Promise<AppRepo> {
+    const url = input.url?.trim();
+    if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+      throw badRequest('URL kho repo không hợp lệ (phải bắt đầu bằng http:// hoặc https://)');
+    }
+    const id = 'repo-' + Math.random().toString(36).slice(2, 9);
+    const repo: AppRepo = {
+      id,
+      name: input.name?.trim() || 'Community Repository',
+      url,
+      description: input.description?.trim(),
+      enabled: true,
+      appCount: 0,
+    };
+    appRepos.upsert(repo);
+    return this.syncRepo(id);
+  }
+
+  async syncRepo(id: string): Promise<AppRepo> {
+    const repo = appRepos.get(id);
+    if (!repo) throw badRequest('Không tìm thấy kho repo');
+
+    try {
+      const res = await fetch(repo.url, {
+        headers: { 'User-Agent': 'ZenPanel-AppStore' },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      const data: any = await res.json();
+      const rawApps: any[] = Array.isArray(data) ? data : Array.isArray(data.apps) ? data.apps : [];
+      if (!rawApps.length) throw new Error('Kho repo không chứa ứng dụng nào hợp lệ');
+
+      const validatedApps: CustomAppDefinition[] = rawApps.map((a: any, idx: number) => {
+        const rawAppId = a.id || a.name?.toLowerCase().replace(/[^a-z0-9_-]/g, '-') || `app-${idx}`;
+        const appId = rawAppId.startsWith(`${repo.id}-`) ? rawAppId : `${repo.id}-${rawAppId}`;
+        return {
+          id: appId,
+          name: String(a.name || 'Unnamed App').trim(),
+          description: String(a.description || '').trim(),
+          category: a.category || 'tools',
+          icon: a.icon || 'Package',
+          website: a.website || '',
+          platform: a.platform || 'all',
+          appType: a.appType || 'docker',
+          defaultPort: a.defaultPort ? Number(a.defaultPort) : a.port ? Number(a.port) : undefined,
+          composeTemplate: a.composeTemplate || (a.compose ? String(a.compose) : undefined),
+          nativeCommand: a.nativeCommand || (a.command ? String(a.command) : undefined),
+          repoId: repo.id,
+          repoName: repo.name,
+          isCustom: true,
+          createdAt: new Date().toISOString(),
+        };
+      });
+
+      writeJson(`repo-cache/${repo.id}.json`, validatedApps);
+      const updated: AppRepo = {
+        ...repo,
+        name: (typeof data === 'object' && data.name) ? data.name : repo.name,
+        description: (typeof data === 'object' && data.description) ? data.description : repo.description,
+        appCount: validatedApps.length,
+        lastSynced: new Date().toISOString(),
+        error: undefined,
+      };
+      appRepos.upsert(updated);
+      return updated;
+    } catch (err: any) {
+      const updated: AppRepo = {
+        ...repo,
+        error: err?.message || String(err),
+      };
+      appRepos.upsert(updated);
+      throw badRequest(`Không thể đồng bộ kho repo: ${err?.message || err}`);
+    }
+  }
+
+  deleteRepo(id: string): void {
+    const repo = appRepos.get(id);
+    if (!repo) throw badRequest('Không tìm thấy kho repo');
+    appRepos.remove(id);
+    writeJson(`repo-cache/${id}.json`, []);
   }
 
   /** Tham số đầy đủ (kể cả mật khẩu) để xem / sửa trong "Cấu hình lại" */
@@ -622,6 +753,13 @@ export class AppStoreService {
     if (!installed.get(id)) throw badRequest('Ứng dụng chưa được cài đặt');
 
     if (app.appType === 'native') {
+      if (action === 'update') {
+        jobLog(`Đang cập nhật phiên bản mới nhất cho ứng dụng ${app.name}...`);
+        await this.installNativeApp(app, appDir(id));
+        jobLog(`✓ Cập nhật ứng dụng ${app.name} hoàn tất!`);
+        return;
+      }
+
       const isWindows = process.platform === 'win32';
       if (isWindows && app.nativeInstall?.targetExe) {
         const { exec } = await import('node:child_process');

@@ -160,6 +160,19 @@ export interface AppView {
   requiresGui?: boolean;
   appType?: 'docker' | 'native';
   isCustom?: boolean;
+  repoId?: string;
+  repoName?: string;
+}
+
+export interface AppRepo {
+  id: string;
+  name: string;
+  url: string;
+  description?: string;
+  enabled: boolean;
+  appCount: number;
+  lastSynced?: string;
+  error?: string;
 }
 
 export interface DatabaseServer {
