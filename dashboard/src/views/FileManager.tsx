@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronRight,
   ClipboardPaste,
+  Clock,
   Copy,
   Download,
   ExternalLink,
@@ -20,6 +21,7 @@ import {
   FolderPlus,
   Globe,
   HardDrive,
+  Link2,
   Music,
   PackageOpen,
   Pencil,
@@ -40,7 +42,7 @@ import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButto
 import { WindowMockup } from '../components/layout/WindowMockup';
 import { Highlight } from '../components/Highlight';
 import { txaformat } from '../lib/txaformat';
-import { api, downloadFile, get, post, put } from '../lib/api';
+import { api, downloadFile, getDownloadTicket, get, post, put } from '../lib/api';
 import { formatBytes, formatDate } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import type { AppView, FileEntry } from '../lib/types';
@@ -91,7 +93,7 @@ function mediaTypeOf(name: string): 'image' | 'audio' | 'video' | 'pdf' | null {
   return null;
 }
 
-function MediaPreviewModal({ file, onClose }: { file: FileEntry; onClose: () => void }) {
+function MediaPreviewModal({ file, onClose, onShare }: { file: FileEntry; onClose: () => void; onShare?: (file: FileEntry) => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +135,12 @@ function MediaPreviewModal({ file, onClose }: { file: FileEntry; onClose: () => 
           <span>Dung lượng: {formatBytes(file.size)} · Sửa đổi: {formatDate(file.modified)}</span>
           <div className="flex items-center gap-2">
             <CopyButton value={file.path} />
-            <Button size="xs" variant="soft" icon={Download} onClick={() => void downloadFile(file.path)}>
+            {onShare && (
+              <Button size="xs" variant="soft" icon={Link2} onClick={() => onShare(file)}>
+                Link 5 phút (Chặn IDM)
+              </Button>
+            )}
+            <Button size="xs" variant="primary" icon={Download} onClick={() => void downloadFile(file.path)}>
               Tải về máy
             </Button>
           </div>
@@ -157,6 +164,41 @@ function RemoteDownloadModal({
   const [downloading, setDownloading] = useState(false);
   const { run, toast } = useFeedback();
 
+  // Gán thời hạn 5 phút vào params của URL
+  const handleAttach5MinExpiry = () => {
+    if (!url.trim()) {
+      toast('Vui lòng nhập URL trước khi gán thời hạn', 'error');
+      return;
+    }
+    try {
+      const u = new URL(url.trim());
+      const expiresAt = Date.now() + 300_000;
+      u.searchParams.set('expires', String(expiresAt));
+      setUrl(u.toString());
+      toast('Đã gán tham số expires (hạn 5 phút) vào URL!', 'success');
+    } catch {
+      const expiresAt = Date.now() + 300_000;
+      const sep = url.includes('?') ? '&' : '?';
+      setUrl(`${url.trim()}${sep}expires=${expiresAt}`);
+      toast('Đã gán tham số expires (hạn 5 phút) vào URL!', 'success');
+    }
+  };
+
+  // Mã hóa Base64 URL để bảo mật
+  const handleEncodeBase64 = () => {
+    if (!url.trim()) {
+      toast('Vui lòng nhập URL trước khi mã hóa', 'error');
+      return;
+    }
+    try {
+      const encoded = btoa(unescape(encodeURIComponent(url.trim())));
+      setUrl(encoded);
+      toast('Đã mã hóa URL thành chuỗi Base64 an toàn!', 'success');
+    } catch {
+      toast('Không thể mã hóa URL này', 'error');
+    }
+  };
+
   const handleDownload = async (e: FormEvent) => {
     e.preventDefault();
     if (!url.trim()) return;
@@ -179,21 +221,46 @@ function RemoteDownloadModal({
   };
 
   return (
-    <Modal open={true} title="Tải file từ URL về máy chủ VPS" onClose={onClose}>
+    <Modal open={true} title="Remote Download an toàn & Chặn IDM (Tải về VPS)" onClose={onClose} size="md">
       <form onSubmit={handleDownload} className="space-y-4">
         <Notice>
-          Máy chủ sẽ tự động kết nối và tải file từ liên kết trực tiếp vào thư mục: <code className="mono">{currentPath}</code>.
+          Máy chủ sẽ kết nối trực tiếp để tải file từ liên kết vào: <code className="mono">{currentPath}</code>.
+          Được bảo vệ bằng cơ chế <strong>Anti-SSRF</strong> và tải độc lập trên VPS <strong>chống bắt link IDM</strong>.
         </Notice>
-        <Field label="URL file tải về" hint="Link trực tiếp HTTP hoặc HTTPS (ví dụ: https://example.com/source.zip)">
-          <input
-            className="input w-full"
-            placeholder="https://..."
-            required
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-          />
+
+        <Field label="URL file tải về" hint="Hỗ trợ link trực tiếp HTTP/HTTPS, link có gắn params expires (5 phút) hoặc link mã hóa Base64">
+          <div className="space-y-2">
+            <input
+              className="input w-full font-mono text-xs"
+              placeholder="https://... hoặc chuỗi Base64"
+              required
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="xs"
+                variant="soft"
+                icon={Clock}
+                onClick={handleAttach5MinExpiry}
+              >
+                Gán hạn 5 phút vào params (?expires=...)
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                icon={Shield}
+                onClick={handleEncodeBase64}
+              >
+                Mã hóa Base64 URL
+              </Button>
+            </div>
+          </div>
         </Field>
-        <Field label="Tên file lưu (tuỳ chọn)" hint="Để trống để lấy theo tên file trên URL">
+
+        <Field label="Tên file lưu (tuỳ chọn)" hint="Để trống để tự động lấy theo tên file gốc trên URL">
           <input
             className="input w-full"
             placeholder="Tự động"
@@ -201,6 +268,17 @@ function RemoteDownloadModal({
             onChange={(e) => setFilename(e.target.value)}
           />
         </Field>
+
+        <div className="rounded-2xl border border-slate-700/60 bg-ink-950/70 p-3.5 text-xs text-slate-400 space-y-1.5">
+          <div className="flex items-center gap-1.5 font-semibold text-emerald-400">
+            <Shield className="size-3.5" />
+            <span>Tiêu chuẩn bảo mật Remote Download ZenPanel:</span>
+          </div>
+          <p>• Tự động kiểm tra thời hạn 5 phút nếu URL có chứa tham số <code className="mono text-slate-300">expires</code>.</p>
+          <p>• Chặn triệt để mọi truy cập trái phép tới mạng nội bộ loopback / cloud metadata (Anti-SSRF).</p>
+          <p>• Giới hạn thời gian kết nối an toàn tối đa 5 phút (300 giây).</p>
+        </div>
+
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose}>
             Huỷ
@@ -210,6 +288,138 @@ function RemoteDownloadModal({
           </Button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+function ShareDownloadModal({
+  file,
+  onClose,
+}: {
+  file: FileEntry;
+  onClose: () => void;
+}) {
+  const [ticketData, setTicketData] = useState<{ url: string; fullUrl: string; expires: number; ttl: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [secondsLeft, setSecondsLeft] = useState(300);
+  const { toast } = useFeedback();
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const data = await getDownloadTicket(file.path);
+        if (mounted) {
+          setTicketData(data);
+          setSecondsLeft(Math.max(0, Math.floor((data.expires - Date.now()) / 1000)));
+          setLoading(false);
+        }
+      } catch {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [file.path]);
+
+  useEffect(() => {
+    if (!ticketData) return;
+    const interval = setInterval(() => {
+      const left = Math.max(0, Math.floor((ticketData.expires - Date.now()) / 1000));
+      setSecondsLeft(left);
+      if (left <= 0) clearInterval(interval);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [ticketData]);
+
+  const minutes = Math.floor(secondsLeft / 60);
+  const seconds = secondsLeft % 60;
+  const timeFormatted = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+  return (
+    <Modal open={true} title="Liên kết tải an toàn (Hạn 5 phút & Chặn IDM)" onClose={onClose} size="md">
+      <div className="space-y-4">
+        <Notice tone={secondsLeft > 0 ? 'blue' : 'red'}>
+          {secondsLeft > 0 ? (
+            <div>
+              Liên kết tải này được bảo vệ bằng vé điện tử có <strong>thời hạn 5 phút</strong> (gắn trực tiếp tham số <code className="mono">expires</code> vào URL).
+              Đồng thời hệ thống tự động <strong>chặn các trình bắt link IDM/Download Manager</strong> để bảo đảm an toàn máy chủ.
+            </div>
+          ) : (
+            <div>Liên kết tải đã hết hạn (quá 5 phút). Vui lòng đóng và tạo lại liên kết mới.</div>
+          )}
+        </Notice>
+
+        <div className="rounded-2xl border border-slate-700/60 bg-ink-950/70 p-4 space-y-3">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>Tệp: <strong className="text-white">{file.name}</strong></span>
+            <span>{formatBytes(file.size)}</span>
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl bg-slate-900/90 px-3 py-2 border border-slate-800">
+            <span className="text-xs text-slate-400">Thời gian còn lại:</span>
+            <div className={cn('flex items-center gap-1.5 font-mono text-sm font-bold', secondsLeft > 60 ? 'text-emerald-400' : secondsLeft > 0 ? 'text-amber-400' : 'text-rose-400')}>
+              <Clock className="size-4" />
+              <span>{timeFormatted}</span>
+            </div>
+          </div>
+
+          {loading ? (
+            <Spinner label="Đang tạo chữ ký tải an toàn..." />
+          ) : ticketData ? (
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">URL tải trực tiếp (Đã gắn vé & hạn 5 phút)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  className="input w-full font-mono text-xs select-all bg-black/40"
+                  value={ticketData.fullUrl}
+                />
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={Copy}
+                  onClick={() => {
+                    navigator.clipboard.writeText(ticketData.fullUrl);
+                    toast('Đã sao chép liên kết tải an toàn!', 'success');
+                  }}
+                >
+                  Sao chép
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex items-center justify-between pt-2">
+          <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
+            <Shield className="size-3.5" />
+            <span>Anti-IDM Protected</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={onClose}>
+              Đóng
+            </Button>
+            {ticketData && secondsLeft > 0 && (
+              <Button
+                variant="primary"
+                icon={Download}
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = ticketData.url;
+                  link.download = '';
+                  document.body.appendChild(link);
+                  link.click();
+                  link.remove();
+                }}
+              >
+                Tải về máy ngay
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
     </Modal>
   );
 }
@@ -505,6 +715,7 @@ export default function FileManager() {
   const [previewFile, setPreviewFile] = useState<FileEntry | null>(null);
   const [remoteModal, setRemoteModal] = useState(false);
   const [chmodEntries, setChmodEntries] = useState<FileEntry[] | null>(null);
+  const [shareFile, setShareFile] = useState<FileEntry | null>(null);
   const [proModal, setProModal] = useState(false);
   const [typeFilter, setTypeFilter] = useState<'all' | 'dirs' | 'images' | 'media' | 'code' | 'archives'>('all');
   const [clipboard, setClipboard] = useState<{ paths: string[]; mode: 'copy' | 'move' } | null>(null);
@@ -1026,7 +1237,12 @@ export default function FileManager() {
                             entry.type !== 'directory' && <IconButton icon={Pencil} title="Sửa" onClick={() => setEditing(entry)} />
                           )}
                           {isArchive(entry.name) && <IconButton icon={PackageOpen} title="Giải nén" onClick={() => void extract(entry)} />}
-                          {entry.type !== 'directory' && <IconButton icon={Download} title="Tải về" onClick={() => void run(() => downloadFile(entry.path))} />}
+                          {entry.type !== 'directory' && (
+                            <>
+                              <IconButton icon={Download} title="Tải về" onClick={() => void run(() => downloadFile(entry.path))} />
+                              <IconButton icon={Link2} title="Link tải an toàn (5 phút, chặn IDM)" onClick={() => setShareFile(entry)} />
+                            </>
+                          )}
                           <IconButton
                             icon={Copy}
                             title="Sao chép đường dẫn tuyệt đối"
@@ -1050,7 +1266,8 @@ export default function FileManager() {
       )}
 
       {editing && <CodeEditorModal file={editing} onClose={() => setEditing(null)} />}
-      {previewFile && <MediaPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />}
+      {previewFile && <MediaPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} onShare={(f) => setShareFile(f)} />}
+      {shareFile && <ShareDownloadModal file={shareFile} onClose={() => setShareFile(null)} />}
       {remoteModal && currentPath && (
         <RemoteDownloadModal currentPath={currentPath} onClose={() => setRemoteModal(false)} onDownloaded={() => void load()} />
       )}

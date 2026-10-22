@@ -290,20 +290,57 @@ export async function downloadRemoteFile(urlStr: string, destDir: string, custom
     throw badRequest('Chỉ hỗ trợ giao thức HTTP hoặc HTTPS');
   }
 
-  const res = await fetch(finalUrl, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 ZenPanel/1.0',
-      Accept: '*/*',
-    },
-  });
-  if (!res.ok) throw badRequest(`Tải file thất bại: HTTP ${res.status} ${res.statusText}`);
+  // 1. Kiểm tra thời hạn 5 phút nếu URL chứa tham số expires
+  const expiresParam = parsedUrl.searchParams.get('expires');
+  if (expiresParam) {
+    const expTime = Number(expiresParam);
+    if (!isNaN(expTime) && expTime > 0 && expTime < Date.now()) {
+      throw badRequest('Liên kết tải từ xa đã hết hạn (quá thời hạn 5 phút kể từ lúc tạo link)');
+    }
+  }
 
-  let filename = customName?.trim() || path.basename(parsedUrl.pathname) || 'downloaded_file';
-  filename = filename.replace(/[\\/]/g, '_');
-  const target = path.join(destDir, filename);
+  // 2. Chặn SSRF (Server-Side Request Forgery) bảo vệ an toàn VPS
+  const hostname = parsedUrl.hostname.toLowerCase();
+  const blockedHosts = ['localhost', '127.0.0.1', '::1', '0.0.0.0', '169.254.169.254'];
+  if (
+    blockedHosts.includes(hostname) ||
+    hostname.endsWith('.localhost') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname)
+  ) {
+    throw badRequest('Địa chỉ URL không an toàn (bị từ chối truy cập tài nguyên nội bộ VPS)');
+  }
 
-  const arrayBuffer = await res.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  await writeFile(target, buffer);
-  return { path: target, size: buffer.length };
+  // 3. Tải an toàn với timeout 5 phút (300 giây)
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 300_000);
+
+  try {
+    const res = await fetch(finalUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 ZenPanel-Downloader/1.0',
+        Accept: '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+      },
+    });
+    if (!res.ok) throw badRequest(`Tải file thất bại từ nguồn: HTTP ${res.status} ${res.statusText}`);
+
+    let filename = customName?.trim() || path.basename(parsedUrl.pathname) || 'downloaded_file';
+    filename = filename.replace(/[\\/]/g, '_');
+    const target = path.join(destDir, filename);
+
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    await writeFile(target, buffer);
+    return { path: target, size: buffer.length };
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw badRequest('Thời gian tải file vượt quá giới hạn an toàn 5 phút');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }

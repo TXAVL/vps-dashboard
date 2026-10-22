@@ -84,13 +84,16 @@ export async function fileRoutes(app: FastifyInstance, ctx: AppContext): Promise
     return { saved };
   });
 
-  // Link tải dùng vé ngắn hạn thay vì đặt token đăng nhập vào URL
+  // Link tải dùng vé ngắn hạn (thời hạn 5 phút, gắn expires vào params, chặn IDM)
   app.post('/api/files/download-ticket', async (req) => {
     const file = resolvePath((req.body as { path?: string } | undefined)?.path);
     const info = await stat(file);
     if (info.isDirectory()) throw badRequest('Hãy nén thư mục trước khi tải về');
-    const params = new URLSearchParams({ path: file, ticket: issueTicket(`download:${file}`) });
-    return { url: `/api/files/download?${params}` };
+    const ttlMs = 300_000; // 5 phút kể từ khi tạo link
+    const expires = Date.now() + ttlMs;
+    const ticket = issueTicket(`download:${file}`, ttlMs);
+    const params = new URLSearchParams({ path: file, ticket, expires: String(expires) });
+    return { url: `/api/files/download?${params}`, expires, ttl: 300 };
   });
 
   // Link xem trực tiếp ảnh, video, âm thanh, PDF (vé có thời hạn 10 phút)
@@ -145,19 +148,50 @@ const MIME_MAP: Record<string, string> = {
 /** Route tải file & xem trực tiếp nằm ngoài vùng requireAuth: xác thực bằng vé ngắn hạn */
 export async function fileDownloadRoute(app: FastifyInstance): Promise<void> {
   app.get('/api/files/download', async (req, reply) => {
-    const query = req.query as { path?: string; ticket?: string };
+    const query = req.query as { path?: string; ticket?: string; expires?: string };
     const file = resolvePath(query.path);
-    if (!verifyTicket(query.ticket, `download:${file}`)) throw new HttpError(401, 'Link tải đã hết hạn, hãy bấm tải lại');
+
+    // 1. Chặn IDM (Internet Download Manager) và các trình bắt link tự động
+    const ua = (req.headers['user-agent'] ?? '').toLowerCase();
+    if (
+      ua.includes('idm') ||
+      ua.includes('internet download manager') ||
+      ua.includes('download accelerator') ||
+      ua.includes('fdm') ||
+      ua.includes('flashget') ||
+      ua.includes('getright') ||
+      ua.includes('go!zilla')
+    ) {
+      throw new HttpError(403, 'ZenPanel: Đã chặn tải qua IDM / Download Manager. Vui lòng tải trực tiếp qua trình duyệt web để đảm bảo an toàn.');
+    }
+
+    // 2. Chặn chia luồng Range nhiều phần của IDM
+    if (req.headers['range'] && req.headers['range'].includes(',')) {
+      throw new HttpError(416, 'ZenPanel: Không hỗ trợ tải đa luồng phân đoạn.');
+    }
+
+    // 3. Kiểm tra thời hạn 5 phút kể từ lúc tạo link (gán trong params expires & vé ticket)
+    if (query.expires && Number(query.expires) < Date.now()) {
+      throw new HttpError(401, 'Link tải đã hết hạn (quá thời hạn 5 phút kể từ khi tạo link). Vui lòng tạo link tải mới.');
+    }
+
+    if (!verifyTicket(query.ticket, `download:${file}`)) {
+      throw new HttpError(401, 'Link tải không hợp lệ hoặc đã hết hạn 5 phút. Vui lòng bấm tải lại từ ZenPanel.');
+    }
+
     const info = await stat(file);
     const name = encodeURIComponent(path.basename(file));
     return reply
       .header('Content-Type', 'application/octet-stream')
       .header('Content-Length', info.size)
       .header('Content-Disposition', `attachment; filename*=UTF-8''${name}`)
-      .header('Cache-Control', 'no-store, no-cache, must-revalidate')
+      .header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0')
+      .header('Pragma', 'no-cache')
+      .header('Expires', '0')
       .header('Accept-Ranges', 'none')
       .header('X-Accel-Buffering', 'no')
       .header('X-Content-Type-Options', 'nosniff')
+      .header('X-Download-Options', 'noopen')
       .send(createReadStream(file));
   });
 

@@ -87,9 +87,16 @@ export function wsUrl(path: string, params: Record<string, string | number> = {}
   return url.toString();
 }
 
-/** Tải file: xin vé ngắn hạn rồi để trình duyệt tự tải (không đặt token đăng nhập vào URL) */
+/** Lấy vé tải file có thời hạn 5 phút (gắn expires vào params URL, chặn IDM) */
+export async function getDownloadTicket(filePath: string): Promise<{ url: string; fullUrl: string; expires: number; ttl: number }> {
+  const data = await post<{ url: string; expires: number; ttl: number }>('/api/files/download-ticket', { path: filePath });
+  const fullUrl = new URL(data.url, window.location.origin).toString();
+  return { ...data, fullUrl };
+}
+
+/** Tải file an toàn: xin vé ngắn hạn 5 phút rồi để trình duyệt tự tải (chặn IDM) */
 export async function downloadFile(filePath: string): Promise<void> {
-  const { url } = await post<{ url: string }>('/api/files/download-ticket', { path: filePath });
+  const { url } = await getDownloadTicket(filePath);
   const link = document.createElement('a');
   link.href = url;
   link.download = '';
