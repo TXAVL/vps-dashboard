@@ -94,6 +94,12 @@ export async function dockerRoutes(app: FastifyInstance, ctx: AppContext, deps: 
     apps.setPublicLink((req.params as { id: string }).id, Boolean((req.body as { enabled?: boolean } | undefined)?.enabled)),
   );
 
+  // ------------------------------------------------------------ Custom Apps Studio
+  app.get('/api/apps/custom', async () => apps.getCustomApps());
+  app.post('/api/apps/custom', async (req) => apps.createCustomApp((req.body ?? {}) as any));
+  app.put('/api/apps/custom/:id', async (req) => apps.updateCustomApp((req.params as { id: string }).id, (req.body ?? {}) as any));
+  app.delete('/api/apps/custom/:id', async (req) => apps.deleteCustomApp((req.params as { id: string }).id));
+
   // ------------------------------------------------------------ Docker Compose stacks
   app.get('/api/docker/stacks', async () => stacks.list());
   app.get('/api/docker/stacks/:name', async (req) => stacks.read((req.params as { name: string }).name));

@@ -1,7 +1,7 @@
 // ZenPanel - Khung giao diện chính: Sidebar Jupiter + Header (GUI/CLI toggle) + Terminal dock ở chế độ CLI
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
-import { CalendarClock, ChevronDown, Cloud, LogOut, Menu, Monitor, MousePointer2, Sparkles, SquareTerminal, X } from 'lucide-react';
+import { CalendarClock, ChevronDown, Cloud, LogOut, Menu, Monitor, MousePointer2, Sparkles, SquareTerminal, StickyNote, X } from 'lucide-react';
 import { setToken } from '../../lib/api';
 import { formatPercent } from '../../lib/format';
 import { useLocalStorage } from '../../lib/hooks';
@@ -13,6 +13,7 @@ import { CopyButton, StatusDot, cn } from '../ui';
 import { ALL_NAV, NAV_SECTIONS } from './nav';
 import { ThemePicker } from './ThemePicker';
 import { WindowMockup } from './WindowMockup';
+import { ServerNotepadModal } from './ServerNotepadModal';
 
 function Logo() {
   return (
@@ -201,6 +202,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mode, setMode] = useLocalStorage<'gui' | 'cli'>('zenpanel.mode', 'gui');
   const [dockOpen, setDockOpen] = useState(true);
+  const [notepadOpen, setNotepadOpen] = useState(false);
   const { info, connected } = usePanel();
   const location = useLocation();
   const current = ALL_NAV.find((item) => (item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)));
@@ -248,6 +250,14 @@ export function Shell({ children }: { children: ReactNode }) {
             <StatusDot tone={connected ? 'green' : 'red'} pulse={connected} />
           </span>
           <ModeToggle mode={mode} onChange={setMode} />
+          <button
+            onClick={() => setNotepadOpen(true)}
+            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-amber-400"
+            data-tip="Ghi chú máy chủ (Server Notepad)"
+            aria-label="Ghi chú máy chủ"
+          >
+            <StickyNote className="size-5" />
+          </button>
           <ThemePicker />
           <JobsButton />
           <button
@@ -259,6 +269,8 @@ export function Shell({ children }: { children: ReactNode }) {
             <LogOut className="size-5" />
           </button>
         </header>
+
+        <ServerNotepadModal open={notepadOpen} onClose={() => setNotepadOpen(false)} />
 
         <UpdateBanner />
         <ExpiryBanner />

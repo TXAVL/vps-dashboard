@@ -159,6 +159,7 @@ export interface AppView {
   platform?: 'all' | 'windows' | 'linux';
   requiresGui?: boolean;
   appType?: 'docker' | 'native';
+  isCustom?: boolean;
 }
 
 export interface DatabaseServer {

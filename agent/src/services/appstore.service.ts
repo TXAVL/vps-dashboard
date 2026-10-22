@@ -7,7 +7,7 @@ import { dataPath, JsonCollection } from '../core/store.js';
 import { badRequest, HttpError, isPort } from '../core/validate.js';
 import type { OSAdapter } from '../adapters/base.adapter.js';
 import type { AiService } from './ai.service.js';
-import { APP_CATALOG, type AppDefinition } from './appstore.catalog.js';
+import { APP_CATALOG, type AppCategory, type AppDefinition } from './appstore.catalog.js';
 import { APP_GUIDES, type AppGuide } from './appstore.guides.js';
 import type { AppTunnelService } from './apptunnel.service.js';
 import type { DockerContainer, DockerService } from './docker.service.js';
@@ -17,6 +17,23 @@ export interface InstalledApp {
   id: string;
   params: Record<string, string>;
   installedAt: string;
+}
+
+export interface CustomAppDefinition {
+  id: string;
+  name: string;
+  description: string;
+  category: AppCategory;
+  icon: string;
+  website: string;
+  platform?: 'all' | 'windows' | 'linux';
+  appType: 'docker' | 'native';
+  webPort?: string;
+  defaultPort?: number;
+  composeTemplate?: string;
+  nativeCommand?: string;
+  isCustom: true;
+  createdAt: string;
 }
 
 export interface AppView extends Omit<AppDefinition, 'compose' | 'files'> {
@@ -29,18 +46,60 @@ export interface AppView extends Omit<AppDefinition, 'compose' | 'files'> {
   platform: 'all' | 'windows' | 'linux';
   requiresGui: boolean;
   appType: 'docker' | 'native';
+  isCustom?: boolean;
 }
 
 const installed = new JsonCollection<InstalledApp>('apps.json');
+const customApps = new JsonCollection<CustomAppDefinition>('custom-apps.json');
 
 export const projectName = (id: string) => `zen-${id}`;
 export const containerName = (id: string) => `zen-${id}`;
 const appDir = (id: string) => dataPath('apps', id);
 
+function customToAppDef(c: CustomAppDefinition): AppDefinition {
+  const params: AppDefinition['params'] = [];
+  if (c.defaultPort) {
+    params.push({
+      key: 'port',
+      label: 'Cổng Web UI',
+      type: 'port',
+      default: c.defaultPort,
+    });
+  }
+
+  return {
+    id: c.id,
+    name: c.name,
+    description: c.description,
+    category: c.category || 'tools',
+    icon: c.icon || 'Package',
+    website: c.website || '',
+    platform: c.platform || 'all',
+    appType: c.appType,
+    params,
+    webPort: c.defaultPort ? 'port' : undefined,
+    isCustom: true,
+    compose:
+      c.appType === 'docker' && c.composeTemplate
+        ? (p, container) => {
+            let tpl = c.composeTemplate!;
+            tpl = tpl.replace(/\$\{container\}/g, container).replace(/\$\{port\}/g, p.port || String(c.defaultPort || 8080));
+            return tpl;
+          }
+        : undefined,
+    nativeInstall:
+      c.appType === 'native' && c.nativeCommand
+        ? { command: c.nativeCommand }
+        : undefined,
+  };
+}
+
 function findApp(id: string): AppDefinition {
   const app = APP_CATALOG.find((a) => a.id === id);
-  if (!app) throw new HttpError(404, 'Không tìm thấy ứng dụng');
-  return app;
+  if (app) return app;
+  const custom = customApps.get(id);
+  if (custom) return customToAppDef(custom);
+  throw new HttpError(404, 'Không tìm thấy ứng dụng');
 }
 
 export class AppStoreService {
@@ -64,8 +123,9 @@ export class AppStoreService {
   async list(): Promise<AppView[]> {
     const containers = await this.docker.containers().catch(() => [] as DockerContainer[]);
     const sys = this.systemInfo();
+    const allDefs: AppDefinition[] = [...APP_CATALOG, ...customApps.all().map(customToAppDef)];
 
-    return APP_CATALOG.map(({ compose: _compose, files: _files, ...app }) => {
+    return allDefs.map(({ compose: _compose, files: _files, ...app }) => {
       const record = installed.get(app.id) ?? null;
       const own = containers.filter((c) => c.project === projectName(app.id));
       const running = own.filter((c) => c.state === 'running').length;
@@ -86,6 +146,7 @@ export class AppStoreService {
 
       return {
         ...app,
+        isCustom: Boolean(app.isCustom),
         platform: app.platform ?? 'all',
         requiresGui: Boolean(app.requiresGui),
         appType: app.appType ?? 'docker',
@@ -97,6 +158,75 @@ export class AppStoreService {
         publicLink: record && app.webPort ? this.tunnels.state(app.id) : null,
       };
     });
+  }
+
+  // ------------------------------------------------------------------ Quản lý Ứng dụng Tùy chỉnh (Custom Apps)
+  getCustomApps(): CustomAppDefinition[] {
+    return customApps.all();
+  }
+
+  createCustomApp(input: {
+    id?: string;
+    name: string;
+    description: string;
+    category?: AppCategory;
+    icon?: string;
+    website?: string;
+    platform?: 'all' | 'windows' | 'linux';
+    appType: 'docker' | 'native';
+    defaultPort?: number;
+    composeTemplate?: string;
+    nativeCommand?: string;
+  }): CustomAppDefinition {
+    if (!input.name?.trim()) throw badRequest('Tên ứng dụng không được để trống');
+    const rawId = input.id?.trim() || input.name.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 24);
+    const id = rawId.startsWith('custom-') ? rawId : `custom-${rawId}`;
+
+    if (APP_CATALOG.some((a) => a.id === id) || customApps.get(id)) {
+      throw badRequest(`Mã ứng dụng "${id}" đã tồn tại trong kho, vui lòng chọn tên khác`);
+    }
+
+    const app: CustomAppDefinition = {
+      id,
+      name: input.name.trim(),
+      description: (input.description || '').trim(),
+      category: input.category || 'tools',
+      icon: input.icon || 'Package',
+      website: input.website?.trim() || '',
+      platform: input.platform || 'all',
+      appType: input.appType || 'docker',
+      defaultPort: input.defaultPort ? Number(input.defaultPort) : undefined,
+      composeTemplate: input.composeTemplate?.trim() || undefined,
+      nativeCommand: input.nativeCommand?.trim() || undefined,
+      isCustom: true,
+      createdAt: new Date().toISOString(),
+    };
+
+    customApps.upsert(app);
+    return app;
+  }
+
+  updateCustomApp(id: string, input: Partial<CustomAppDefinition>): CustomAppDefinition {
+    const existing = customApps.get(id);
+    if (!existing) throw badRequest('Không tìm thấy ứng dụng tùy chỉnh');
+
+    const updated: CustomAppDefinition = {
+      ...existing,
+      ...input,
+      id, // Giữ nguyên ID
+      isCustom: true,
+    };
+    customApps.upsert(updated);
+    return updated;
+  }
+
+  deleteCustomApp(id: string): void {
+    const existing = customApps.get(id);
+    if (!existing) throw badRequest('Không tìm thấy ứng dụng tùy chỉnh');
+    if (installed.get(id)) {
+      throw badRequest('Ứng dụng đang được cài đặt trên máy chủ. Vui lòng gỡ cài đặt trước khi xóa khỏi kho');
+    }
+    customApps.remove(id);
   }
 
   /** Tham số đầy đủ (kể cả mật khẩu) để xem / sửa trong "Cấu hình lại" */
@@ -214,7 +344,11 @@ export class AppStoreService {
       const { promisify } = await import('node:util');
       const execAsync = promisify(exec);
 
-      if (app.id === 'tdrop') {
+      if (app.nativeInstall?.command) {
+        jobLog(`Đang thực thi lệnh tùy chỉnh của ứng dụng: ${app.name}...`);
+        await execAsync(`powershell -NoProfile -Command "${app.nativeInstall.command.replace(/\r?\n/g, ' ')}"`);
+        jobLog(`✓ Hoàn tất thực thi lệnh cài đặt của ${app.name}`);
+      } else if (app.id === 'tdrop') {
         jobLog('Đang kiểm tra và tìm bản phát hành mới nhất của T-Drop (TXAVL/T-Drop)...');
         let downloadUrl = 'https://github.com/TXAVL/T-Drop/releases/download/v0.1.10/T-Drop-Setup-0.1.10.exe';
         let releaseTag = 'v0.1.10';
@@ -368,7 +502,11 @@ export class AppStoreService {
       const { promisify } = await import('node:util');
       const execAsync = promisify(exec);
 
-      if (app.id === 'btop') {
+      if (app.nativeInstall?.command) {
+        jobLog(`Đang thực thi lệnh tùy chỉnh của ứng dụng: ${app.name}...`);
+        await execAsync(app.nativeInstall.command);
+        jobLog(`✓ Hoàn tất thực thi lệnh cài đặt của ${app.name}`);
+      } else if (app.id === 'btop') {
         jobLog('Đang cài đặt btop monitor qua package manager...');
         await execAsync('apt-get update && apt-get install -y btop || (dnf install -y btop || pacman -S --noconfirm btop || apk add btop)');
         jobLog('✓ btop++ monitor đã được cài đặt thành công!');

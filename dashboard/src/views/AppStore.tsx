@@ -34,6 +34,7 @@ import {
   Newspaper,
   Package,
   Play,
+  Plus,
   RefreshCw,
   RotateCw,
   ScrollText,
@@ -55,12 +56,13 @@ import {
 import { useFeedback } from '../components/feedback';
 import { useJobs } from '../components/jobs';
 import { Badge, Button, CopyButton, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, SearchInput, Spinner, StatusDot, Tabs, Toggle, cn, type Tone } from '../components/ui';
-import { get, post } from '../lib/api';
+import { del, get, post } from '../lib/api';
 import { formatBytes } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { usePanel, usePublicHost } from '../lib/panel';
 import type { AppView, DockerInfo, Job, TunnelState } from '../lib/types';
 import { DockerMissing } from './Docker';
+import { CustomAppModal } from './CustomAppModal';
 
 const ICONS: Record<string, LucideIcon> = {
   Globe, Newspaper, Database, Zap, Leaf, Table, Table2, Container, Activity, Workflow, GitBranch, HardDrive, FolderOpen, Code, KeyRound, Cloud,
@@ -600,7 +602,8 @@ export default function AppStore() {
   const [wizard, setWizard] = useState<AppView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [uninstall, setUninstall] = useState<{ app: AppView; removeData: boolean } | null>(null);
-  const { run } = useFeedback();
+  const [customModalOpen, setCustomModalOpen] = useState(false);
+  const { run, confirm, toast } = useFeedback();
   const { runJob } = useJobs();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -663,6 +666,24 @@ export default function AppStore() {
     await apps.reload();
   };
 
+  const handleDeleteCustomApp = async (app: AppView) => {
+    const ok = await confirm({
+      title: `Xóa ứng dụng tùy chỉnh`,
+      message: `Bạn có chắc muốn xóa ứng dụng tùy chỉnh "${app.name}" khỏi App Store?`,
+      confirmLabel: 'Xóa ứng dụng',
+      danger: true,
+    });
+    if (!ok) return;
+
+    try {
+      await del(`/api/apps/custom/${app.id}`);
+      toast(`Đã xóa "${app.name}" khỏi kho`, 'success');
+      await apps.reload();
+    } catch (err: any) {
+      toast(err?.message || 'Không thể xóa ứng dụng tùy chỉnh', 'error');
+    }
+  };
+
   const composePath = async (app: AppView) => {
     const result = await run(() => get<{ path: string }>(`/api/apps/${app.id}/compose`));
     if (result) navigate(`/files?open=${encodeURIComponent(result.path)}`);
@@ -675,9 +696,14 @@ export default function AppStore() {
         description={`Cài ứng dụng 1-Click (Docker Compose & Native System Apps) · đã cài ${installedCount}`}
         icon={LayoutGrid}
         actions={
-          <Button icon={RefreshCw} onClick={() => void apps.reload()} loading={apps.loading}>
-            Làm mới
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="primary" icon={Plus} onClick={() => setCustomModalOpen(true)}>
+              Thêm app tùy chỉnh
+            </Button>
+            <Button icon={RefreshCw} onClick={() => void apps.reload()} loading={apps.loading}>
+              Làm mới
+            </Button>
+          </div>
         }
       />
 
@@ -794,6 +820,11 @@ export default function AppStore() {
                         </div>
                         <p className="mt-1 line-clamp-2 text-sm text-slate-400">{app.description}</p>
                         <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {app.isCustom && (
+                            <span className="inline-flex items-center gap-1 rounded bg-fuchsia-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-fuchsia-300 border border-fuchsia-500/20">
+                              ✨ Custom App
+                            </span>
+                          )}
                           {app.appType === 'native' ? (
                             <span className={cn(
                               'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold border',
@@ -841,17 +872,39 @@ export default function AppStore() {
                     )}
                     <div className="mt-auto flex flex-wrap items-center gap-1 pt-4">
                       {!app.installed ? (
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          icon={Download}
-                          onClick={() => setInstalling(app)}
-                          className="w-full"
-                          disabled={app.isCompatible === false}
-                          title={app.isCompatible === false ? 'Ứng dụng không tương thích với máy này' : undefined}
-                        >
-                          {app.isCompatible === false ? 'Không tương thích' : 'Cài đặt'}
-                        </Button>
+                        app.isCustom ? (
+                          <div className="flex w-full items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              icon={Download}
+                              onClick={() => setInstalling(app)}
+                              className="flex-1"
+                              disabled={app.isCompatible === false}
+                              title={app.isCompatible === false ? 'Ứng dụng không tương thích với máy này' : undefined}
+                            >
+                              {app.isCompatible === false ? 'Không tương thích' : 'Cài đặt'}
+                            </Button>
+                            <IconButton
+                              icon={Trash2}
+                              title="Xóa ứng dụng tùy chỉnh khỏi kho"
+                              className="hover:text-zen-red"
+                              onClick={() => void handleDeleteCustomApp(app)}
+                            />
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            icon={Download}
+                            onClick={() => setInstalling(app)}
+                            className="w-full"
+                            disabled={app.isCompatible === false}
+                            title={app.isCompatible === false ? 'Ứng dụng không tương thích với máy này' : undefined}
+                          >
+                            {app.isCompatible === false ? 'Không tương thích' : 'Cài đặt'}
+                          </Button>
+                        )
                       ) : (
                         <>
                           {app.webPort ? (
@@ -929,6 +982,7 @@ export default function AppStore() {
       )}
       {reconfig && <ReconfigureModal app={reconfig} onClose={() => setReconfig(null)} onDone={() => void apps.reload()} />}
       {wizard && <N8nWizard app={wizard} onClose={() => setWizard(null)} onDone={() => void apps.reload()} />}
+      <CustomAppModal open={customModalOpen} onClose={() => setCustomModalOpen(false)} onCreated={() => void apps.reload()} />
 
       <Modal open={Boolean(uninstall)} onClose={() => setUninstall(null)} title={`Gỡ ${uninstall?.app.name ?? ''}`} size="sm">
         {uninstall && (

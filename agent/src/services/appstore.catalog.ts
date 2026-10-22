@@ -47,6 +47,8 @@ export interface AppDefinition {
   requiresGui?: boolean;
   /** Loại ứng dụng: 'docker' | 'native' (mặc định 'docker') */
   appType?: 'docker' | 'native';
+  /** Đánh dấu là ứng dụng tùy chỉnh do người dùng thêm */
+  isCustom?: boolean;
   /** Lệnh / URL tải hoặc script cài đặt app native */
   nativeInstall?: {
     downloadUrl?: string;
