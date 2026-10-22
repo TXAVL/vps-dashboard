@@ -86,21 +86,123 @@ interface GatewayLog {
   rotatedFrom?: string | null;
 }
 
-const PROVIDER_COLORS: Record<string, string> = {
-  openai: 'from-emerald-500/30 to-emerald-900/10 text-emerald-300',
-  anthropic: 'from-orange-500/30 to-orange-900/10 text-orange-300',
-  gemini: 'from-sky-500/30 to-indigo-900/10 text-sky-300',
-  openrouter: 'from-violet-500/30 to-violet-900/10 text-violet-300',
-  nvidia: 'from-lime-500/30 to-lime-900/10 text-lime-300',
-};
 
 const ctx = (n: number | null) => (n ? (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}K`) : '—');
 const price = (n: number) => (n === 0 ? 'Miễn phí' : `$${n < 0.01 ? n.toFixed(4) : n.toFixed(2)}`);
 
-function ProviderLogo({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' }) {
+// --- Biểu tượng Vector SVG chính thức cho các nhà cung cấp AI & Sub-Agents ---
+
+function OpenAiIcon({ className = 'size-5' }: { className?: string }) {
   return (
-    <div className={cn('flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-br font-extrabold uppercase', PROVIDER_COLORS[id] ?? 'text-slate-300', size === 'sm' ? 'size-7 text-[10px]' : 'size-10 text-xs')}>
-      {id.slice(0, 2)}
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="OpenAI">
+      <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.5045 4.5045 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.6669zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z" />
+    </svg>
+  );
+}
+
+function ClaudeSparkIcon({ className = 'size-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="Anthropic Claude">
+      <path d="M13.827 3.5a.75.75 0 0 0-1.404-.374l-2.316 8.7a.75.75 0 0 1-.95.525L4.72 10.97a.75.75 0 0 0-.73 1.282l6.892 5.06a.75.75 0 0 1 .288 1.05l-4.22 6.86a.75.75 0 0 0 1.233.84l7.147-5.83a.75.75 0 0 1 1.066.273l3.784 6.78a.75.75 0 0 0 1.348-.68l-3.32-8.38a.75.75 0 0 1 .458-1.002l7.747-2.67a.75.75 0 0 0-.416-1.424l-8.11 1.76a.75.75 0 0 1-.89-.572L13.827 3.5Z" />
+    </svg>
+  );
+}
+
+function GeminiIcon({ className = 'size-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-label="Google Gemini">
+      <defs>
+        <linearGradient id="gemini-star-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#1B72E8" />
+          <stop offset="35%" stopColor="#8AB4F8" />
+          <stop offset="70%" stopColor="#C58AF9" />
+          <stop offset="100%" stopColor="#F28B82" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M12 0C12 6.627 6.627 12 0 12C6.627 12 12 17.373 12 24C12 17.373 17.373 12 24 12C17.373 12 12 6.627 12 0Z"
+        fill="url(#gemini-star-grad)"
+      />
+    </svg>
+  );
+}
+
+function OpenRouterIcon({ className = 'size-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="OpenRouter">
+      <path d="M18.82 7.74a1.64 1.64 0 0 0-1.63-1.64h-3.14V3.64A1.64 1.64 0 0 0 12.41 2h-.82a1.64 1.64 0 0 0-1.64 1.64v2.46H6.81a1.64 1.64 0 0 0-1.64 1.64v5.46a1.64 1.64 0 0 0 1.64 1.64h3.14v4.46a1.64 1.64 0 0 0 1.64 1.64h.82a1.64 1.64 0 0 0 1.64-1.64v-4.46h3.14a1.64 1.64 0 0 0 1.64-1.64V7.74Zm-5.38 6.06h-2.88V9.12h2.88v4.68Z" />
+    </svg>
+  );
+}
+
+function NvidiaIcon({ className = 'size-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="NVIDIA">
+      <path d="M8.938 6.477c-.504.095-.98.24-1.428.432-.38.163-.733.36-1.057.59-.22.155-.262.333-.127.533.125.183.332.188.54.083.748-.38 1.573-.59 2.457-.624.473-.018.94.025 1.396.126.963.212 1.77.685 2.392 1.405.62.718.93 1.576.93 2.545 0 .807-.22 1.545-.657 2.19-.435.642-1.028 1.13-1.764 1.45-.733.318-1.544.475-2.414.475-.828 0-1.603-.146-2.308-.432-.698-.283-1.282-.69-1.737-1.21-.45-.515-.718-1.127-.8-1.82a4.42 4.42 0 0 1 .472-2.525c.34-.633.82-1.17 1.425-1.597.168-.118.2-.284.096-.457-.107-.175-.297-.2-.486-.07-.743.513-1.33 1.168-1.745 1.947-.417.78-.584 1.63-.497 2.534.098.98.442 1.83 1.025 2.53.585.702 1.328 1.233 2.213 1.58.887.346 1.837.52 2.83.52 1.05 0 2.036-.188 2.936-.56.9-.373 1.635-.935 2.188-1.67.553-.736.833-1.604.833-2.585 0-1.162-.365-2.188-1.085-3.05-.72-.86-1.66-1.424-2.8-1.68a7.82 7.82 0 0 0-1.28-.108zm2.664-3.52c-.785-.098-1.59-.06-2.397.112-1.092.23-2.102.666-3.006 1.298-.445.31-.854.67-1.22 1.07-.184.202-.15.38.077.518.21.126.39.076.57-.123.633-.69 1.378-1.22 2.217-1.576.845-.357 1.74-.526 2.662-.504 1.13.027 2.2.296 3.18.8 1.01.52 1.836 1.248 2.457 2.164.625.92.94 1.966.94 3.11 0 1.02-.24 1.964-.712 2.813-.474.85-1.127 1.528-1.942 2.018-.816.49-1.728.756-2.716.79-1.02.035-2.003-.17-2.923-.61-.918-.44-1.665-1.077-2.223-1.896-.554-.816-.867-1.747-.932-2.77-.07-1.082.176-2.113.73-3.07.55-.95 1.31-1.71 2.26-2.26.19-.11.23-.28.11-.47-.11-.18-.28-.21-.48-.09-1.11.634-1.99 1.515-2.628 2.623-.637 1.11-.92 2.308-.84 3.565.076 1.19.435 2.264 1.07 3.203.64.94 1.487 1.677 2.52 2.193 1.038.514 2.15.764 3.31.744 1.12-.02 2.17-.3 3.13-.836.96-.537 1.724-1.288 2.274-2.235.553-.948.835-2.012.835-3.17 0-1.3-.356-2.484-1.06-3.52-.705-1.037-1.64-1.86-2.787-2.45-1.144-.588-2.38-.9-3.682-.93z" />
+    </svg>
+  );
+}
+
+function SubAgentIcon({ className = 'size-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-label="Sub-Agent">
+      <path d="M12 8V4H8" />
+      <rect width="16" height="12" x="4" y="8" rx="2" fill="currentColor" fillOpacity="0.15" />
+      <path d="M2 14h2" />
+      <path d="M20 14h2" />
+      <path d="M15 13v2" />
+      <path d="M9 13v2" />
+    </svg>
+  );
+}
+
+function DeepSeekIcon({ className = 'size-5' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="DeepSeek">
+      <path d="M12 2a10 10 0 0 0-10 10c0 4.14 2.52 7.69 6.14 9.19.16-.72.37-1.57.65-2.52-2.56-.63-3.61-2.48-3.61-2.48-.38-.97-.93-1.23-.93-1.23-.84-.57.06-.56.06-.56.93.07 1.42.95 1.42.95.82 1.41 2.16 1 2.68.77.08-.6.33-1 .59-1.23-2.31-.26-4.74-1.16-4.74-5.15 0-1.14.41-2.07 1.08-2.8-.11-.26-.47-1.32.1-2.76 0 0 .88-.28 2.88 1.07a10.05 10.05 0 0 1 5.24 0c2-1.35 2.88-1.07 2.88-1.07.57 1.44.21 2.5.1 2.76.67.73 1.08 1.66 1.08 2.8 0 4-2.44 4.88-4.76 5.14.34.29.64.87.64 1.75 0 1.26-.01 2.28-.01 2.59 0 .25.17.55.65.45A10 10 0 0 0 22 12A10 10 0 0 0 12 2Z" />
+    </svg>
+  );
+}
+
+function ProviderLogo({ id, size = 'md', className }: { id: string; size?: 'sm' | 'md' | 'lg'; className?: string }) {
+  const norm = (id.includes('/') ? id.split('/')[0] : id).toLowerCase();
+  const isSm = size === 'sm';
+  const isLg = size === 'lg';
+
+  const iconClass = isSm ? 'size-3.5' : isLg ? 'size-6' : 'size-5';
+  const boxClass = isSm ? 'size-7 rounded-lg' : isLg ? 'size-12 rounded-2xl' : 'size-10 rounded-xl';
+
+  let iconNode = null;
+  let bgStyles = 'bg-slate-800/80 text-slate-300 border border-slate-700/60 shadow-inner';
+
+  if (norm.includes('openai')) {
+    iconNode = <OpenAiIcon className={cn(iconClass, 'text-emerald-400')} />;
+    bgStyles = 'bg-gradient-to-br from-emerald-950/80 via-emerald-900/30 to-ink-950 border border-emerald-500/30 shadow-[0_0_12px_rgba(16,163,127,0.18)]';
+  } else if (norm.includes('anthropic') || norm.includes('claude')) {
+    iconNode = <ClaudeSparkIcon className={cn(iconClass, 'text-[#D97706]')} />;
+    bgStyles = 'bg-gradient-to-br from-amber-950/80 via-orange-950/30 to-ink-950 border border-amber-500/30 shadow-[0_0_12px_rgba(217,119,6,0.18)]';
+  } else if (norm.includes('gemini') || norm.includes('google')) {
+    iconNode = <GeminiIcon className={iconClass} />;
+    bgStyles = 'bg-gradient-to-br from-indigo-950/80 via-blue-950/30 to-ink-950 border border-indigo-500/30 shadow-[0_0_12px_rgba(79,70,229,0.22)]';
+  } else if (norm.includes('openrouter')) {
+    iconNode = <OpenRouterIcon className={cn(iconClass, 'text-purple-400')} />;
+    bgStyles = 'bg-gradient-to-br from-purple-950/80 via-violet-950/30 to-ink-950 border border-purple-500/30 shadow-[0_0_12px_rgba(168,85,247,0.18)]';
+  } else if (norm.includes('nvidia')) {
+    iconNode = <NvidiaIcon className={cn(iconClass, 'text-[#76B900]')} />;
+    bgStyles = 'bg-gradient-to-br from-lime-950/80 via-emerald-950/30 to-ink-950 border border-lime-500/30 shadow-[0_0_12px_rgba(118,185,0,0.2)]';
+  } else if (norm.startsWith('agent') || norm.includes('subagent') || norm.includes('bot')) {
+    iconNode = <SubAgentIcon className={cn(iconClass, 'text-cyan-400')} />;
+    bgStyles = 'bg-gradient-to-br from-cyan-950/80 via-blue-950/30 to-ink-950 border border-cyan-500/30 shadow-[0_0_12px_rgba(34,211,238,0.2)]';
+  } else if (norm.includes('deepseek')) {
+    iconNode = <DeepSeekIcon className={cn(iconClass, 'text-blue-400')} />;
+    bgStyles = 'bg-gradient-to-br from-blue-950/80 via-sky-950/30 to-ink-950 border border-blue-500/30 shadow-[0_0_12px_rgba(59,130,246,0.2)]';
+  } else {
+    iconNode = <Sparkles className={cn(iconClass, 'text-slate-400')} />;
+  }
+
+  return (
+    <div className={cn('flex shrink-0 items-center justify-center transition-all duration-200 hover:scale-105', boxClass, bgStyles, className)}>
+      {iconNode}
     </div>
   );
 }
@@ -601,8 +703,8 @@ function PlaygroundTab({ initialModel, models }: { initialModel: string; models:
           ) : (
             messages.map((m, i) => (
               <div key={i} className={cn('flex gap-3', m.role === 'user' && 'flex-row-reverse')}>
-                <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-xl', m.role === 'user' ? 'bg-zen-blue/20 text-blue-300' : 'bg-zen-green/15 text-emerald-300')}>
-                  {m.role === 'user' ? 'Bạn' : <Bot className="size-4" />}
+                <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-xl', m.role === 'user' ? 'bg-zen-blue/20 text-blue-300 font-semibold text-xs' : '')}>
+                  {m.role === 'user' ? 'Bạn' : <ProviderLogo id={model} size="sm" />}
                 </div>
                 <div className={cn('max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-sm', m.role === 'user' ? 'bg-zen-blue/15 text-slate-100' : 'bg-ink-950/70 text-slate-200')}>
                   {m.content || (streaming && i === messages.length - 1 ? <span className="animate-pulse text-slate-500">Đang trả lời...</span> : '')}
@@ -847,9 +949,7 @@ function SubAgentsTab({ models, onTry }: { models: AiModel[]; onTry: (model: str
             <div key={a.id} className="glass flex flex-col justify-between p-5 border-slate-700/60 hover:border-purple-500/40 transition">
               <div className="space-y-3">
                 <div className="flex items-start gap-3">
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500/30 to-indigo-900/30 text-purple-300 ring-1 ring-white/10">
-                    <Bot className="size-5" />
-                  </div>
+                  <ProviderLogo id="agent" size="md" />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <h4 className="font-bold text-white truncate">{a.name}</h4>
@@ -862,9 +962,12 @@ function SubAgentsTab({ models, onTry }: { models: AiModel[]; onTry: (model: str
                 {a.description && <p className="text-xs text-slate-400 line-clamp-2">{a.description}</p>}
 
                 <div className="rounded-xl border border-slate-800 bg-ink-950/60 p-2.5 text-xs space-y-1">
-                  <div className="flex justify-between text-slate-400">
+                  <div className="flex justify-between items-center text-slate-400">
                     <span>Model đích:</span>
-                    <span className="mono font-semibold text-slate-200">{a.targetModel}</span>
+                    <span className="mono font-semibold text-slate-200 flex items-center gap-1.5">
+                      <ProviderLogo id={a.targetModel} size="sm" />
+                      {a.targetModel}
+                    </span>
                   </div>
                   <div className="flex justify-between text-slate-400">
                     <span>Nhiệt độ (temp):</span>
@@ -1171,12 +1274,17 @@ function ActivityTab() {
                     <tr key={`${l.at}-${i}`} className={tr}>
                       <td className={cn(td, 'text-xs text-slate-400 whitespace-nowrap')}>{formatRelative(l.at)}</td>
                       <td className={cn(td, 'max-w-[320px]')}>
-                        <div className="flex items-center gap-1.5">
-                          <span className="mono truncate font-semibold text-slate-100">{l.model}</span>
-                          {l.subAgent && <Badge tone="blue" className="text-[10px]">🤖 {l.subAgent}</Badge>}
+                        <div className="flex items-center gap-2">
+                          <ProviderLogo id={l.subAgent ? 'agent' : (l.provider || l.model)} size="sm" />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="mono truncate font-semibold text-slate-100">{l.model}</span>
+                              {l.subAgent && <Badge tone="blue" className="text-[10px]">🤖 {l.subAgent}</Badge>}
+                            </div>
+                            {l.fallbackFrom && <div className="text-xs text-amber-300">dự phòng cho {l.fallbackFrom}</div>}
+                            {l.error && <div className="truncate text-xs text-red-300" title={l.error}>{l.error}</div>}
+                          </div>
                         </div>
-                        {l.fallbackFrom && <div className="text-xs text-amber-300">dự phòng cho {l.fallbackFrom}</div>}
-                        {l.error && <div className="truncate text-xs text-red-300" title={l.error}>{l.error}</div>}
                       </td>
                       <td className={cn(td, 'text-xs')}>
                         {l.accountName ? (
@@ -1230,11 +1338,13 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
   const connected = providers.filter((p) => p.configured).length;
   const totalAccounts = providers.reduce((sum, p) => sum + (p.totalAccounts ?? (p.configured ? 1 : 0)), 0);
 
+  const dockerBase = 'http://host.docker.internal:8000/zen/v1';
+
   const samples = {
     curl: `curl ${base}/chat/completions \\\n  -H "Authorization: Bearer ${gateway.apiKey}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${model}", "messages": [{"role": "user", "content": "Xin chào"}]}'`,
     python: `from openai import OpenAI\n\nclient = OpenAI(base_url="${base}", api_key="${gateway.apiKey}")\nres = client.chat.completions.create(\n    model="${model}",\n    messages=[{"role": "user", "content": "Xin chào"}],\n)\nprint(res.choices[0].message.content)`,
     node: `import OpenAI from 'openai';\n\nconst client = new OpenAI({ baseURL: '${base}', apiKey: '${gateway.apiKey}' });\nconst res = await client.chat.completions.create({\n  model: '${model}',\n  messages: [{ role: 'user', content: 'Xin chào' }],\n});\nconsole.log(res.choices[0].message.content);`,
-    n8n: `Credentials → New → "OpenAI"\n  API Key : ${gateway.apiKey}\n  Base URL: ${base}\n\nNode "AI Agent" / "OpenAI Chat Model" → Model: ${model}\n(gõ tên model dạng provider/model hoặc sub-agent dạng agent/coder)`,
+    n8n: `=== CÁCH KẾT NỐI N8N VỚI ZENPANEL AI GATEWAY ===\n\n1. Tạo Credential trong n8n:\n   - Menu trái: Credentials → Add Credential → Chọn "OpenAI"\n   - API Key: ${gateway.apiKey}\n   - Base URL (trong Advanced/URL Options):\n     * Nếu n8n chạy Docker trên cùng VPS (Khuyên dùng):\n       ${dockerBase}\n     * Nếu n8n chạy ngoài hoặc qua Domain/Tunnel:\n       ${base}\n\n2. Kéo Node trong Workflow:\n   - Kéo node "AI Agent" (hoặc "Chat Model")\n   - Kéo node "OpenAI Chat Model" gắn vào cổng Model của AI Agent\n   - Chọn Credential OpenAI vừa tạo ở trên\n\n3. BẬT CUSTOM MODEL (Mấu chốt):\n   - Ô "Model" bấm biểu tượng chuyển sang "Custom" / "Expression"\n   - Gõ tên model bất kỳ:\n     • gemini/gemini-2.5-flash (siêu nhanh, rẻ)\n     • anthropic/claude-3-7-sonnet (thông minh nhất)\n     • openai/gpt-4o\n     • agent/coder (Sub-Agent của bạn)\n     • auto (ZenPanel tự động phân luồng)`,
   };
 
   return (
@@ -1268,10 +1378,17 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
           <div className="space-y-3">
             {!gateway.enabled && <Notice tone="amber">Gateway đang tắt: endpoint trả lỗi 503. Bật công tắc ở góc trên để dùng từ app khác.</Notice>}
             <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3 py-2">
-              <div className="text-xs text-slate-500">Base URL</div>
+              <div className="text-xs text-slate-500">Base URL (Public / Mạng ngoài)</div>
               <div className="flex items-center gap-2">
                 <span className="mono min-w-0 flex-1 truncate text-slate-100">{base}</span>
                 <CopyButton value={base} />
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3 py-2">
+              <div className="text-xs text-slate-500">Base URL nội bộ Docker (n8n, Flowise, Open WebUI chạy cùng VPS)</div>
+              <div className="flex items-center gap-2">
+                <span className="mono min-w-0 flex-1 truncate text-emerald-300">{dockerBase}</span>
+                <CopyButton value={dockerBase} />
               </div>
             </div>
             <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3 py-2">
@@ -1286,7 +1403,7 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
             <div className="flex flex-wrap items-center gap-2">
               {(['curl', 'python', 'node', 'n8n'] as const).map((l) => (
                 <button key={l} onClick={() => setLang(l)} className={cn('rounded-lg px-2.5 py-1 text-xs font-semibold', lang === l ? 'bg-zen-blue text-white' : 'bg-slate-800 text-slate-400 hover:text-white')}>
-                  {l === 'node' ? 'Node.js' : l === 'n8n' ? 'n8n' : l === 'python' ? 'Python' : 'cURL'}
+                  {l === 'node' ? 'Node.js' : l === 'n8n' ? '⚡ n8n Setup' : l === 'python' ? 'Python' : 'cURL'}
                 </button>
               ))}
               <span className="ml-auto">
@@ -1344,6 +1461,87 @@ function OverviewTab({ gateway, saveGateway, regenerate, providers }: { gateway:
         </Card>
         </div>
       </div>
+
+      {/* Card Hướng dẫn setup n8n chuyên sâu chuẩn chỉ */}
+      <Card
+        title="Hướng dẫn thiết lập n8n kết nối ZenPanel AI Gateway (Chuẩn 100% không lỗi kết nối)"
+        icon={Boxes}
+      >
+        <div className="space-y-4">
+          <Notice tone="blue">
+            <strong>Nguyên tắc vàng:</strong> Vì n8n chạy trong container Docker, <code className="mono">localhost</code> trong n8n là chính container đó. Để n8n kết nối về ZenPanel Gateway trên cùng máy chủ VPS, bạn <strong>bắt buộc</strong> dùng <code className="mono font-bold text-emerald-300">http://host.docker.internal:8000/zen/v1</code>.
+          </Notice>
+
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-slate-700/60 bg-ink-950/60 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex size-6 items-center justify-center rounded-full bg-purple-500/20 text-xs font-bold text-purple-300">1</span>
+                <h4 className="font-bold text-white text-sm">Tạo Credential</h4>
+              </div>
+              <p className="text-xs text-slate-400">
+                Trong n8n, menu trái chọn <strong>Credentials</strong> → <strong>Add Credential</strong> → tìm và chọn <strong>OpenAI</strong>.
+              </p>
+              <div className="text-[11px] text-slate-500">
+                (Không chọn Anthropic hay Gemini vì Gateway của ZenPanel chuẩn hóa theo giao thức OpenAI).
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-700/60 bg-ink-950/60 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex size-6 items-center justify-center rounded-full bg-purple-500/20 text-xs font-bold text-purple-300">2</span>
+                <h4 className="font-bold text-white text-sm">Nhập URL & API Key</h4>
+              </div>
+              <div className="space-y-1.5 text-xs">
+                <div>
+                  <div className="text-slate-400">Base URL:</div>
+                  <div className="flex items-center justify-between gap-1 rounded bg-slate-900 px-2 py-1 mono text-[11px] text-emerald-300">
+                    <span className="truncate">{dockerBase}</span>
+                    <CopyButton value={dockerBase} />
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-400">API Key:</div>
+                  <div className="flex items-center justify-between gap-1 rounded bg-slate-900 px-2 py-1 mono text-[11px] text-slate-300">
+                    <span className="truncate">{gateway.apiKey.slice(0, 10)}...</span>
+                    <CopyButton value={gateway.apiKey} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-700/60 bg-ink-950/60 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex size-6 items-center justify-center rounded-full bg-purple-500/20 text-xs font-bold text-purple-300">3</span>
+                <h4 className="font-bold text-white text-sm">Bật Custom Model</h4>
+              </div>
+              <p className="text-xs text-slate-400">
+                Kéo node <strong>AI Agent</strong> + <strong>OpenAI Chat Model</strong>.
+              </p>
+              <p className="text-xs text-amber-300">
+                ⚠️ Bấm biểu tượng bút/chuyển đổi cạnh ô <strong>Model</strong> sang chế độ <strong>Expression (Custom Input)</strong> để gõ tay:
+              </p>
+              <div className="mono text-[11px] text-slate-300 space-y-0.5">
+                <div>• <code className="text-sky-300">gemini/gemini-2.5-flash</code></div>
+                <div>• <code className="text-orange-300">anthropic/claude-3-7-sonnet</code></div>
+                <div>• <code className="text-purple-300">agent/coder</code> (Sub-Agent)</div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-700/60 bg-ink-950/60 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="flex size-6 items-center justify-center rounded-full bg-purple-500/20 text-xs font-bold text-purple-300">4</span>
+                <h4 className="font-bold text-white text-sm">Test & Theo dõi Log</h4>
+              </div>
+              <p className="text-xs text-slate-400">
+                Thêm node <strong>Window Buffer Memory</strong> + <strong>Chat Trigger</strong> để chat thử trực tiếp trong n8n.
+              </p>
+              <p className="text-xs text-emerald-400">
+                Mở tab <strong>Hoạt động</strong> trong ZenPanel để xem log request nhảy về realtime, đo tốc độ ms, token và trạng thái xoay vòng tài khoản!
+              </p>
+            </div>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }
