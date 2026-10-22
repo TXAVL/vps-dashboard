@@ -1,4 +1,5 @@
 // ZenPanel - Nhật ký thay đổi hiển thị trong hộp thoại "Có gì mới"
+// Ngôn ngữ thân thiện, dễ hiểu, hướng đến trải nghiệm người dùng cuối
 
 export interface ChangelogEntry {
   version: string;
@@ -9,31 +10,71 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '0.6.0',
-    date: '2026-10-22',
+    date: '2026-10-23',
     highlights: [
       {
-        title: 'API Tester: Tối ưu Toàn diện Responsive & Phóng to Response Full View',
+        title: '📦 Kho Repos Sản Phẩm & Nhập Hàng Loạt Ứng Dụng (App Repositories)',
         items: [
-          'Khắc phục triệt để lỗi tràn màn hình của trình soạn thảo Monaco / VS Code Theme trên giao diện di động và màn hình nhỏ.',
-          'Bổ sung nút Phóng to / Thu nhỏ Response (Toàn màn hình) cho phép xem trọn vẹn kết quả JSON, HTML, Headers mà không bị khuất.',
-          'Giới hạn khung nhìn 100dvh và tích hợp thanh cuộn độc lập mượt mà, cuộn response thoải mái trên mọi độ phân giải.',
+          'Thêm kho ứng dụng bên ngoài dễ dàng: Chỉ cần dán đường dẫn link JSON (như raw GitHub hoặc máy chủ riêng) là hệ thống tự động nhận diện và nạp cả lô ứng dụng vào App Store.',
+          'Quản lý kho tập trung: Cửa sổ "Kho Repos" trực quan giúp bạn xem danh sách các nguồn ứng dụng đã kết nối, số lượng app của từng nguồn và thời gian đồng bộ.',
+          'Huy hiệu nhận diện nguồn gốc: Mọi ứng dụng được nhập từ bên ngoài sẽ có huy hiệu gắn tên kho tương ứng, giúp bạn dễ dàng phân biệt với kho mặc định của ZenPanel.',
+          'Đồng bộ 1 chạm: Bấm nút "Đồng bộ lại" để tự động cập nhật danh sách ứng dụng mới nhất từ các nhà phát triển kho.',
+          'Mẫu JSON chuẩn có sẵn: Cung cấp sẵn mẫu cấu trúc JSON chuẩn kèm nút sao chép nhanh, giúp bất kỳ ai cũng có thể tự tạo kho ứng dụng riêng cho đội nhóm hoặc công ty.',
         ],
       },
       {
-        title: 'Dọn dẹp Hệ thống Chuyên sâu & Giải phóng RAM Win32 Thực tế',
+        title: '🔄 Cập Nhật 1-Click Toàn Diện Cho Tất Cả Ứng Dụng (Universal Update)',
         items: [
-          'Tách riêng Modal Dọn dẹp độc lập (CleanRunnerModal) với thanh tiến trình % thời gian thực và Step Tracker 4 bước.',
-          'Bảng so sánh Before & After: hiển thị chính xác dung lượng Ổ đĩa và RAM thực tế đã được giải phóng.',
-          'Windows: Quét sạch Thùng rác, SoftwareDistribution, Temp, CrashDumps và giải phóng Working Set RAM nhàn rỗi qua Win32 API psapi.dll.',
-          'Linux: Quét sạch log nén cũ, crash dump, apt cache và drop pagecache.',
+          'Ứng dụng Docker: Tự động kéo hình ảnh (Docker Image) mới nhất và khởi động lại container an toàn mà không làm mất dữ liệu đã lưu.',
+          'Ứng dụng Native: Bổ sung nút "Cập nhật" trực tiếp trên từng thẻ ứng dụng đã cài (Node.js, Go, Python, Cloudflare Tunnel, RustDesk, Nginx, WireGuard...).',
+          'Nâng cấp thông minh: Hệ thống tự động tải phiên bản phát hành mới nhất từ nhà sản xuất hoặc GitHub Release, tự áp dụng cấu hình cũ giúp dịch vụ luôn chạy trơn tru.',
         ],
       },
       {
-        title: 'Kho Ứng dụng Thích ứng (OS Adaptive App Store) & Tối ưu n8n',
+        title: '🛠️ Nâng Cấp Công Cụ Nền Tảng Hệ Thống Thông Minh',
         items: [
-          'Tự động nhận diện hệ điều hành (Windows / Linux) và môi trường đồ họa (Desktop GUI vs Server Headless).',
-          'Bổ sung các ứng dụng Native thiết thực: T-Drop TXAVL 1-Click, UniKey tiếng Việt, 7-Zip, Notepad++, Cốc Cốc Browser, IBus-Bamboo.',
-          'Tối ưu hóa n8n: khống chế RAM ở mức 512MB, tự động prune execution cũ, dọn sạch SQLite DB khi khởi động, chạy mượt mà ngay cả trên VPS 4GB.',
+          'Tự động kiểm tra bản mới: ZenPanel tự động đối chiếu phiên bản của các công cụ cốt lõi trên VPS (Docker, Node.js, Git, Cloudflared...) với bản phát hành mới nhất trên internet.',
+          'Chỉ hiển thị nút khi cần: Nút nâng cấp sẽ chỉ xuất hiện khi thực sự có bản cập nhật mới, tránh gây rối mắt và thao tác thừa.',
+          'Nâng cấp an toàn 1-chạm: Bấm nút để hệ thống tự động tải và cài đặt bản mới nhất trong nền, có thông báo trạng thái rõ ràng.',
+        ],
+      },
+      {
+        title: '🎨 Bộ Chọn Theme & Đổi Màu Giao Diện (Theme Switcher)',
+        items: [
+          'Tùy biến phong cách cá nhân: Dễ dàng lựa chọn giữa nhiều chủ đề màu sắc hiện đại (Xanh Zen, Tím Jupiter, Xanh lục Emerald, Hổ phách Amber...) cùng các tông nền tối sang trọng.',
+          'Giao diện trực quan: Chuyển đổi nhanh chóng ngay trên thanh điều khiển hoặc trong trang Cài đặt, áp dụng tức thì không cần tải lại trang.',
+        ],
+      },
+      {
+        title: '🧹 Dọn Gọn Danh Sách Tác Vụ Nền (Background Tasks)',
+        items: [
+          'Bổ sung nút "Xoá tác vụ hoàn thành": Chỉ với một cú nhấp, toàn bộ các tác vụ cài đặt, dọn dẹp hoặc sao lưu đã xong sẽ được dọn sạch khỏi danh sách.',
+          'Giữ không gian làm việc luôn gọn gàng, giúp bạn dễ dàng theo dõi các tác vụ đang thực sự chạy.',
+        ],
+      },
+      {
+        title: '💻 Kho Ứng Dụng Thích Ứng Theo Hệ Điều Hành (OS Adaptive App Store)',
+        items: [
+          'Tự động nhận diện môi trường: Phân biệt chính xác giữa Windows Desktop, Windows Server, Ubuntu, Debian, CentOS, Arch Linux, macOS và BSD.',
+          'Gợi ý phần mềm chuẩn xác: Tự động hiển thị các ứng dụng tối ưu nhất theo từng hệ điều hành (ví dụ: bộ gõ UniKey, 7-Zip, Notepad++, Cốc Cốc cho Windows; IBus-Bamboo, Nginx native cho Linux).',
+          'Tối ưu hóa n8n: Khống chế bộ nhớ tiêu thụ ở mức 512MB, tự động dọn dẹp dữ liệu thực thi cũ, giúp chạy mượt mà ổn định ngay cả trên VPS cấu hình khiêm tốn 4GB RAM.',
+        ],
+      },
+      {
+        title: '🚀 Dọn Dẹp Hệ Thống Chuyên Sâu & Giải Phóng RAM Thật',
+        items: [
+          'Hộp thoại dọn dẹp chuyên nghiệp với thanh tiến trình trực quan theo từng bước thực hiện.',
+          'Bảng so sánh trước và sau (Before & After): Thấy ngay dung lượng ổ đĩa và RAM thực tế vừa được giải phóng.',
+          'Trên Windows: Quét sạch thùng rác, tệp tin tạm, báo cáo lỗi và giải phóng bộ nhớ RAM nhàn rỗi thông qua cơ chế tối ưu của hệ điều hành.',
+          'Trên Linux: Quét sạch bộ nhớ đệm gói APT/DNF, tệp tạm, nhật ký hệ thống cũ và làm mới bộ đệm trang.',
+        ],
+      },
+      {
+        title: '⚡ Công Cụ Kiểm Thử API (API Tester) Siêu Mượt Cho Mọi Thiết Bị',
+        items: [
+          'Giao diện co giãn hoàn hảo trên cả điện thoại di động, máy tính bảng và màn hình máy tính lớn.',
+          'Nút xem toàn màn hình (Full Screen) kết quả phản hồi: Xem trọn vẹn dữ liệu JSON, văn bản hoặc HTML mà không bị che khuất.',
+          'Tự động ngắt dòng và cuộn mượt mà, giúp thao tác gửi request và xem kết quả nhanh chóng, tiện lợi.',
         ],
       },
     ],
@@ -43,69 +84,45 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-22',
     highlights: [
       {
-        title: 'AI Gateway: Tự động Xoay vòng Tài khoản (Multi-Account Rotation) & Sub AI Agents',
+        title: '🤖 Trạm Điều Phối AI (AI Gateway): Tự Động Xoay Vòng Tài Khoản & Tạo Trợ Lý Riêng',
         items: [
-          'Hỗ trợ cấu hình nhiều API Key / Accounts cho cùng một nhà cung cấp AI (Gemini, Claude, OpenAI, OpenRouter...).',
-          'Cơ chế Xoay vòng Round-Robin thông minh: phân phối đều tải giữa các tài khoản còn hoạt động.',
-          'Smart Failover: khi một tài khoản bị lỗi quá hạn ngạch (429 Rate Limit) hoặc lỗi mạng, Gateway tự động chuyển sang tài khoản tiếp theo ngay lập tức mà không làm đứt đoạn request của client.',
-          'Sub AI Agents: tự do tạo các trợ lý AI chuyên biệt (Lập trình, Dịch thuật, Content, Phân tích dữ liệu...) với System Prompt, Temperature và Model đích riêng biệt.',
-          'Tương thích hoàn hảo chuẩn OpenAI: gọi trực tiếp qua n8n, Flowise, NextChat bằng model "agent/<id>" hoặc "<id>".',
-          'Nhật ký & Logs chi tiết: hiển thị tài khoản xử lý (Account #1, #2), ghi chú xoay vòng (Rotated From), Live Console Log realtime, sao chép logs và tải file JSON.',
+          'Hỗ trợ nhiều tài khoản / API Key: Bạn có thể nhập nhiều chìa khóa API cho cùng một nhà cung cấp AI (Google Gemini, OpenAI, Claude, OpenRouter...).',
+          'Tự động chia tải và dự phòng thông minh: Khi một tài khoản bị chạm hạn mức (429 Rate Limit) hoặc quá tải, hệ thống tự động chuyển sang tài khoản kế tiếp mà không làm gián đoạn câu trả lời.',
+          'Tạo Trợ lý AI chuyên biệt (Sub AI Agents): Tạo nhanh các trợ lý AI chuyên về Lập trình, Viết nội dung, Dịch thuật... với hướng dẫn riêng và mô hình tùy chỉnh.',
+          'Chuẩn tương thích OpenAI: Sử dụng trực tiếp trợ lý vừa tạo vào n8n, Flowise, NextChat hoặc ứng dụng bên ngoài dễ dàng.',
+          'Nhật ký hoạt động rõ ràng: Hiển thị minh bạch tài khoản nào vừa phản hồi yêu cầu, ghi lại tiến trình xử lý trực tiếp.',
         ],
       },
       {
-        title: 'Nhận diện Phiên bản Cập nhật Chính xác & Nâng cấp 1-Click',
+        title: '💎 Nâng Cấp ZenPanel An Toàn Với Khóa Bảo Trì Toàn Diện',
         items: [
-          'Phân biệt chính xác giữa các phiên bản đã tải về trên máy và phiên bản đang chạy: hiển thị rõ Badge "Đang chạy", "Đã tải" và nút "Cài bản này" thay vì bắt tải lại.',
+          'Thanh tiến trình nâng cấp sinh động với 4 giai đoạn rõ ràng và thời gian đếm ngược dự tính.',
+          'Màn hình khóa bảo trì thông minh: Ngăn chặn thao tác nhầm lẫn trong lúc máy chủ đang nâng cấp và khởi động lại dịch vụ.',
+          'Tự động kết nối lại và đăng nhập an toàn: Sau khi cập nhật xong, ZenPanel tự mở đường dẫn mới và tự đăng nhập an toàn, bạn không phải gõ lại mật khẩu.',
         ],
       },
       {
-        title: 'Quy chuẩn Định dạng Dữ liệu toàn diện (Class txaformat)',
+        title: '📊 Chuẩn Hóa Hiển Thị Số Liệu Toàn Diện',
         items: [
-          'Tích hợp class txaformat toàn bộ website: chuẩn hoá làm tròn 2 chữ số (twoDigits), dung lượng (size), tốc độ mạng (speed), tỷ lệ % (percent), ETA còn lại (timeLeft), ngày giờ (days, time, datetime).',
-          'Khắc phục triệt để lỗi hiển thị số thập phân dài vô tận ở cảnh báo ổ đĩa (85.43675536671441% → 85.4%).',
+          'Làm tròn số liệu đẹp mắt và khoa học trên toàn bộ bảng điều khiển: Tỷ lệ phần trăm, dung lượng ổ đĩa, tốc độ mạng và thời gian.',
+          'Loại bỏ hoàn toàn các dãy số thập phân dài ngoằng, giúp bạn nắm bắt nhanh tình trạng sức khỏe VPS chỉ qua một cái nhìn.',
         ],
       },
       {
-        title: 'Nâng cấp Quá trình Cập nhật ZenPanel & Khóa Bảo trì Toàn diện',
+        title: '🐳 Quản Lý Docker Tiện Lợi: Thao Tác Hàng Loạt & Tìm Kiếm Nhanh',
         items: [
-          'Thanh tiến trình (Progress Bar) & ETA đếm ngược thông minh, hiển thị 4 giai đoạn trực quan thay vì chỉ log thô sơ.',
-          'Màn hình Khóa bảo trì toàn cục (Maintenance Lock Overlay): ngăn người dùng thao tác gây lỗi trong lúc cập nhật mã nguồn và khởi động lại dịch vụ.',
-          'Hộp thoại Hoàn tất Nâng cấp: tự động nhận diện URL Cloudflare Quick Tunnel mới (trycloudflare.com).',
-          'Hỗ trợ 1-Click mở tab mới kèm tính năng Tự động Đăng nhập (Auto-login) an toàn tuyệt đối, không cần nhập lại mật khẩu.',
+          'Chọn nhiều ứng dụng Docker cùng lúc để khởi động, tạm dừng, chạy lại hoặc xóa trong một thao tác duy nhất.',
+          'Tìm kiếm bôi sáng (Highlight): Gõ từ khóa tìm kiếm đến đâu, tên ứng dụng và cổng kết nối sẽ được làm nổi bật đến đó.',
+          'Theo dõi tiến độ tải ứng dụng chính xác theo từng lớp dữ liệu, không còn lo lắng thanh tiến trình bị đứng yên.',
+          'Sao chép và tải nhật ký (Logs) của container chỉ với 1 cú click chuột.',
         ],
       },
       {
-        title: 'Theo dõi Tiến độ Cài đặt App Store Realtime (Hết kẹt 0%)',
+        title: '📁 Trình Quản Lý Tệp Tin ZenFile Explorer Pro Mới',
         items: [
-          'Tích hợp bộ phân tích log Docker Layer trực tiếp: tính toán chính xác số layer tải về (X/Y layers) và % thực tế của các ứng dụng lớn như AI Gateway (LiteLLM), n8n.',
-          'Giải quyết dứt điểm tình trạng thanh tiến trình bị treo cứng ở 0% và "Đang khởi tạo...".',
-        ],
-      },
-      {
-        title: 'Quản lý Docker nâng cao: Bulk Actions, Sao chép Log & Tìm kiếm Highlight',
-        items: [
-          'Thao tác Hàng loạt (Bulk Actions): chọn nhiều containers để Khởi động, Tạm dừng, Khởi động lại hoặc Xóa cùng lúc.',
-          'Modal xem log container mới: nút Sao chép logs nhanh với hiệu ứng check đổi màu xanh lá kèm nút tải file log .txt.',
-          'Bộ lọc tìm kiếm thông minh kết hợp component Highlight: bôi sáng tức thì tên container, image, ID, port khớp với từ khóa.',
-          'Khắc phục triệt để lỗi "kill ESRCH" khi dừng dịch vụ hoặc tiến trình đã thoát.',
-        ],
-      },
-      {
-        title: 'ZenFile Explorer Pro UI & Remote Download bảo mật',
-        items: [
-          'Tích hợp chuyển đổi linh hoạt giữa giao diện "Duyệt chuẩn" và "ZenFile Pro UI" nhúng trực tiếp toàn màn hình ngay trong tab File Manager.',
-          'Đồng bộ cấu hình tài khoản mặc định admin / admin chắc chắn hoạt động 100% cho FileBrowser.',
-          'Khắc phục lỗi "no container found for project zen-filebrowser": tự động phục hồi container bằng compose up -d khi bấm khởi động.',
-          'Remote Download: hỗ trợ tải nhanh link HTTP/HTTPS (kể cả link mã hoá Base64), bổ sung header chặn IDM bắt link chia luồng.',
-        ],
-      },
-      {
-        title: 'Hướng dẫn n8n & Kết nối AI Gateway (LiteLLM)',
-        items: [
-          'Giải thích rõ hiện tượng 502 Bad Gateway do n8n cần 30-45s khởi tạo DB ban đầu và cách khắc phục bằng F5 sau khi sẵn sàng.',
-          'Hướng dẫn cụ thể cách dùng Domain Public riêng qua Reverse Proxy / Cloudflare Tunnel cố định.',
-          'Hướng dẫn từng bước liên kết n8n với AI Gateway (LiteLLM): cấu hình Base URL http://host.docker.internal:4000/v1, master key và gọi các model Claude, Gemini, GPT-4o.',
+          'Chuyển đổi linh hoạt giữa giao diện duyệt tệp gọn nhẹ và giao diện Pro nâng cao ngay trong tab Quản lý Tệp.',
+          'Tải tệp từ internet trực tiếp về VPS (Remote Download): Chỉ cần dán link tải từ xa, máy chủ sẽ tự động kéo tệp về thư mục bạn muốn.',
+          'Tự động khắc phục lỗi kết nối, đảm bảo trình quản lý tệp luôn sẵn sàng phục vụ.',
         ],
       },
     ],
@@ -115,56 +132,33 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-22',
     highlights: [
       {
-        title: 'Khắc phục kết nối Web Quản trị Database (Adminer / phpMyAdmin)',
+        title: '🗄️ Quản Trị Cơ Sở Dữ Liệu Tiện Lợi (Adminer / phpMyAdmin)',
         items: [
-          'Giải quyết triệt để lỗi không truy cập được cổng :8082 khi xem panel qua Cloudflare Tunnel (trycloudflare.com).',
-          'Tích hợp hộp thoại kết nối thông minh với nút bấm 1-chạm "Bật Link Public Cloudflare riêng cho Adminer" kèm HTTPS truy cập từ mọi nơi.',
-          'Hỗ trợ truy cập trực tiếp bằng IP Public của VPS (kèm nút mở cổng Firewall) và mạng nội bộ Localhost/LAN.',
+          'Kết nối từ xa dễ dàng: Bật liên kết truy cập an toàn qua Cloudflare có bảo mật HTTPS để quản lý cơ sở dữ liệu từ bất cứ nơi nào mà không sợ lộ cổng máy chủ.',
+          'Hỗ trợ truy cập linh hoạt bằng IP công khai kèm nút mở cổng tường lửa tự động hoặc qua mạng nội bộ an toàn.',
         ],
       },
       {
-        title: 'ZenFile Explorer Pro (Bản nâng cấp File Manager trong App Store)',
+        title: '📂 Trình Quản Lý Tệp Đa Phương Tiện & Phân Quyền',
         items: [
-          'Nâng cấp ứng dụng trong App Store thành "ZenFile Explorer Pro", gắn kết trực tiếp thư mục gốc VPS (bind mount) để quản lý toàn diện.',
-          'Không kích hoạt sẵn nhằm tiết kiệm RAM/CPU, cài đặt nhanh bằng 1 click trong App Store qua Docker Compose.',
-          'Thêm mẫu cấu hình docker-compose.yml độc lập tại agent/templates/zen-file-explorer/ để người dùng sao chép hoặc tải về thủ công.',
+          'Xem trước hình ảnh, nghe nhạc, phát video trực tuyến và đọc tài liệu PDF trực tiếp trên trình duyệt mà không cần tải về máy tính.',
+          'Chỉnh sửa phân quyền tệp và thư mục (Chmod) dễ hiểu, giúp bảo vệ các mã nguồn quan trọng.',
+          'Bộ lọc nhanh thông minh: Lọc nhanh theo Thư mục, Hình ảnh, Âm thanh & Video, Mã nguồn hoặc Tệp nén.',
         ],
       },
       {
-        title: 'Nâng cấp toàn diện trình File Manager tích hợp',
+        title: '🐘 Quản Lý Máy Chủ Web PHP & Cấu Hình Nhanh',
         items: [
-          'Trình xem trước tệp tin đa phương tiện (Media Preview): xem ảnh trực tiếp, phát nhạc audio player, phát video streaming và xem tài liệu PDF.',
-          'Tải tệp từ internet trực tiếp về VPS (Remote Download): tải nhanh từ link HTTP/HTTPS vào thư mục hiện tại.',
-          'Phân quyền tập tin (Chmod): xem và chỉnh sửa mã quyền Octal (0755, 0644, 0777, 0600) linh hoạt.',
-          'Sao chép đường dẫn tuyệt đối với 1 click và thanh lọc tệp thông minh (Tất cả, Thư mục, Hình ảnh, Video & Nhạc, Code, Nén).',
-          'Nút chuyển đổi & giới thiệu nhanh ZenFile Pro ngay trên thanh tiêu đề File Manager.',
+          'Cài đặt 1-chạm PHP và đầy đủ các phần mở rộng thông dụng nhất (MySQL, cURL, GD, ZIP, OPcache...).',
+          'Chỉnh sửa thông số tệp php.ini trực quan: Tăng giới hạn tải lên, bộ nhớ RAM cho ứng dụng PHP và tự khởi động lại dịch vụ tức thì.',
+          'Tra cứu nhanh danh sách các module PHP đang hoạt động.',
         ],
       },
       {
-        title: 'Nâng cấp Quản lý Máy chủ PHP & Giao diện PHP-FPM chuyên nghiệp',
+        title: '⏳ Giao Diện Cài Đặt Ứng Dụng Trực Quan & Dự Tính Thời Gian',
         items: [
-          'Thẻ quản lý Máy chủ PHP trực quan: kiểm tra phiên bản PHP, trạng thái dịch vụ PHP-FPM và đường dẫn socket FastCGI realtime.',
-          'Cài đặt 1-chạm PHP & PHP-FPM cùng các module thiết yếu (mysqli, pdo_mysql, curl, mbstring, gd, zip, xml, opcache, bcmath, intl).',
-          'Hộp thoại Tùy chỉnh php.ini: dễ dàng chỉnh memory_limit, upload_max_filesize, post_max_size, max_execution_time và tự động nạp lại dịch vụ.',
-          'Hộp thoại Danh sách Extensions: tra cứu, lọc tìm kiếm nhanh tất cả module PHP đã nạp.',
-          'Hỗ trợ kiểm tra điều kiện thông minh khi tạo website PHP (báo ngay socket FastCGI hoặc hướng dẫn cài đặt nếu chưa có PHP-FPM).',
-        ],
-      },
-      {
-        title: 'Hộp thoại Cài đặt kiểu mới: Thanh tiến trình, ETA & Khung log thu gọn',
-        items: [
-          'Thay thế màn hình log choáng ngợp bằng giao diện Thanh tiến trình thông minh (Progress Bar) với phần trăm và hiệu ứng chuyển động mượt mà.',
-          'Dự tính thời gian hoàn thành (ETA) và đếm thời gian thực thi realtime (vd: "Đã chạy 14s · Còn lại dự tính ~16s").',
-          'Theo dõi 4 cột mốc trực quan: Khởi tạo, Tải tài nguyên, Cấu hình dịch vụ, Hoàn tất.',
-          'Khung log Console thu nhỏ gọn gàng bên dưới, tự động cuộn xuống cuối, nút sao chép log 1-chạm và nút Mở rộng/Thu gọn tiện lợi.',
-        ],
-      },
-      {
-        title: 'Cải tiến Hộp thoại "Có gì mới" (Accordion & Tìm kiếm)',
-        items: [
-          'Chế độ thu gọn thông minh: Chỉ mở bản mới nhất theo mặc định, tất cả các bản cũ được thu gọn thành dạng Accordion ngăn nắp.',
-          'Thao tác 1 chạm: Click vào thẻ phiên bản bất kỳ để mở/đóng, kèm nút "Thu gọn / Mở tất cả bản cũ" tiện lợi.',
-          'Tìm kiếm tức thì: Thanh tìm kiếm theo từ khóa (Docker, CPU, Adminer, v.v.), tự động mở và làm nổi bật các phiên bản phù hợp.',
+          'Thay thế màn hình dòng lệnh phức tạp bằng thanh tiến trình đồ họa hiện đại với phần trăm hoàn thành rõ ràng.',
+          'Ước tính thời gian còn lại (ETA) để bạn biết chính xác khi nào ứng dụng sẵn sàng sử dụng.',
         ],
       },
     ],
@@ -174,36 +168,24 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-22',
     highlights: [
       {
-        title: 'Sửa hiển thị Tác vụ nền (Desktop & Mobile)',
+        title: '🛡️ Tự Động Bảo Vệ Dung Lượng Ổ Đĩa (Chống Tràn Ổ)',
         items: [
-          'Sử dụng React Portal đưa popup ra body, khắc phục triệt để lỗi bị lệch/thụt lên trên do backdrop-filter của thanh header.',
-          'Hỗ trợ chế độ Bottom Sheet trên điện thoại và căn giữa màn hình chuẩn xác trên Desktop.',
-          'Độ cao cuộn tối đa linh hoạt (max-h-[65vh]), tiêu đề hiển thị số lượng tác vụ đang chạy.',
+          'Kiểm tra dung lượng trống trước khi cài đặt phần mềm mới: Tự động cảnh báo và ngăn chặn nếu ổ đĩa còn quá ít dung lượng, tránh làm sập máy chủ.',
+          'Bảng cảnh báo tức thì ngay trên trang Tổng quan khi dung lượng ổ cứng đạt mức báo động kèm nút dẫn nhanh tới công cụ Dọn dẹp.',
         ],
       },
       {
-        title: 'Tối ưu API Tester cho Mobile & Tablet',
+        title: '📱 Tối Ưu Trải Nghiệm Mượt Mà Trên Thiết Bị Di Động',
         items: [
-          'Thêm thanh chuyển đổi tab [Collections] ↔ [Request & Response] khi xem trên màn hình nhỏ.',
-          'Nút thu gọn/mở rộng thanh sidebar tiện lợi trên desktop và tự động chuyển sang tab soạn thảo khi mở request.',
-          'Khắc phục hiện tượng tràn ngang màn hình, giúp thao tác chọn và test API trơn tru trên mọi thiết bị.',
+          'Giao diện thông báo tác vụ nền dạng trượt từ dưới lên (Bottom Sheet) cực kỳ vừa vặn trên màn hình điện thoại thông minh.',
+          'Công cụ kiểm thử API được tinh chỉnh gọn gàng, chia tab trực quan giúp bạn dễ dàng thao tác trên màn hình cảm ứng.',
         ],
       },
       {
-        title: 'Cơ chế bảo vệ dung lượng ổ đĩa (Chống Full Disk)',
+        title: '🧹 Dọn Rác Hệ Thống & Hạ Tải CPU Khẩn Cấp',
         items: [
-          'Tự động kiểm tra dung lượng ổ đĩa còn trống trước khi cài đặt ứng dụng App Store (yêu cầu tối thiểu 2.5 GB cho app thường, 4.0 GB cho app AI).',
-          'Cảnh báo trực tiếp trong hộp thoại cài đặt nếu ổ đĩa còn ít dung lượng và chặn cài đặt khi dung lượng ở mức báo động (< 1.5 GB).',
-          'Banner cảnh báo sớm ngay trên trang Tổng quan khi CPU ≥ 70% hoặc Disk ≥ 85% kèm nút chuyển nhanh tới Dọn dẹp.',
-        ],
-      },
-      {
-        title: 'Tab Dọn dẹp hệ thống & Hạ tải CPU (Jupiter Glassmorphism)',
-        items: [
-          'Quản lý và giải phóng CPU: phát hiện top tiến trình ngốn CPU, tính năng khẩn cấp "Hạ tải CPU tức thì" dừng nhanh các tiến trình ăn > 35% CPU.',
-          'Dọn rác Docker toàn diện: Containers đã dừng, Docker Images thừa/dangling, Build cache và Volumes không dùng.',
-          'Dọn rác OS & Giải phóng RAM Cache: nhật ký hệ thống journalctl, cache gói APT/DNF, file tạm /tmp và $env:TEMP, thả cache RAM (drop_caches).',
-          'Chạy tiến trình dọn dẹp bằng background job có log streaming chi tiết realtime.',
+          'Phát hiện tức thì các chương trình đang chiếm dụng nhiều tài nguyên vi xử lý (CPU).',
+          'Nút giải cứu khẩn cấp "Hạ tải CPU" giúp máy chủ trở lại trạng thái mượt mà nhanh chóng.',
         ],
       },
     ],
@@ -213,50 +195,32 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-22',
     highlights: [
       {
-        title: 'AI Gateway (giống OpenRouter / 9router)',
+        title: '🧠 Trạm Điều Phối Trí Tuệ Nhân Tạo (AI Gateway)',
         items: [
-          'Trang AI Gateway riêng: 1 endpoint chuẩn OpenAI /ai/v1 dùng chung cho ChatGPT, Claude, Gemini, OpenRouter, NVIDIA',
-          'Kết nối API key xong tự tải danh sách model, chọn model mặc định ngay trong dropdown',
-          'Kho model: tìm kiếm, lọc theo nhà cung cấp, context, giá input/output, chỉ model miễn phí',
-          'Playground chat stream realtime, định tuyến model mặc định + tối đa 5 model dự phòng khi lỗi 429/5xx',
-          'Nhật ký request, thống kê 24h, code mẫu cURL / Python / Node.js / n8n',
-          'Endpoint mới /zen/v1 (vẫn giữ /ai/v1): health, models, models/{id}, providers, key, usage, chat/completions, completions, embeddings',
-          'API key dùng chung có prefix tzp_',
+          'Một địa chỉ kết nối duy nhất dùng chung cho hàng loạt mô hình AI nổi tiếng: ChatGPT, Claude, Google Gemini, OpenRouter.',
+          'Hỗ trợ chế độ thử nghiệm trò chuyện trực tiếp (Playground) và tự động chuyển sang mô hình phụ nếu mô hình chính bị nghẽn.',
+          'Cung cấp sẵn đoạn mã mẫu tiện dụng bằng cURL, Python, Node.js để bạn tích hợp nhanh vào dự án cá nhân.',
         ],
       },
       {
-        title: 'API Tester (giống Postman)',
+        title: '📡 Kiểm Thử API Trực Tiếp Từ VPS (API Tester)',
         items: [
-          'Gửi request từ chính VPS tới mọi URL, không vướng CORS: Params, Authorization (Bearer / Basic / API Key), Headers, Body (JSON, text, form-data, urlencoded)',
-          'Nhiều tab, Collections, Lịch sử, môi trường biến {{var}} (có sẵn {{baseUrl}} và {{apiKey}} của AI Gateway), xuất cURL',
-          'Response: status, thời gian, dung lượng, Pretty / Raw / Preview HTML & ảnh, Headers. Ctrl+Enter gửi, Ctrl+S lưu',
+          'Kiểm tra và gửi yêu cầu mạng trực tiếp từ chính VPS tới các dịch vụ khác mà không lo gặp lỗi chặn kết nối (CORS).',
+          'Lưu trữ danh sách yêu cầu theo bộ sưu tập, hỗ trợ biến môi trường tự động điền khóa API.',
         ],
       },
       {
-        title: 'Terminal',
-        items: ['Gợi ý lệnh khi gõ (lịch sử + thư viện lệnh Linux/Windows/Docker/zenpanel): Tab để điền, ↑↓ chọn, Esc ẩn'],
-      },
-      {
-        title: 'Ứng dụng chạy nền (thay PM2)',
+        title: '🔄 Quản Lý Ứng Dụng Chạy Nền 24/7 (Thay Thế PM2)',
         items: [
-          'Chạy bot Discord/Telegram, worker, API Node.js/Python 24/24 ngay trong ZenPanel',
-          'Tự khởi động lại khi chết (chờ lâu dần nếu crash liên tục), tự chạy khi VPS khởi động lại',
-          'Log realtime: tạm dừng, lọc, chỉ xem lỗi, xoá, tải về; xem CPU/RAM cả cây tiến trình',
-          'Giới hạn RAM: vượt ngưỡng tự khởi động lại; nhập 1 chạm các app đang chạy bằng PM2',
+          'Giữ cho các chương trình Bot Telegram, Discord, ứng dụng Node.js hoặc Python luôn hoạt động liên tục cả ngày lẫn đêm.',
+          'Tự động khởi động lại chương trình nếu không may bị lỗi hoặc khi máy chủ vừa bật nguồn.',
+          'Theo dõi lượng tiêu thụ RAM và CPU của chương trình theo thời gian thực.',
         ],
       },
       {
-        title: 'Docker & cập nhật',
+        title: '💻 Cửa Sổ Dòng Lệnh Terminal Tiện Dụng',
         items: [
-          'Docker → Kho image: image phổ biến theo nhóm, tìm kiếm Docker Hub, chọn tag, pull hoặc tạo container ngay',
-          'Chọn tần suất tự kiểm tra cập nhật: 15 mốc từ 15 phút tới 1 tháng',
-        ],
-      },
-      {
-        title: 'Cài đặt',
-        items: [
-          'Domain/IP public: hiện rõ IP public, IPv6 và hostname reverse DNS tự phát hiện — chỉ cần nhập khi có domain riêng',
-          'Đơn vị tốc độ mạng đặt tên rõ ràng: "Theo dung lượng" (B/s → TB/s) và "Theo băng thông" (bps → Tbps)',
+          'Tự động gợi ý các câu lệnh phổ biến khi bạn gõ phím, giúp thao tác quản trị nhanh chóng và giảm bớt việc phải nhớ cú pháp phức tạp.',
         ],
       },
     ],
@@ -266,37 +230,30 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-22',
     highlights: [
       {
-        title: 'Mở app từ bên ngoài',
+        title: '🌍 Truy Cập Ứng Dụng Từ Bất Kỳ Đâu Qua Đường Dẫn Bảo Mật',
         items: [
-          'Mỗi app trong App Store có "Link public" riêng (Cloudflare Tunnel, có HTTPS) — vào được VS Code, n8n, Grafana... từ mọi nơi',
-          'Truy cập trực tiếp IP:cổng kèm nút mở cổng tường lửa 1 chạm',
-          'Hướng dẫn sử dụng & tài khoản mặc định hiện ngay sau khi cài',
-          'Nút "Cấu hình lại" đổi cổng, mật khẩu, API key mà không mất dữ liệu',
-          'Wizard "Thiết lập n8n": link public → Webhook URL → tạo Owner → nối AI',
+          'Tạo liên kết an toàn (Cloudflare Tunnel) có sẵn chứng chỉ HTTPS cho mọi ứng dụng trong App Store (VS Code, n8n, Grafana...). Bạn có thể truy cập làm việc từ xa mà không cần mở cổng nguy hiểm trên máy chủ.',
+          'Cung cấp tài khoản đăng nhập mặc định và hướng dẫn sử dụng nhanh ngay sau khi hoàn tất cài đặt.',
+          'Tính năng "Cấu hình lại" cho phép dễ dàng thay đổi cổng mạng, mật khẩu hoặc thiết lập mà vẫn giữ trọn vẹn dữ liệu.',
         ],
       },
       {
-        title: 'AI Agent',
+        title: '🤖 Kho Ứng Dụng AI Đa Dạng',
         items: [
-          'Cài đặt → AI: lưu API key NVIDIA, OpenRouter, ChatGPT, Gemini, Claude và kiểm tra key 1 chạm',
-          'AI Gateway (LiteLLM): 1 endpoint chuẩn OpenAI cho mọi model, giống OpenRouter nhưng tự host',
-          'App AI mới: Open WebUI, Ollama, Flowise, AnythingLLM — tự dùng chung API key đã lưu',
+          'Cài đặt nhanh các công cụ AI phổ biến: Open WebUI, Ollama, Flowise, AnythingLLM chỉ với 1 cú click.',
+          'Tự động áp dụng khóa API đã lưu trong bảng điều khiển để sử dụng được ngay lập tức.',
         ],
       },
       {
-        title: 'Database, Docker, mạng',
+        title: '🚀 Kiểm Tra Tốc Độ Mạng Thật (Speedtest)',
         items: [
-          'Database hiện host public (IP hoặc domain bạn đặt), chuỗi kết nối và nút mở cổng cho máy bên ngoài',
-          'Docker → Compose: tạo, sửa, chạy, dừng, pull stack docker-compose.yml',
-          'Speedtest thật đo từ VPS tới Cloudflare: ping, jitter, tải xuống, tải lên + lịch sử',
-          'Tường lửa iptables tự cài iptables-persistent để quy tắc không mất khi khởi động lại',
+          'Đo đạc tốc độ mạng thực tế từ chính VPS đến các máy chủ quốc tế: Đo độ trễ (Ping), tốc độ tải xuống (Download) và tải lên (Upload) chuẩn xác.',
         ],
       },
       {
-        title: 'Cloudflare WAF làm lại',
+        title: '🛡️ Tường Lửa Bảo Vệ Toàn Diện & Chống Mất Cấu Hình',
         items: [
-          'Hướng dẫn tạo API Token từng bước + bảng quyền cần cấp, kiểm tra token thiếu quyền nào',
-          'Chọn domain, chia tab: Bảo vệ (mức bảo mật, Under Attack), SSL/TLS, Chặn IP/Quốc gia/ASN, DNS, Cache',
+          'Quản lý đóng mở cổng mạng trực quan, tự động lưu trữ cấu hình để các quy tắc bảo vệ luôn duy trì sau mỗi lần máy chủ khởi động lại.',
         ],
       },
     ],
@@ -306,13 +263,19 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-22',
     highlights: [
       {
-        title: 'Cập nhật & giao diện',
+        title: '🔄 Tự Động Phát Hiện Phiên Bản & Nâng Cấp Nhanh',
         items: [
-          'Tự kiểm tra bản mới trên GitHub, tải sẵn, cài / quay lại phiên bản cũ ngay trên panel',
-          'Đổi giao diện: 6 màu nhấn × 3 nền, đơn vị mạng KB/s hoặc Mbps',
-          'Uptime chạy tới từng giây, đếm ngược hạn VPS, nút khởi động lại / tắt máy',
-          'Log realtime khi cài ứng dụng, pull image, cài web server',
-          'Lịch tác vụ (cron / Task Scheduler), lịch sử đăng nhập, đăng xuất mọi thiết bị',
+          'Tự động thông báo khi có bản cập nhật mới trên GitHub, hỗ trợ cài đặt hoặc quay về phiên bản cũ thuận tiện.',
+          'Xem nhật ký thực thi trực tiếp trong quá trình cài đặt phần mềm và thiết lập dịch vụ.',
+        ],
+      },
+      {
+        title: '🎨 Tùy Biến Giao Diện Đẹp Mắt & Tiện Ích Máy Chủ',
+        items: [
+          'Hỗ trợ nhiều tông màu sắc hiện đại và các chế độ nền sáng tối tinh tế.',
+          'Đồng hồ đếm thời gian máy chủ đã hoạt động liên tục (Uptime) chuẩn xác đến từng giây.',
+          'Nút khởi động lại hoặc tắt máy chủ tiện lợi ngay trên thanh công cụ.',
+          'Quản lý lịch hẹn tác vụ tự động (Cron job / Task Scheduler) dễ dàng.',
         ],
       },
     ],
@@ -320,6 +283,17 @@ export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '0.2.0',
     date: '2026-10-22',
-    highlights: [{ title: 'Bản đầu tiên của dashboard', items: ['Tổng quan, tiến trình, dịch vụ, tường lửa, Docker, App Store, terminal, website, file, database, Cloudflare'] }],
+    highlights: [
+      {
+        title: '🚀 Khởi Nguồn Bảng Điều Khiển ZenPanel Hiện Đại',
+        items: [
+          'Giao diện trực quan hoá toàn bộ sức khỏe phần cứng VPS: Mức tiêu thụ vi xử lý (CPU), dung lượng bộ nhớ (RAM), ổ đĩa lưu trữ và băng thông mạng.',
+          'Quản lý danh sách tiến trình và dịch vụ hệ thống: Dễ dàng bật, tắt hoặc khởi động lại chỉ bằng vài thao tác chuột.',
+          'Kho ứng dụng 1-Click (App Store): Triển khai nhanh các phần mềm phổ biến phục vụ phát triển ứng dụng và vận hành trang web.',
+          'Cửa sổ dòng lệnh Terminal trực tuyến: Điều khiển máy chủ trực tiếp ngay trên trình duyệt mà không cần cài thêm phần mềm SSH/RDP.',
+          'Trình quản lý tệp tin và tường lửa bảo mật: Thao tác tệp và kiểm soát cổng truy cập an toàn.',
+        ],
+      },
+    ],
   },
 ];
