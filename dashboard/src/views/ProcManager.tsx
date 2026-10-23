@@ -166,9 +166,24 @@ function LogViewer({ proc, onClose }: { proc: ManagedProc; onClose: () => void }
     if (box.current && stick.current) box.current.scrollTop = box.current.scrollHeight;
   }, [lines]);
 
+  const parseLog = (line: string) => {
+    const m = /^(\S+) \[(out|err|sys)\] (.*)$/.exec(line);
+    if (!m) return { at: null, stream: 'out', text: line, isError: false, isWarn: false, isInfo: false };
+    const [, at, stream, text] = m;
+    const isInfo = /\[\s*(INFO|DEBUG|NOTICE)\s*\]/i.test(text) || /\b(INFO|DEBUG|NOTICE)\b:/i.test(text) || /connected to gateway|logging in/i.test(text);
+    const isWarn = /\[\s*(WARN|WARNING)\s*\]/i.test(text) || /\b(WARN|WARNING)\b:/i.test(text);
+    const isRealError =
+      (stream === 'err' && !isInfo && !isWarn) ||
+      /\[\s*(ERROR|CRITICAL|FATAL)\s*\]/i.test(text) ||
+      /\b(Traceback \(most recent call last\)|SyntaxError|TypeError|ValueError|NameError|Exception|Error:)\b/i.test(text);
+    return { at, stream, text, isError: isRealError, isWarn, isInfo };
+  };
+
   const shown = useMemo(() => {
     const q = filter.toLowerCase();
-    return lines.filter((l) => (!onlyErr || l.includes('[err]') || l.includes('[sys]')) && (!q || l.toLowerCase().includes(q)));
+    return lines
+      .map(parseLog)
+      .filter((item) => (!onlyErr || item.isError) && (!q || item.text.toLowerCase().includes(q)));
   }, [lines, filter, onlyErr]);
 
   const clear = async () => {
@@ -220,14 +235,20 @@ function LogViewer({ proc, onClose }: { proc: ManagedProc; onClose: () => void }
             {shown.length === 0 ? (
               <span className="text-slate-500">{lines.length ? 'Không có dòng nào khớp bộ lọc.' : 'Chưa có log.'}</span>
             ) : (
-              shown.map((line, i) => {
-                const m = /^(\S+) \[(out|err|sys)\] (.*)$/.exec(line);
-                if (!m) return <div key={i} className="whitespace-pre-wrap break-words text-slate-300">{line}</div>;
-                const [, at, stream, text] = m;
+              shown.map((item, i) => {
+                const color = item.isError
+                  ? 'text-rose-400 font-medium'
+                  : item.isWarn
+                    ? 'text-amber-300'
+                    : item.isInfo
+                      ? 'text-emerald-300/90'
+                      : item.stream === 'sys'
+                        ? 'text-sky-300 font-medium'
+                        : 'text-slate-200';
                 return (
                   <div key={i} className="flex gap-2 whitespace-pre-wrap break-words">
-                    <span className="shrink-0 text-slate-600">{new Date(at).toLocaleTimeString('vi-VN')}</span>
-                    <span className={cn('min-w-0', stream === 'err' ? 'text-red-300' : stream === 'sys' ? 'text-blue-300' : 'text-slate-200')}>{text}</span>
+                    <span className="shrink-0 text-slate-600">{item.at ? new Date(item.at).toLocaleTimeString('vi-VN') : ''}</span>
+                    <span className={cn('min-w-0', color)}>{item.text}</span>
                   </div>
                 );
               })

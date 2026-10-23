@@ -375,9 +375,12 @@ export class AiGatewayService {
   private resolveModel(requested: unknown): string {
     if (typeof requested === 'string' && requested && requested !== 'auto') {
       let reqStr = requested;
-      // Tự động chuyển đổi nếu yêu cầu model gemini-2.0-flash đã bị khai tử
+      // Tự động chuyển đổi sang dòng model Flash Lite nhanh và tiết kiệm nhất
       if (reqStr.includes('gemini-2.0-flash')) {
-        reqStr = reqStr.replace('gemini-2.0-flash', 'gemini-2.5-flash');
+        reqStr = reqStr.replace('gemini-2.0-flash', 'gemini-2.5-flash-lite');
+      }
+      if (reqStr.includes('3.5-flash-lite') || reqStr.includes('gemini-3.5-flash-lite')) {
+        reqStr = reqStr.replace(/gemini-3\.5-flash-lite|3\.5-flash-lite/g, 'gemini-2.5-flash-lite');
       }
       // Cho phép gọi tắt "anthropic" -> model mặc định của Anthropic
       if (PROVIDER_IDS.includes(reqStr)) {

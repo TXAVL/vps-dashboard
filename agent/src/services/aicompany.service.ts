@@ -246,7 +246,7 @@ export class AiCompanyService {
       return getProviderModel('openai', 'gpt-4o');
     }
     if (worker.id === 'content' && configuredProviders.includes('gemini')) {
-      return getProviderModel('gemini', 'gemini-2.5-flash');
+      return getProviderModel('gemini', 'gemini-2.5-flash-lite');
     }
     if (worker.id === 'qa' && configuredProviders.includes('openai')) {
       return getProviderModel('openai', 'gpt-4o-mini');

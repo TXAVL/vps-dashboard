@@ -13,18 +13,25 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-23',
     highlights: [
       {
-        title: '⏱️ Uptime Ứng Dụng Chạy Nền Đếm Từng Giây (1s/1 Lần)',
+        title: '⏱️ Đồng Hồ Chạy Bot Nhảy Từng Giây',
         items: [
-          'Nhịp đếm thời gian thực mượt mà: Cột Uptime trong bảng danh sách Ứng dụng chạy nền (thay thế PM2) giờ đây tự động cập nhật liên tục 1 giây 1 lần theo thời gian thực mà không làm tăng tải VPS.',
-          'Chi tiết thời điểm khởi chạy: Khi di chuột vào cột Uptime, bạn sẽ xem được chính xác ngày giờ mà bot hoặc ứng dụng bắt đầu khởi động.',
+          'Đếm thời gian siêu mượt: Thời gian bot và ứng dụng của bạn hoạt động giờ đây nhảy từng giây liên tục như đồng hồ bấm giờ thể thao, không còn bị đứng hình hay chờ lâu mới nhảy số.',
+          'Biết rõ giờ bật bot: Chỉ cần rê chuột vào dòng thời gian là bạn sẽ thấy ngay ngày giờ chính xác mà bot bắt đầu chạy.',
         ],
       },
       {
-        title: '🛡️ Nâng Cấp Playground & Xử Lý Sự Cố Mô Hình AI Chuẩn Xác',
+        title: '📜 Xem Nhật Ký Bot Thông Minh, Hết Báo Nhầm Lỗi',
         items: [
-          'Tách biệt thông báo lỗi trong khung Chat thử: Bong bóng câu hỏi của bạn và thông báo phản hồi từ Trợ lý AI được bố trí riêng biệt, chấm dứt hoàn toàn hiện tượng câu hỏi bị dính liền vào thông báo lỗi khi có sự cố.',
-          'Khung cảnh báo lỗi AI chuyên nghiệp kèm nút "Thử gửi lại": Khi nhà cung cấp AI gặp trục trặc, hệ thống hiển thị khung cảnh báo màu trang nhã, phân tích rõ nguyên nhân và cung cấp sẵn nút bấm 1-click để bạn gửi lại câu hỏi ngay lập tức.',
-          'Bóc tách lỗi hạ tầng OpenRouter (502 Provider Error): Phản hồi lỗi kỹ thuật "Provider returned error" từ OpenRouter được tự động nhận diện và giải thích rõ ràng bằng tiếng Việt (máy chủ mô hình đối tác đang bảo trì/quá tải, gợi ý thử lại sau hoặc chuyển đổi model).',
+          'Không còn hoang mang vì chữ đỏ: Các thông báo hoạt động bình thường của bot (như đăng nhập Discord, kết nối server thành công) giờ hiển thị sáng rõ, không bị tô đỏ nhầm thành lỗi nghiêm trọng.',
+          'Bộ lọc chuẩn xác: Khi chọn chế độ "Chỉ lỗi", màn hình chỉ gom những sự cố thực sự cần bạn để mắt tới.',
+        ],
+      },
+      {
+        title: '💬 Trò Chuyện Thử Với AI Tiện Lợi & Logo Mới',
+        items: [
+          'Tin nhắn gọn gàng, không dính chữ: Câu hỏi của bạn và phản hồi của AI luôn được tách riêng đẹp mắt hai bên màn hình.',
+          'Bấm 1 nút gửi lại ngay: Nếu mạng của AI chập chờn hay quá tải, bạn chỉ cần bấm nút "Thử gửi lại" là xong, không mất công gõ lại từ đầu.',
+          'Biểu tượng mới siêu nét: Cập nhật logo chính thức mới nhất cho Claude, NVIDIA và Google Gemini với dải màu hiện đại, rực rỡ.',
         ],
       },
     ],
@@ -34,24 +41,16 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-23',
     highlights: [
       {
-        title: '🎯 Tôn Trọng Model Mặc Định',
+        title: '🎯 Dùng Đúng Trí Tuệ Nhân Tạo Bạn Thích Nhất',
         items: [
-          'Ưu tiên Model mặc định của người dùng: Toàn bộ hệ thống AI Gateway và các phòng ban AI Company giờ đây tôn trọng tuyệt đối Model mặc định do bạn lựa chọn, loại bỏ hoàn toàn tình trạng bị gọi model khác ngoài ý muốn.',
+          'Tôn trọng sở thích của bạn: Bạn chọn model AI nào làm mặc định (như Gemini Flash Lite siêu nhanh) thì hệ thống sẽ nhớ và dùng đúng loại đó, không bao giờ tự ý chuyển sang loại khác.',
         ],
       },
       {
-        title: '💬 Thông Báo Lỗi Tiếng Việt Thân Thiện & Giữ Trọn Vẹn Nhật Ký Gốc',
+        title: '🗣️ Giải Thích Sự Cố Bằng Tiếng Việt Dễ Hiểu',
         items: [
-          'Chấm dứt in JSON thô lên màn hình: Toàn bộ phản hồi lỗi kỹ thuật từ Google Gemini, Anthropic Claude, OpenAI... được tự động chuẩn hóa và giải thích bằng tiếng Việt rõ ràng, dễ hiểu (báo rõ hết credit, model không khả dụng, sai key, hết hạn mức).',
-          'Lưu giữ đầy đủ chi tiết trong Logs: Giao diện hiển thị thông điệp tiếng Việt thân thiện, trong khi tab Nhật ký & Logs (Activity) vẫn lưu giữ trọn vẹn toàn bộ mã lỗi và chuỗi phản hồi gốc của nhà cung cấp để quản trị viên dễ dàng tra cứu chuyên sâu.',
-        ],
-      },
-      {
-        title: '🚨 Báo Lỗi Chuẩn Xác & 1-Click Kiểm Tra Lại Kết Nối',
-        items: [
-          'Hiển thị trạng thái lỗi thực tế: Khắc phục triệt để tình trạng tài khoản hết tiền (như Claude balance too low) hoặc lỗi kết nối nhưng giao diện vẫn hiện màu xanh "Đang bật / Hoạt động". Thẻ nhà cung cấp và tài khoản sẽ chuyển sang huy hiệu Đỏ (Lỗi kết nối / Hết hạn) kèm hộp cảnh báo nguyên nhân chi tiết.',
-          'Nút "Kiểm tra lại kết nối" tức thì: Bổ sung nút kiểm tra nhanh ngay trên thẻ nhà cung cấp và trong hộp thoại cảnh báo để bạn bấm test lại trạng thái API key bất kỳ lúc nào.',
-          'Trực quan hóa sự cố phòng ban trong AI Company: Khi có phòng ban gặp trục trặc, thẻ phòng ban sẽ chuyển sang viền đỏ kèm icon cảnh báo và nút "Xem chi tiết sự cố", giúp bạn nắm bắt ngay vấn đề mà không bị nhầm lẫn.',
+          'Không còn thấy mã khó hiểu: Nếu tài khoản AI hết tiền, hết lượt dùng hay sai khóa kết nối, hệ thống sẽ giải thích ngay bằng tiếng Việt rõ ràng để bạn biết cần nạp tiền hay đổi chìa khóa mới.',
+          '1 chạm kiểm tra lại: Nút "Kiểm tra kết nối" ngay trên màn hình giúp bạn thử lại xem tài khoản đã nạp tiền hay dùng lại được chưa bất cứ khi nào bạn muốn.',
         ],
       },
     ],
