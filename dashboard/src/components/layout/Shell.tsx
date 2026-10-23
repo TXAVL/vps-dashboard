@@ -1,7 +1,7 @@
 // ZenPanel - Khung giao diện chính: Sidebar Jupiter + Header (GUI/CLI toggle) + Terminal dock ở chế độ CLI
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
-import { CalendarClock, ChevronDown, Cloud, Globe, HeartPulse, LogOut, Menu, Monitor, MousePointer2, Sparkles, SquareTerminal, StickyNote, X } from 'lucide-react';
+import { CalendarClock, ChevronDown, Cloud, Globe, HeartPulse, LogOut, Menu, Monitor, MousePointer2, Sparkles, SquareTerminal, StickyNote, Wrench, X } from 'lucide-react';
 import { get, logout } from '../../lib/api';
 import { formatPercent } from '../../lib/format';
 import { useLocalStorage } from '../../lib/hooks';
@@ -15,6 +15,7 @@ import { ThemePicker } from './ThemePicker';
 import { WindowMockup } from './WindowMockup';
 import { ServerNotepadModal } from './ServerNotepadModal';
 import { VpsDoctorModal } from '../VpsDoctorModal';
+import { RightUtilityPanel } from './RightUtilityPanel';
 
 function Logo() {
   return (
@@ -231,6 +232,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const [dockOpen, setDockOpen] = useState(true);
   const [notepadOpen, setNotepadOpen] = useState(false);
   const [doctorOpen, setDoctorOpen] = useState(false);
+  const [rightPanelOpen, setRightPanelOpen] = useLocalStorage<boolean>('zenpanel.rightpanel.open', false);
+  const [rightPanelPinned, setRightPanelPinned] = useLocalStorage<boolean>('zenpanel.rightpanel.pinned', false);
   const { info, connected } = usePanel();
   const location = useLocation();
   const current = ALL_NAV.find((item) => (item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)));
@@ -295,6 +298,19 @@ export function Shell({ children }: { children: ReactNode }) {
           >
             <StickyNote className="size-5" />
           </button>
+          <button
+            onClick={() => setRightPanelOpen(!rightPanelOpen)}
+            className={cn(
+              'rounded-lg p-2 transition',
+              rightPanelOpen
+                ? 'bg-zen-blue/20 text-blue-300 ring-1 ring-zen-blue/40'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-white',
+            )}
+            data-tip="Kho tính năng & Tiện ích nhanh (Panel bên phải)"
+            aria-label="Kho tính năng"
+          >
+            <Wrench className="size-5" />
+          </button>
           <ThemePicker />
           <JobsButton />
           <button
@@ -313,9 +329,33 @@ export function Shell({ children }: { children: ReactNode }) {
         <UpdateBanner />
         <ExpiryBanner />
 
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="mx-auto w-full min-w-0 max-w-[1600px] p-3 sm:p-6">{children}</div>
-        </main>
+        {!rightPanelOpen && (
+          <button
+            onClick={() => setRightPanelOpen(true)}
+            className="fixed right-0 top-1/2 -translate-y-1/2 z-30 hidden sm:flex flex-col items-center gap-1.5 rounded-l-xl border border-r-0 border-slate-700/80 bg-ink-950/90 py-3 px-1.5 shadow-2xl backdrop-blur-md transition hover:bg-slate-800 text-slate-400 group"
+            data-tip="Mở Kho Tính Năng (Panel phải)"
+            aria-label="Mở Kho Tính Năng"
+          >
+            <Wrench className="size-3.5 text-amber-400 transition group-hover:rotate-45" />
+            <span className="text-[10px] font-bold uppercase [writing-mode:vertical-rl] tracking-widest text-slate-400 group-hover:text-slate-200">
+              Tiện Ích
+            </span>
+          </button>
+        )}
+
+        <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden relative">
+          <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+            <div className="mx-auto w-full min-w-0 max-w-[1600px] p-3 sm:p-6">{children}</div>
+          </main>
+
+          <RightUtilityPanel
+            open={rightPanelOpen}
+            onClose={() => setRightPanelOpen(false)}
+            onOpenDoctor={() => setDoctorOpen(true)}
+            pinned={rightPanelPinned}
+            onTogglePin={() => setRightPanelPinned(!rightPanelPinned)}
+          />
+        </div>
 
         {showDock && (
           <div className="shrink-0 border-t border-slate-800 bg-ink-950/90 p-3">

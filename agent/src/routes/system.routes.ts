@@ -7,12 +7,14 @@ import { startJob } from '../core/jobs.js';
 import { badRequest, HttpError, isIpOrCidr, isPortSpec, isServiceName } from '../core/validate.js';
 import type { CleanService } from '../services/clean.service.js';
 import { VpsDoctorService } from '../services/vpsdoctor.service.js';
+import { QuickToolsService } from '../services/quicktools.service.js';
 
 const SERVICE_ACTIONS: ServiceAction[] = ['start', 'stop', 'restart', 'enable', 'disable'];
 
 export async function systemRoutes(app: FastifyInstance, ctx: AppContext, services?: { clean?: CleanService }): Promise<void> {
   const { adapter } = ctx;
   const doctor = new VpsDoctorService(ctx);
+  const tools = new QuickToolsService();
 
   const expected: Record<ServiceAction, (s: ServiceInfo) => boolean> = {
     start: (s) => s.state === 'running',
@@ -171,5 +173,25 @@ export async function systemRoutes(app: FastifyInstance, ctx: AppContext, servic
 
   app.post('/api/system/vps-doctor/fix-firewall', async () => {
     return startJob('Cấu hình tự động tường lửa (ZenPanel & SSH)', 'vps_doctor', () => doctor.fixFirewall());
+  });
+
+  // ------------------------------------------------------------ Tiện ích nhanh & Kho tính năng (Quick Tools)
+  app.post('/api/system/tools/purge-ram', async () => {
+    return tools.purgeRamCache();
+  });
+
+  app.post('/api/system/tools/check-port', async (req) => {
+    const { host, port, timeoutMs } = req.body as { host: string; port: number; timeoutMs?: number };
+    return tools.checkPort(host, Number(port), timeoutMs);
+  });
+
+  app.post('/api/system/tools/dns-lookup', async (req) => {
+    const { domain } = req.body as { domain: string };
+    return tools.lookupDns(domain);
+  });
+
+  app.post('/api/system/tools/ssl-check', async (req) => {
+    const { domain, port, timeoutMs } = req.body as { domain: string; port?: number; timeoutMs?: number };
+    return tools.checkSsl(domain, port ? Number(port) : 443, timeoutMs);
   });
 }
