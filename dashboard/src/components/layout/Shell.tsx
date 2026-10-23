@@ -263,8 +263,8 @@ export function Shell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b border-slate-800/80 bg-ink-950/70 px-3 backdrop-blur-xl sm:gap-3 sm:px-6">
-          <button className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Mở menu">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-1.5 border-b border-slate-800/80 bg-ink-950/70 px-2.5 backdrop-blur-xl sm:gap-2.5 sm:px-6">
+          <button className="rounded-lg p-1.5 text-slate-300 hover:bg-slate-800 lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Mở menu">
             <Menu className="size-5" />
           </button>
           <div className="min-w-0 flex-1">
@@ -278,13 +278,15 @@ export function Shell({ children }: { children: ReactNode }) {
               {info.os.family === 'windows' ? '🪟' : '🐧'} {info.os.family === 'windows' ? 'Windows' : 'Linux'}
             </span>
           )}
-          <span className="flex items-center" data-tip={connected ? 'Realtime đang kết nối' : 'Mất kết nối realtime'}>
+          <span className="hidden sm:flex items-center" data-tip={connected ? 'Realtime đang kết nối' : 'Mất kết nối realtime'}>
             <StatusDot tone={connected ? 'green' : 'red'} pulse={connected} />
           </span>
-          <ModeToggle mode={mode} onChange={setMode} />
+          <div className="hidden md:flex">
+            <ModeToggle mode={mode} onChange={setMode} />
+          </div>
           <button
             onClick={() => setDoctorOpen(true)}
-            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-emerald-400"
+            className="rounded-lg p-1.5 sm:p-2 text-slate-400 transition hover:bg-slate-800 hover:text-emerald-400"
             data-tip="Bác Sĩ VPS & Tương thích đa nền tảng (VPS Doctor)"
             aria-label="Bác Sĩ VPS"
           >
@@ -292,7 +294,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </button>
           <button
             onClick={() => setNotepadOpen(true)}
-            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-amber-400"
+            className="hidden sm:flex rounded-lg p-1.5 sm:p-2 text-slate-400 transition hover:bg-slate-800 hover:text-amber-400"
             data-tip="Ghi chú máy chủ (Server Notepad)"
             aria-label="Ghi chú máy chủ"
           >
@@ -301,7 +303,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <button
             onClick={() => setRightPanelOpen(!rightPanelOpen)}
             className={cn(
-              'rounded-lg p-2 transition',
+              'rounded-lg p-1.5 sm:p-2 transition',
               rightPanelOpen
                 ? 'bg-zen-blue/20 text-blue-300 ring-1 ring-zen-blue/40'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-white',
@@ -315,7 +317,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <JobsButton />
           <button
             onClick={() => void logout()}
-            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-zen-red"
+            className="rounded-lg p-1.5 sm:p-2 text-slate-400 transition hover:bg-slate-800 hover:text-zen-red"
             data-tip="Đăng xuất"
             aria-label="Đăng xuất"
           >

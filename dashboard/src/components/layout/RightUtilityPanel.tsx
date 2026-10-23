@@ -176,53 +176,63 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
   if (!open) return null;
 
   return (
-    <aside
-      className={cn(
-        'flex flex-col border-l border-slate-800/80 bg-ink-950/95 backdrop-blur-2xl transition-all duration-300 z-40',
-        pinned
-          ? 'relative w-80 lg:w-96 shrink-0'
-          : 'fixed inset-y-0 right-0 w-[90vw] sm:w-96 shadow-2xl shadow-black/80',
-      )}
-    >
-      {/* Panel Header */}
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800/80 px-4">
-        <div className="flex items-center gap-2.5">
-          <div className="flex size-8 items-center justify-center rounded-xl bg-gradient-to-br from-zen-blue to-purple-600 shadow-sm shadow-zen-blue/30">
-            <Wrench className="size-4 text-white" />
-          </div>
-          <div>
-            <div className="text-sm font-extrabold tracking-tight text-white flex items-center gap-1.5">
-              Kho Tính Năng
-              <span className="rounded bg-zen-blue/20 px-1.5 py-0.2 text-[10px] font-bold uppercase text-blue-300">
-                PRO
-              </span>
-            </div>
-            <div className="text-[11px] text-slate-500">Tiện ích nhanh & Giám sát</div>
-          </div>
-        </div>
+    <>
+      {/* Backdrop trên màn hình mobile / tablet khi panel mở */}
+      <div
+        className={cn(
+          'fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity',
+          pinned ? 'lg:hidden' : 'block',
+        )}
+        onClick={onClose}
+      />
 
-        <div className="flex items-center gap-1">
-          <button
-            onClick={onTogglePin}
-            className={cn(
-              'rounded-lg p-1.5 transition',
-              pinned ? 'bg-zen-blue/20 text-blue-300' : 'text-slate-400 hover:bg-slate-800 hover:text-white',
-            )}
-            data-tip={pinned ? 'Bỏ ghim (Dạng Drawer)' : 'Ghim cố định (Docked)'}
-            aria-label="Ghim panel"
-          >
-            {pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
-          </button>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white"
-            data-tip="Đóng panel"
-            aria-label="Đóng panel"
-          >
-            <X className="size-5" />
-          </button>
+      <aside
+        className={cn(
+          'flex flex-col border-l border-slate-800/80 bg-ink-950/95 backdrop-blur-2xl transition-all duration-300 z-50',
+          pinned
+            ? 'fixed inset-y-0 right-0 w-full sm:w-96 lg:relative lg:w-96 shrink-0 shadow-2xl lg:shadow-none'
+            : 'fixed inset-y-0 right-0 w-full sm:w-96 shadow-2xl shadow-black/80',
+        )}
+      >
+        {/* Panel Header */}
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800/80 px-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex size-8 items-center justify-center rounded-xl bg-gradient-to-br from-zen-blue to-purple-600 shadow-sm shadow-zen-blue/30">
+              <Wrench className="size-4 text-white" />
+            </div>
+            <div>
+              <div className="text-sm font-extrabold tracking-tight text-white flex items-center gap-1.5">
+                Kho Tính Năng
+                <span className="rounded bg-zen-blue/20 px-1.5 py-0.2 text-[10px] font-bold uppercase text-blue-300">
+                  PRO
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-500">Tiện ích nhanh & Giám sát</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onTogglePin}
+              className={cn(
+                'hidden lg:flex rounded-lg p-1.5 transition',
+                pinned ? 'bg-zen-blue/20 text-blue-300' : 'text-slate-400 hover:bg-slate-800 hover:text-white',
+              )}
+              data-tip={pinned ? 'Bỏ ghim (Dạng Drawer)' : 'Ghim cố định (Docked)'}
+              aria-label="Ghim panel"
+            >
+              {pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+              data-tip="Đóng panel"
+              aria-label="Đóng panel"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
         </div>
-      </div>
 
       {/* Tabs */}
       <div className="grid grid-cols-3 border-b border-slate-800/80 bg-ink-900/40 p-1 text-xs">
@@ -633,5 +643,6 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
         )}
       </div>
     </aside>
-  );
+  </>
+);
 }
