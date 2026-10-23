@@ -3050,7 +3050,7 @@ function OverviewTab({
 }) {
   const { tunnel } = usePanel();
   const logs = useApi<GatewayLog[]>('/api/ai/gateway/logs', 15000);
-  const [integrationTab, setIntegrationTab] = useState<'claude' | 'cursor' | 'cline' | 'aider' | 'n8n' | 'curl' | 'python' | 'node'>('claude');
+  const [integrationTab, setIntegrationTab] = useState<'postman' | 'claude' | 'cursor' | 'cline' | 'openwebui' | 'dify' | 'n8n' | 'aider' | 'curl' | 'python' | 'node'>('postman');
 
   // Tính toán các loại Base URL chính xác theo cổng và mạng
   const currentPort = window.location.port || (window.location.protocol === 'https:' ? '443' : '80') || '2083';
@@ -3064,8 +3064,17 @@ function OverviewTab({
   const dockerBase = dockerLinuxBase;
   const tunnelBase = tunnel?.status === 'online' && tunnel.url ? `${tunnel.url}/zen/v1` : null;
 
-  const [urlMode, setUrlMode] = useState<'direct' | 'docker' | 'tunnel'>(isTunnelOrigin && tunnelBase ? 'tunnel' : 'direct');
-  const base = urlMode === 'docker' ? dockerLinuxBase : urlMode === 'tunnel' && tunnelBase ? tunnelBase : directBase;
+  const [customHost, setCustomHost] = useState<string>(() => localStorage.getItem('zen_gateway_custom_host') || '');
+  const handleCustomHostChange = (val: string) => {
+    setCustomHost(val);
+    localStorage.setItem('zen_gateway_custom_host', val);
+  };
+  const customBase = customHost
+    ? `${customHost.startsWith('http://') || customHost.startsWith('https://') ? customHost : `http://${customHost}`}${customHost.endsWith('/zen/v1') ? '' : '/zen/v1'}`
+    : directBase;
+
+  const [urlMode, setUrlMode] = useState<'direct' | 'docker' | 'custom' | 'tunnel'>(isTunnelOrigin && tunnelBase ? 'tunnel' : 'direct');
+  const base = urlMode === 'docker' ? dockerLinuxBase : urlMode === 'custom' ? customBase : urlMode === 'tunnel' && tunnelBase ? tunnelBase : directBase;
 
   const model = gateway.tier1Model || gateway.defaultModel || 'auto';
   const day = (logs.data ?? []).filter((l) => Date.now() - new Date(l.at).getTime() < 86_400_000);
@@ -3081,6 +3090,47 @@ function OverviewTab({
   const activeKeyStr = keys[0]?.masked ? '<API_KEY_CỦA_BẠN>' : gateway.apiKey;
 
   const integrations = {
+    postman: {
+      name: 'Postman & API',
+      badge: '1-Click Import',
+      desc: 'Import Collection đầy đủ vào Postman để test Auto Routing & Set nhanh Model Default/Fallback trực tiếp từ xa mà không cần vào Dashboard.',
+      code: `=== BƯỚC 1: IMPORT 1-CLICK VÀO POSTMAN ===
+1. Mở Postman -> Bấm nút "Import" (góc trên bên trái).
+2. Dán đường link sau vào ô Import URL:
+   ${base}/postman.json
+(Postman sẽ tự động import toàn bộ 9 Request kèm biến môi trường {{baseUrl}} và {{apiKey}})
+
+=== BƯỚC 2: TRA CỨU HƯỚNG DẪN TỰ ĐỘNG CHO AI AGENT (KHÔNG CẦN TOKEN) ===
+GET ${base}/guide
+(Trả về toàn bộ danh sách endpoint, model aliases: auto, tier1, tier2, tier3)
+
+=== BƯỚC 3: TEST CHAT VỚI AUTO-ROUTING 3 TẦNG ===
+POST ${base}/chat/completions
+Header:
+  Authorization: Bearer ${activeKeyStr}
+  Content-Type: application/json
+Body:
+{
+  "model": "auto",
+  "messages": [{"role": "user", "content": "Xin chào ZenPanel AI Gateway!"}],
+  "stream": false
+}
+
+=== BƯỚC 4: SET NHANH MODEL MỚI TỨC THÌ (THAY THẾ MODEL HIỆN TẠI QUA POSTMAN) ===
+Khi test thấy 1 model mới trả về mã 200 ngon lành, gọi ngay lệnh này để set làm Default / Fallback:
+POST ${base}/config
+Header:
+  Authorization: Bearer ${activeKeyStr}
+  Content-Type: application/json
+Body:
+{
+  "model": "gemini-3.5-flash-lite",
+  "tier1Model": "gemini-3.5-flash-lite",
+  "tier2Model": "openai/gpt-4o-mini",
+  "fallbacks": ["openai/gpt-4o-mini"]
+}
+=> Gateway sẽ lưu và áp dụng ngay lập tức cho toàn bộ các ứng dụng bên ngoài!`,
+    },
     claude: {
       name: 'Claude Code',
       badge: 'CLI Agent',
@@ -3120,6 +3170,35 @@ Model ID: tier1 (hoặc: auto / gemini/gemini-3.5-flash-lite)
 
 // Tính năng RTK Token Saver của ZenPanel giúp giảm 30%-60% token terminal / file diff cho Cline!`,
     },
+    openwebui: {
+      name: 'Open WebUI',
+      badge: 'Web UI',
+      desc: 'Giao diện web chat ChatGPT tự host cực đẹp. Kết nối siêu tốc qua Docker nội bộ hoặc VPS IP.',
+      code: `# Chạy Open WebUI bằng Docker kết nối tới ZenPanel AI Gateway:
+docker run -d -p 3000:8080 \\
+  -e OPENAI_API_BASE_URL="${dockerBase}" \\
+  -e OPENAI_API_KEY="${activeKeyStr}" \\
+  -v open-webui:/app/backend/data \\
+  --name open-webui \\
+  --restart always \\
+  ghcr.io/open-webui/open-webui:main
+
+# Lưu ý: Các model auto, tier1, tier2, tier3 đã được ZenPanel đưa sẵn vào danh sách /models, bạn chỉ cần chọn trong dropdown!`,
+    },
+    dify: {
+      name: 'Dify & FastGPT',
+      badge: 'LLMOps',
+      desc: 'Nền tảng tạo AI App & RAG Workflows. Kết nối dễ dàng theo chuẩn OpenAI API-compatible.',
+      code: `=== CẤU HÌNH TRONG DIFY (Settings -> Model Provider -> OpenAI-API-compatible) ===
+
+1. Provider: OpenAI-API-compatible
+2. Model Name: auto (hoặc tier1, tier2, tier3, gemini-3.5-flash-lite)
+3. Server URL (Base URL):
+   ${dockerBase}  (Khuyên dùng nếu Dify chạy Docker cùng VPS)
+   ${base}        (Nếu Dify chạy ở máy chủ khác)
+4. API Key:
+   ${activeKeyStr}`,
+    },
     aider: {
       name: 'Aider / Codex',
       badge: 'Pair Programming',
@@ -3131,8 +3210,8 @@ aider \\
   --model "openai/tier1"`,
     },
     n8n: {
-      name: 'n8n & Dify',
-      badge: 'AI Automation',
+      name: 'n8n Workflow',
+      badge: 'Automation',
       desc: 'Tự động hóa workflow AI. Dùng Base URL Docker nội bộ để đạt tốc độ phản hồi cực nhanh dưới 1ms.',
       code: `=== THIẾT LẬP N8N & DIFY VỚI ZENPANEL AI GATEWAY ===
 
@@ -3332,17 +3411,17 @@ console.log(res.choices[0].message.content);`,
               </div>
             </div>
 
-            {/* BASE URL ENDPOINTS - 3 CHẾ ĐỘ RÕ RÀNG */}
+            {/* BASE URL ENDPOINTS - 4 CHẾ ĐỘ TƯƠNG THÍCH MỌI VPS */}
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                 <span className="font-bold text-slate-200">Chọn Base URL mẫu cho các hướng dẫn tích hợp bên dưới:</span>
-                <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800 text-[11px]">
+                <div className="flex flex-wrap rounded-lg bg-slate-900 p-0.5 border border-slate-800 text-[11px]">
                   <button
                     type="button"
                     onClick={() => setUrlMode('direct')}
                     className={cn('px-2.5 py-1 rounded font-semibold transition', urlMode === 'direct' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}
                   >
-                    🌐 Cổng Mở VPS / Domain
+                    🌐 Cổng Mở VPS
                   </button>
                   <button
                     type="button"
@@ -3350,6 +3429,13 @@ console.log(res.choices[0].message.content);`,
                     className={cn('px-2.5 py-1 rounded font-semibold transition', urlMode === 'docker' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}
                   >
                     🐳 Nội Bộ Docker
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUrlMode('custom')}
+                    className={cn('px-2.5 py-1 rounded font-semibold transition', urlMode === 'custom' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}
+                  >
+                    🔗 Tùy Biến Domain/IP
                   </button>
                   {tunnelBase && (
                     <button
@@ -3363,7 +3449,7 @@ console.log(res.choices[0].message.content);`,
                 </div>
               </div>
 
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 {/* 1. DIRECT PORT / IP / DOMAIN */}
                 <div
                   onClick={() => setUrlMode('direct')}
@@ -3377,7 +3463,7 @@ console.log(res.choices[0].message.content);`,
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-bold text-white flex items-center gap-1.5">
-                        <span>🌐 Cổng Mở VPS / Domain</span>
+                        <span>🌐 Cổng Mở VPS</span>
                       </span>
                       <Badge tone="green" className="text-[9px]">CORS: All (*)</Badge>
                     </div>
@@ -3389,7 +3475,7 @@ console.log(res.choices[0].message.content);`,
                       <CopyButton value={directBase} label="Copy" />
                     </div>
                   </div>
-                  <div className="mt-2 text-[10px] text-slate-500">Hỗ trợ cả alias: <code className="text-slate-300">{directOrigin}/v1</code></div>
+                  <div className="mt-2 text-[10px] text-slate-500">Hỗ trợ alias: <code className="text-slate-300">{directOrigin}/v1</code></div>
                 </div>
 
                 {/* 2. DOCKER INTERNAL */}
@@ -3405,22 +3491,56 @@ console.log(res.choices[0].message.content);`,
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-bold text-white flex items-center gap-1.5">
-                        <span>🐳 Nội Bộ Docker (Same VPS)</span>
+                        <span>🐳 Nội Bộ Docker</span>
                       </span>
                       <Badge tone="blue" className="text-[9px]">Dưới 1ms</Badge>
                     </div>
                     <p className="text-[11px] text-slate-400 leading-tight">
-                      Dành cho n8n, Open WebUI, Dify, LibreChat chạy cùng VPS.
+                      Dành cho n8n, Open WebUI, Dify chạy cùng VPS.
                     </p>
                     <div className="flex items-center gap-1 mt-1 pt-1 border-t border-slate-800/80">
                       <span className="mono min-w-0 flex-1 truncate text-emerald-300 font-bold text-xs">{dockerLinuxBase}</span>
                       <CopyButton value={dockerLinuxBase} label="Copy" />
                     </div>
                   </div>
-                  <div className="mt-2 text-[10px] text-slate-500">Windows/Mac Docker: <code className="text-slate-300">{dockerWinBase}</code></div>
+                  <div className="mt-2 text-[10px] text-slate-500">Win/Mac Docker: <code className="text-slate-300">{dockerWinBase}</code></div>
                 </div>
 
-                {/* 3. CLOUDFLARE TUNNEL */}
+                {/* 3. CUSTOM DOMAIN / IP */}
+                <div
+                  onClick={() => setUrlMode('custom')}
+                  className={cn(
+                    'rounded-xl border p-3 cursor-pointer transition flex flex-col justify-between',
+                    urlMode === 'custom'
+                      ? 'border-amber-500 bg-amber-950/40 ring-1 ring-amber-500/50'
+                      : 'border-slate-800 bg-ink-950/60 hover:border-slate-700'
+                  )}
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        <span>🔗 Domain / IP Riêng</span>
+                      </span>
+                      <Badge tone="amber" className="text-[9px]">Tự định nghĩa</Badge>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-tight">
+                      VPS qua Nginx proxy, Cloudflare DNS hoặc IP tĩnh khác.
+                    </p>
+                    <div className="flex items-center gap-1 mt-1 pt-1 border-t border-slate-800/80">
+                      <input
+                        type="text"
+                        placeholder="api.domain.com:2083"
+                        value={customHost}
+                        onChange={(e) => handleCustomHostChange(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-full rounded bg-slate-900 px-2 py-0.5 text-xs text-amber-200 border border-slate-700 focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[10px] text-slate-500 truncate">URL: <code className="text-amber-300">{customBase}</code></div>
+                </div>
+
+                {/* 4. CLOUDFLARE TUNNEL */}
                 <div
                   onClick={() => tunnelBase && setUrlMode('tunnel')}
                   className={cn(
@@ -3433,7 +3553,7 @@ console.log(res.choices[0].message.content);`,
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-bold text-white flex items-center gap-1.5">
-                        <span>☁️ Cloudflare Quick Tunnel</span>
+                        <span>☁️ Cloudflare Tunnel</span>
                       </span>
                       <Badge tone={tunnelBase ? 'blue' : 'slate'} className="text-[9px]">
                         {tunnelBase ? 'Online' : 'Chưa bật'}
@@ -3447,7 +3567,52 @@ console.log(res.choices[0].message.content);`,
                       {tunnelBase && <CopyButton value={tunnelBase} label="Copy" />}
                     </div>
                   </div>
-                  <div className="mt-2 text-[10px] text-slate-500">Domain ngẫu nhiên *.trycloudflare.com</div>
+                  <div className="mt-2 text-[10px] text-slate-500">Domain trycloudflare.com</div>
+                </div>
+              </div>
+
+              {/* 2 THANH CÔNG CỤ NHANH: POSTMAN COLLECTION & API GUIDE */}
+              <div className="grid gap-2 sm:grid-cols-2 pt-1">
+                <div className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-950/20 p-2.5 text-xs text-amber-200">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base">🚀</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-white truncate">Postman Collection v2.1.0</div>
+                      <div className="text-[11px] text-amber-300/80 truncate">Import 1-Click vào Postman để test Auto & Đổi model</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <CopyButton value={`${base}/postman.json`} label="Copy Link" />
+                    <a
+                      href={`${base}/postman.json`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-lg bg-amber-600/30 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-600/50"
+                    >
+                      Mở JSON ↗
+                    </a>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-xl border border-blue-500/30 bg-blue-950/20 p-2.5 text-xs text-blue-200">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base">📖</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-white truncate">Tài liệu API Tự Động (AI Guide)</div>
+                      <div className="text-[11px] text-blue-300/80 truncate">Endpoint public để các AI Agent khác tự đọc cách dùng</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <CopyButton value={`${base}/guide`} label="Copy Link" />
+                    <a
+                      href={`${base}/guide`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-lg bg-blue-600/30 px-2 py-1 text-[11px] font-semibold text-blue-200 hover:bg-blue-600/50"
+                    >
+                      Xem Guide ↗
+                    </a>
+                  </div>
                 </div>
               </div>
 
