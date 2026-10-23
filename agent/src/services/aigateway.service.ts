@@ -291,19 +291,50 @@ export class AiGatewayService {
     writeJson(KEYS_FILE, next);
   }
 
-  verifyKey(header: string | undefined): { ok: boolean; keyId?: string; keyName?: string } {
-    const token = header?.startsWith('Bearer ') ? header.slice(7).trim() : header?.trim();
-    if (!token) return { ok: false };
+  verifyKey(header: string | undefined): { ok: boolean; reason?: 'missing' | 'not_found' | 'disabled' | 'expired'; message?: string; keyId?: string; keyName?: string } {
+    let token = header?.trim() ?? '';
+    if (token.toLowerCase().startsWith('bearer ')) {
+      token = token.slice(7).trim();
+    }
+    // Loại bỏ dấu ngoặc kép hoặc nháy đơn nếu người dùng copy nhầm
+    token = token.replace(/^["']|["']$/g, '').trim();
+
+    if (!token) {
+      return {
+        ok: false,
+        reason: 'missing',
+        message: 'Thiếu API Key xác thực. Vui lòng thêm header "Authorization: Bearer <API_KEY>" hoặc "x-api-key: <API_KEY>" (trong Postman: mở tab Authorization -> Type: Bearer Token -> dán khóa tzp_live_... vào ô Token).',
+      };
+    }
 
     const keys = this.getRawApiKeys();
     const now = Date.now();
-    for (const k of keys) {
-      if (!k.enabled) continue;
-      if (k.expiresAt && new Date(k.expiresAt).getTime() < now) continue;
 
+    // Tìm xem key có khớp với tài khoản nào trong hệ thống không
+    for (const k of keys) {
       const a = Buffer.from(token);
       const b = Buffer.from(k.key);
       if (a.length === b.length && timingSafeEqual(a, b)) {
+        if (!k.enabled) {
+          return {
+            ok: false,
+            reason: 'disabled',
+            message: `API Key "${k.name}" (${k.masked}) đã bị tạm dừng (disabled) hoặc thu hồi (revoked) bởi quản trị viên ZenPanel. Vui lòng kích hoạt lại tại tab "Cấp phát API Keys" trong ZenPanel.`,
+            keyId: k.id,
+            keyName: k.name,
+          };
+        }
+        if (k.expiresAt && new Date(k.expiresAt).getTime() < now) {
+          const expDate = new Date(k.expiresAt).toLocaleString('vi-VN');
+          return {
+            ok: false,
+            reason: 'expired',
+            message: `API Key "${k.name}" (${k.masked}) đã hết hạn sử dụng vào lúc ${expDate} (expired). Vui lòng gia hạn thời gian hoặc tạo khóa mới tại tab "Cấp phát API Keys" trong ZenPanel.`,
+            keyId: k.id,
+            keyName: k.name,
+          };
+        }
+
         k.lastUsedAt = new Date().toISOString();
         writeJson(KEYS_FILE, keys);
         return { ok: true, keyId: k.id, keyName: k.name };
@@ -320,7 +351,12 @@ export class AiGatewayService {
       }
     }
 
-    return { ok: false };
+    const preview = token.length > 8 ? `${token.slice(0, 8)}...` : token;
+    return {
+      ok: false,
+      reason: 'not_found',
+      message: `API Key không tồn tại hoặc không chính xác trên hệ thống ZenPanel AI Gateway (Mã nhận diện: "${preview}"). Vui lòng kiểm tra lại mã khóa hoặc tạo khóa mới tại tab "Cấp phát API Keys" trong ZenPanel.`,
+    };
   }
 
   logs(): GatewayLog[] {
@@ -594,6 +630,21 @@ export class AiGatewayService {
    * 4. Model Fallback dự phòng khi toàn bộ keys của provider lỗi
    */
   async chat(body: Record<string, unknown>, source: GatewayLog['source']): Promise<Response> {
+    if (!body || typeof body !== 'object') {
+      throw badRequest('Yêu cầu không hợp lệ: Request body phải là một JSON object.');
+    }
+    if (!Array.isArray(body.messages) || body.messages.length === 0) {
+      throw badRequest(
+        'Yêu cầu không hợp lệ: Thiếu trường "messages" trong JSON body hoặc "messages" rỗng. ' +
+        'Ví dụ mẫu hợp lệ cho Postman / OpenAI API: ' +
+        JSON.stringify({
+          model: 'auto',
+          messages: [{ role: 'user', content: 'Xin chào AI Gateway!' }],
+          stream: false,
+        }, null, 2),
+      );
+    }
+
     const s = settings();
     let subAgentName: string | null = null;
     let extraSystemPrompt: string | undefined;

@@ -121,10 +121,74 @@ export const GATEWAY_PREFIXES = ['/zen/v1', '/ai/v1', '/v1'];
 export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiGatewayService }): Promise<void> {
   const { gateway } = deps;
 
-  // Lỗi theo định dạng OpenAI để SDK / n8n / Open WebUI hiển thị đúng
+  // Lỗi theo định dạng chuẩn OpenAI để Postman / SDK / n8n / Open WebUI hiển thị chi tiết và chính xác
   app.setErrorHandler((err: Error, _req, reply) => {
     const status = (err as { statusCode?: number }).statusCode ?? 500;
-    return reply.code(status).send({ error: { message: err.message, type: status === 401 ? 'authentication_error' : 'zenpanel_gateway_error', code: status } });
+    let errorType = 'zenpanel_gateway_error';
+    if (status === 401) errorType = 'authentication_error';
+    else if (status === 400) errorType = 'invalid_request_error';
+    else if (status === 404) errorType = 'not_found_error';
+    else if (status === 429) errorType = 'rate_limit_error';
+    else if (status === 503) errorType = 'service_unavailable_error';
+    else if (status === 502) errorType = 'bad_gateway_error';
+
+    return reply
+      .code(status)
+      .header('Content-Type', 'application/json; charset=utf-8')
+      .header('Access-Control-Allow-Origin', '*')
+      .header('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS')
+      .header('Access-Control-Allow-Headers', 'Authorization, Content-Type, x-api-key, *')
+      .send({
+        error: {
+          message: err.message || 'Đã xảy ra lỗi trong quá trình xử lý yêu cầu AI Gateway.',
+          type: errorType,
+          param: null,
+          code: status,
+        },
+      });
+  });
+
+  // GET / (vd http://<host>/zen/v1, /v1, /ai/v1) hiển thị thông tin cổng Gateway & hướng dẫn test Postman trực quan
+  app.get('/', async () => {
+    const s = gateway.getSettings();
+    return {
+      status: s.enabled ? 'online' : 'disabled',
+      service: 'TXAZENPANEL AI Gateway (9Router compatible)',
+      version: '0.6.4',
+      description: 'Cổng điều phối AI thông minh 3 tầng chuẩn OpenAI tương thích Postman, cURL, LangChain, Next.js, n8n, Open WebUI',
+      endpoints: {
+        chat_completions: 'POST /chat/completions (hoặc /zen/v1/chat/completions)',
+        models: 'GET /models',
+        health: 'GET /health',
+      },
+      tiers: {
+        tier1: s.tier1Model || 'Chưa cấu hình (fallback về model mặc định)',
+        tier2: s.tier2Model || 'Chưa cấu hình',
+        tier3: s.tier3Model || 'Chưa cấu hình',
+        rtkTokenSaver: s.rtkEnabled ? 'Đang bật' : 'Đang tắt',
+      },
+      postmanQuickGuide: {
+        auth: {
+          tab: 'Authorization',
+          type: 'Bearer Token',
+          tokenFormat: 'tzp_live_xxxxxxxxxxxxxxxxxxxxxxxx',
+          alternativeHeader: 'x-api-key: tzp_live_xxxxxxxxxxxxxxxxxxxxxxxx',
+        },
+        sampleChatRequest: {
+          method: 'POST',
+          url: 'http://<panel-ip>:3000/zen/v1/chat/completions',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer tzp_live_...',
+          },
+          body: {
+            model: 'auto',
+            messages: [{ role: 'user', content: 'Xin chào AI Gateway!' }],
+            stream: false,
+          },
+        },
+      },
+    };
   });
 
   // /health công khai để kiểm tra gateway sống, mọi endpoint khác cần API key tzp_
@@ -132,10 +196,12 @@ export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiG
 
   app.register(async (secured) => {
     secured.addHook('preHandler', async (req) => {
-      if (!gateway.getSettings().enabled) throw new HttpError(503, 'AI Gateway đang tắt. Bật trong ZenPanel → AI Gateway.');
+      if (!gateway.getSettings().enabled) {
+        throw new HttpError(503, 'AI Gateway đang tạm tắt. Vui lòng bật gateway tại ZenPanel → AI Gateway để sử dụng.');
+      }
       const verified = gateway.verifyKey(req.headers.authorization ?? (req.headers['x-api-key'] as string | undefined));
       if (!verified.ok) {
-        throw new HttpError(401, 'API key của ZenPanel AI Gateway không đúng, bị vô hiệu hóa hoặc đã hết hạn (phải bắt đầu bằng tzp_).');
+        throw new HttpError(401, verified.message || 'API key của ZenPanel AI Gateway không hợp lệ (phải bắt đầu bằng tzp_).');
       }
     });
 

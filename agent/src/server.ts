@@ -136,16 +136,26 @@ async function main() {
         res.header('Cache-Control', filePath.includes(`${path.sep}assets${path.sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache');
       },
     });
-    // SPA: mọi đường dẫn không phải API trả về index.html
+    // SPA: mọi đường dẫn không phải API trả về index.html; các đường dẫn gateway trả về lỗi JSON chuẩn OpenAI
     app.setNotFoundHandler((req, reply) => {
-      if (
-        req.url.startsWith('/api/') ||
-        req.url.startsWith('/ws/') ||
-        req.url.startsWith('/ai/') ||
-        req.url.startsWith('/zen/') ||
-        req.url.startsWith('/v1/')
-      ) {
-        return reply.code(404).send({ error: 'Not found' });
+      const url = req.url;
+      const isGateway = url.startsWith('/zen/') || url.startsWith('/ai/') || url.startsWith('/v1/') || url === '/v1' || url === '/zen/v1' || url === '/ai/v1';
+      if (isGateway) {
+        return reply
+          .code(404)
+          .header('Content-Type', 'application/json; charset=utf-8')
+          .header('Access-Control-Allow-Origin', '*')
+          .send({
+            error: {
+              message: `Đường dẫn "${url}" không tồn tại trên ZenPanel AI Gateway. Các endpoint khả dụng: POST /chat/completions, GET /models, GET /health, GET /`,
+              type: 'not_found_error',
+              param: null,
+              code: 404,
+            },
+          });
+      }
+      if (url.startsWith('/api/') || url.startsWith('/ws/')) {
+        return reply.code(404).send({ error: 'Endpoint không tồn tại' });
       }
       return reply.sendFile('index.html');
     });
