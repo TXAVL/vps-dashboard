@@ -45,6 +45,7 @@ import {
   X,
 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
+import { useJobs } from '../components/jobs';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, SearchInput, Select, Spinner, cn } from '../components/ui';
 import { WindowMockup } from '../components/layout/WindowMockup';
 import { Highlight } from '../components/Highlight';
@@ -53,7 +54,7 @@ import { api, downloadFile, getDownloadTicket, get, post, put } from '../lib/api
 import { formatBytes, formatDate } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
-import type { AppView, FileEntry } from '../lib/types';
+import type { AppView, FileEntry, Job } from '../lib/types';
 
 export function getFileTypeLabel(name: string, isDirectory: boolean, osStyle: 'windows' | 'ubuntu' | 'macos'): string {
   if (isDirectory) {
@@ -866,6 +867,7 @@ export default function FileManager() {
   const [viewMode, setViewMode] = useState<'standard' | 'pro'>('standard');
   const fileInput = useRef<HTMLInputElement>(null);
   const { confirm, prompt, run, toast } = useFeedback();
+  const { runJob } = useJobs();
 
   // Nhận diện hệ điều hành của VPS để áp dụng giao diện giống 100%
   const { info } = usePanel();
@@ -889,7 +891,7 @@ export default function FileManager() {
   const proUrl = proApp?.publicLink?.url ?? `http://${window.location.hostname}:${proPort}`;
 
   const startPro = async () => {
-    await run(() => post('/api/apps/filebrowser/start'), 'Khởi động ZenFile Pro');
+    await runJob(() => post<Job>('/api/apps/filebrowser/start'));
     await apps.reload();
   };
 
@@ -901,7 +903,7 @@ export default function FileManager() {
       confirmLabel: 'Gỡ cài đặt',
     });
     if (!ok) return;
-    await run(() => post('/api/apps/filebrowser/uninstall', { removeData: false }), 'Đã gỡ cài đặt ZenFile Pro');
+    await runJob(() => post<Job>('/api/apps/filebrowser/uninstall', { removeData: false }));
     setViewMode('standard');
     await apps.reload();
   };

@@ -804,19 +804,35 @@ export class AppStoreService {
 
     const dir = appDir(id);
     const project = ['-p', projectName(id)];
+    const record = installed.get(id);
+
+    // Tự động làm mới file cấu hình docker-compose.yml từ catalog để fix lỗi template cũ
+    if (app.compose && record) {
+      await this.writeFiles(app, record.params);
+    }
+
     if (action === 'update') {
+      jobLog(`Đang cập nhật image mới nhất cho ứng dụng ${app.name}...`);
       await this.docker.compose([...project, 'pull'], dir);
-      await this.docker.compose([...project, 'up', '-d', '--remove-orphans'], dir);
+      const out = await this.docker.compose([...project, 'up', '-d', '--remove-orphans'], dir);
+      jobLog(out || `✓ Cập nhật ${app.name} thành công!`);
     } else if (action === 'start') {
-      // Dùng up -d để đảm bảo nếu container chưa được tạo hoặc bị xoá thì tự sinh lại thay vì báo lỗi "no container found"
-      await this.docker.compose([...project, 'up', '-d'], dir);
+      jobLog(`Đang khởi động ứng dụng ${app.name}...`);
+      const out = await this.docker.compose([...project, 'up', '-d'], dir);
+      jobLog(out || `✓ Khởi động ${app.name} thành công!`);
+    } else if (action === 'restart') {
+      jobLog(`Đang khởi động lại ứng dụng ${app.name}...`);
+      const out = await this.docker.compose([...project, 'restart'], dir);
+      jobLog(out || `✓ Khởi động lại ${app.name} thành công!`);
     } else {
+      jobLog(`Đang dừng ứng dụng ${app.name}...`);
       try {
-        await this.docker.compose([...project, action], dir);
+        const out = await this.docker.compose([...project, action], dir);
+        jobLog(out || `✓ Đã dừng ${app.name}!`);
       } catch (err: unknown) {
         const msg = String((err as Error)?.message || '');
         if (msg.includes('no container found')) {
-          // Container đã không còn tồn tại nên coi như đã dừng
+          jobLog(`Container của ${app.name} đã dừng trước đó.`);
           return;
         }
         throw err;

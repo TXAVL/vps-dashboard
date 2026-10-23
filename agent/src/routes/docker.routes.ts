@@ -78,7 +78,10 @@ export async function dockerRoutes(app: FastifyInstance, ctx: AppContext, deps: 
       return startJob(`Gỡ cài đặt ${id}`, 'app', () => apps.uninstall(id, removeData));
     }
     if (!['start', 'stop', 'restart', 'update'].includes(action)) throw badRequest('Thao tác không hợp lệ');
-    if (action === 'update') return startJob(`Cập nhật ${id}`, 'app', () => apps.action(id, 'update'));
+    if (action === 'update' || action === 'start' || action === 'restart') {
+      const actionName = action === 'start' ? 'Khởi động' : action === 'restart' ? 'Khởi động lại' : 'Cập nhật';
+      return startJob(`${actionName} ${id}`, 'app', () => apps.action(id, action as any));
+    }
     await apps.action(id, action as 'start' | 'stop' | 'restart');
     return { ok: true };
   });

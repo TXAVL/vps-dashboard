@@ -377,15 +377,23 @@ export const APP_CATALOG: AppDefinition[] = [
       { key: 'rootPath', label: 'Thư mục quản lý trên máy chủ', type: 'text', default: '/', hint: 'Thư mục máy chủ được gắn vào để duyệt tệp (mặc định / là toàn bộ VPS)' },
     ],
     webPort: 'port',
-    compose: (p, c) =>
-      service({
+    compose: (p, c) => {
+      const isWin = process.platform === 'win32';
+      const root = p.rootPath && p.rootPath.trim() !== '' ? p.rootPath.trim() : (isWin ? 'C:/' : '/');
+      return service({
         container: c,
         image: 'filebrowser/filebrowser:latest',
         ports: [`${p.port}:80`],
         volumes: { data: '/database' },
-        binds: [`${p.rootPath || '/'}:/srv`],
-        command: `sh -c "/filebrowser config init -a 0.0.0.0 -p 80 -r /srv -d /database/filebrowser.db >/dev/null 2>&1 || true; /filebrowser users add admin '${p.password || 'admin'}' --perm.admin >/dev/null 2>&1 || /filebrowser users update admin -p '${p.password || 'admin'}' >/dev/null 2>&1 || true; exec /filebrowser -a 0.0.0.0 -p 80 -r /srv -d /database/filebrowser.db"`,
-      }),
+        binds: [`${root}:/srv`],
+        env: {
+          FB_DATABASE: '/database/filebrowser.db',
+          FB_ROOT: '/srv',
+          FB_PORT: '80',
+          FB_ADDRESS: '0.0.0.0',
+        },
+      });
+    },
   },
   {
     id: 'code-server',
