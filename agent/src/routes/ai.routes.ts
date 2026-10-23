@@ -117,6 +117,121 @@ export async function aiPanelRoutes(app: FastifyInstance, deps: { ai: AiService;
 /** Prefix chính của AI Gateway; hỗ trợ đầy đủ /zen/v1, /ai/v1 và chuẩn OpenAI quốc tế /v1 */
 export const GATEWAY_PREFIXES = ['/zen/v1', '/ai/v1', '/v1'];
 
+function getGatewayGuide(gateway: AiGatewayService) {
+  const s = gateway.getSettings();
+  return {
+    status: s.enabled ? 'online' : 'disabled',
+    service: 'TXAZENPANEL AI Gateway (9Router compatible)',
+    version: '0.6.4',
+    description: 'Cổng điều phối AI thông minh 3 tầng (3-Tier) chuẩn OpenAI. Hỗ trợ đầy đủ cho Postman, cURL, AI Agents, LangChain, Next.js, n8n, Cursor, Claude Code, Cline.',
+    currentConfiguration: {
+      defaultModel: s.defaultModel || 'Chưa cấu hình (fallback về provider đầu tiên)',
+      tier1Model: s.tier1Model || s.defaultModel || 'auto',
+      tier2Model: s.tier2Model || s.fallbacks[0] || 'Chưa cấu hình',
+      tier3Model: s.tier3Model || s.fallbacks[1] || 'Chưa cấu hình',
+      fallbacks: s.fallbacks,
+      rtkTokenSaver: s.rtkEnabled ? 'Đang bật' : 'Đang tắt',
+      rotationStrategy: s.rotationStrategy,
+    },
+    authentication: {
+      header: 'Authorization: Bearer <API_KEY> hoặc x-api-key: <API_KEY>',
+      format: 'tzp_live_xxxxxxxxxxxxxxxxxxxxxxxx (hoặc tzp_...)',
+      postmanTab: 'Authorization -> Type: Bearer Token -> điền API Key vào ô Token',
+    },
+    modelRoutingAliases: {
+      'auto': 'Tự động gọi model chính (Tier 1 hoặc defaultModel). Khi bị lỗi hoặc 429 Rate Limit, tự động nhảy sang Tier 2 -> Tier 3 -> danh sách fallbacks.',
+      'tier1': 'Gọi model chính cao cấp (Tier 1).',
+      'tier2': 'Gọi model tốc độ cao / chi phí thấp (Tier 2).',
+      'tier3': 'Gọi model miễn phí / cứu cánh (Tier 3).',
+      '<provider>/<model>': 'Gọi trực tiếp model theo tên, ví dụ: gemini/gemini-3.5-flash-lite, openai/gpt-4o, anthropic/claude-3-7-sonnet-20250219, deepseek/deepseek-chat',
+      'agent/<subagent_id>': 'Gọi Sub-Agent chuyên môn hoá đã cấu hình trong ZenPanel.',
+    },
+    endpoints: [
+      {
+        method: 'POST',
+        path: '/chat/completions',
+        aliases: ['/zen/v1/chat/completions', '/v1/chat/completions', '/ai/v1/chat/completions'],
+        auth: 'Required (Bearer Token)',
+        description: 'Tạo hội thoại AI chuẩn OpenAI (hỗ trợ stream: true/false).',
+        sampleRequest: {
+          model: 'auto',
+          messages: [{ role: 'user', content: 'Xin chào AI Gateway!' }],
+          stream: false,
+        },
+      },
+      {
+        method: 'POST / PUT',
+        path: '/config',
+        aliases: ['/zen/v1/config', '/models/default'],
+        auth: 'Required (Bearer Token)',
+        description: 'Set nhanh model mặc định và model dự phòng trực tiếp bằng API từ Postman mà không cần mở Dashboard ZenPanel.',
+        sampleRequest: {
+          model: 'gemini/gemini-3.5-flash-lite',
+          tier1Model: 'gemini/gemini-3.5-flash-lite',
+          tier2Model: 'openai/gpt-4o-mini',
+          fallbacks: ['openai/gpt-4o-mini'],
+        },
+        sampleResponse: {
+          ok: true,
+          message: 'Đã cập nhật thành công cấu hình model cho AI Gateway!',
+          config: {
+            defaultModel: 'gemini/gemini-3.5-flash-lite',
+            tier1Model: 'gemini/gemini-3.5-flash-lite',
+            tier2Model: 'openai/gpt-4o-mini',
+            tier3Model: null,
+            fallbacks: ['openai/gpt-4o-mini'],
+          },
+        },
+      },
+      {
+        method: 'GET',
+        path: '/config',
+        aliases: ['/zen/v1/config', '/settings'],
+        auth: 'Required (Bearer Token)',
+        description: 'Xem cấu hình gateway hiện tại (default model, 3 tiers, fallbacks).',
+      },
+      {
+        method: 'GET',
+        path: '/models',
+        aliases: ['/zen/v1/models', '/v1/models'],
+        auth: 'Required (Bearer Token)',
+        description: 'Liệt kê danh sách tất cả model khả dụng từ các nhà cung cấp đã kết nối và các Sub-Agent.',
+      },
+      {
+        method: 'GET',
+        path: '/models/:id',
+        auth: 'Required (Bearer Token)',
+        description: 'Xem chi tiết context length và pricing của một model cụ thể.',
+      },
+      {
+        method: 'GET',
+        path: '/providers',
+        auth: 'Required (Bearer Token)',
+        description: 'Xem danh sách các nhà cung cấp AI đã kết nối và số lượng accounts trong pool.',
+      },
+      {
+        method: 'GET',
+        path: '/usage',
+        auth: 'Required (Bearer Token)',
+        description: 'Thống kê lượng request, tokens và độ trễ theo từng model trong N giờ gần nhất (param: ?hours=24).',
+      },
+      {
+        method: 'GET',
+        path: '/health',
+        auth: 'None (Public)',
+        description: 'Kiểm tra trạng thái gateway (online / disabled).',
+      },
+      {
+        method: 'GET',
+        path: '/guide',
+        aliases: ['/docs', '/help', '/zen/v1', '/v1'],
+        auth: 'None (Public)',
+        description: 'Tài liệu hướng dẫn đầy đủ này cho AI Agent, Postman và ứng dụng bên ngoài.',
+      },
+    ],
+  };
+}
+
 /** Endpoint công khai chuẩn OpenAI: http(s)://<panel>/zen/v1 */
 export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiGatewayService }): Promise<void> {
   const { gateway } = deps;
@@ -148,48 +263,12 @@ export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiG
       });
   });
 
-  // GET / (vd http://<host>/zen/v1, /v1, /ai/v1) hiển thị thông tin cổng Gateway & hướng dẫn test Postman trực quan
-  app.get('/', async () => {
-    const s = gateway.getSettings();
-    return {
-      status: s.enabled ? 'online' : 'disabled',
-      service: 'TXAZENPANEL AI Gateway (9Router compatible)',
-      version: '0.6.4',
-      description: 'Cổng điều phối AI thông minh 3 tầng chuẩn OpenAI tương thích Postman, cURL, LangChain, Next.js, n8n, Open WebUI',
-      endpoints: {
-        chat_completions: 'POST /chat/completions (hoặc /zen/v1/chat/completions)',
-        models: 'GET /models',
-        health: 'GET /health',
-      },
-      tiers: {
-        tier1: s.tier1Model || 'Chưa cấu hình (fallback về model mặc định)',
-        tier2: s.tier2Model || 'Chưa cấu hình',
-        tier3: s.tier3Model || 'Chưa cấu hình',
-        rtkTokenSaver: s.rtkEnabled ? 'Đang bật' : 'Đang tắt',
-      },
-      postmanQuickGuide: {
-        auth: {
-          tab: 'Authorization',
-          type: 'Bearer Token',
-          tokenFormat: 'tzp_live_xxxxxxxxxxxxxxxxxxxxxxxx',
-          alternativeHeader: 'x-api-key: tzp_live_xxxxxxxxxxxxxxxxxxxxxxxx',
-        },
-        sampleChatRequest: {
-          method: 'POST',
-          url: 'http://<panel-ip>:3000/zen/v1/chat/completions',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer tzp_live_...',
-          },
-          body: {
-            model: 'auto',
-            messages: [{ role: 'user', content: 'Xin chào AI Gateway!' }],
-            stream: false,
-          },
-        },
-      },
-    };
-  });
+  // GET / hoặc /guide, /docs, /help: Hướng dẫn đầy đủ cho AI Agent / Postman
+  const guideHandler = async () => getGatewayGuide(gateway);
+  app.get('/', guideHandler);
+  app.get('/guide', guideHandler);
+  app.get('/docs', guideHandler);
+  app.get('/help', guideHandler);
 
   // /health công khai để kiểm tra gateway sống, mọi endpoint khác cần API key tzp_
   app.get('/health', async () => ({ status: gateway.getSettings().enabled ? 'ok' : 'disabled', name: 'TXAZENPANEL AI Gateway', time: new Date().toISOString() }));
@@ -204,6 +283,14 @@ export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiG
         throw new HttpError(401, verified.message || 'API key của ZenPanel AI Gateway không hợp lệ (phải bắt đầu bằng tzp_).');
       }
     });
+
+    // Endpoint xem và set nhanh model mặc định & model dự phòng qua API Token (Postman / AI Agent)
+    secured.get('/config', async () => gateway.getSettings());
+    secured.get('/settings', async () => gateway.getSettings());
+    secured.post('/config', async (req) => gateway.quickSet((req.body ?? {}) as Record<string, unknown>));
+    secured.put('/config', async (req) => gateway.quickSet((req.body ?? {}) as Record<string, unknown>));
+    secured.post('/models/default', async (req) => gateway.quickSet((req.body ?? {}) as Record<string, unknown>));
+    secured.put('/models/default', async (req) => gateway.quickSet((req.body ?? {}) as Record<string, unknown>));
 
     secured.get('/models', async () => ({
       object: 'list',

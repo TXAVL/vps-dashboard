@@ -207,6 +207,102 @@ export class AiGatewayService {
     return next;
   }
 
+  /** Set nhanh model mặc định và model dự phòng trực tiếp qua API (dành cho Postman / AI Agent) */
+  quickSet(input: Record<string, unknown>): {
+    ok: boolean;
+    message: string;
+    config: {
+      defaultModel: string | null;
+      tier1Model: string | null;
+      tier2Model: string | null;
+      tier3Model: string | null;
+      fallbacks: string[];
+      rtkEnabled: boolean;
+      rotationStrategy: string;
+    };
+  } {
+    const patch: Partial<GatewaySettings> = {};
+
+    // 1. Model chính / default
+    const rawDefault = (input.defaultModel || input.model || input.primaryModel) as string | undefined;
+    if (typeof rawDefault === 'string' && rawDefault.trim()) {
+      let m = rawDefault.trim();
+      if (m.includes('gemini-2.0-flash')) m = m.replace('gemini-2.0-flash', 'gemini-3.5-flash-lite');
+      if (m === 'gemini' || m === '3.5-flash-lite') m = 'gemini/gemini-3.5-flash-lite';
+      if (!m.includes('/')) {
+        if (m.startsWith('gpt-') || m.startsWith('o1') || m.startsWith('o3') || m.startsWith('chatgpt')) m = `openai/${m}`;
+        else if (m.startsWith('claude-')) m = `anthropic/${m}`;
+        else if (m.startsWith('gemini-')) m = `gemini/${m}`;
+        else if (m.startsWith('deepseek-')) m = `deepseek/${m}`;
+      }
+      parseModel(m);
+      patch.defaultModel = m;
+      if (input.tier1Model === undefined) patch.tier1Model = m;
+    }
+
+    // 2. Tier 1 Model
+    if (typeof input.tier1Model === 'string' && input.tier1Model.trim()) {
+      let m = input.tier1Model.trim();
+      if (!m.includes('/') && m.startsWith('gpt-')) m = `openai/${m}`;
+      parseModel(m);
+      patch.tier1Model = m;
+    }
+
+    // 3. Tier 2 Model
+    if (typeof input.tier2Model === 'string' && input.tier2Model.trim()) {
+      let m = input.tier2Model.trim();
+      if (!m.includes('/') && m.startsWith('gemini-')) m = `gemini/${m}`;
+      parseModel(m);
+      patch.tier2Model = m;
+    }
+
+    // 4. Tier 3 Model
+    if (typeof input.tier3Model === 'string' && input.tier3Model.trim()) {
+      let m = input.tier3Model.trim();
+      parseModel(m);
+      patch.tier3Model = m;
+    }
+
+    // 5. Fallbacks
+    if (Array.isArray(input.fallbacks)) {
+      patch.fallbacks = input.fallbacks.map((m) => String(m).trim()).filter(Boolean);
+      for (const m of patch.fallbacks) parseModel(m);
+    } else if (typeof input.fallback === 'string' && input.fallback.trim()) {
+      const fb = input.fallback.trim();
+      parseModel(fb);
+      patch.fallbacks = [fb];
+      if (!patch.tier2Model) patch.tier2Model = fb;
+    } else if (typeof input.addFallback === 'string' && input.addFallback.trim()) {
+      const fb = input.addFallback.trim();
+      parseModel(fb);
+      const current = settings().fallbacks;
+      patch.fallbacks = Array.from(new Set([...current, fb])).slice(0, 5);
+    }
+
+    if (input.rotationStrategy === 'round-robin' || input.rotationStrategy === 'failover') {
+      patch.rotationStrategy = input.rotationStrategy;
+    }
+    if (input.rtkEnabled !== undefined) {
+      patch.rtkEnabled = Boolean(input.rtkEnabled);
+    }
+
+    const updated = this.update(patch);
+
+    return {
+      ok: true,
+      message: `Đã cập nhật thành công cấu hình model cho AI Gateway! Model mặc định hiện tại là "${updated.defaultModel || 'Chưa đặt'}".`,
+      config: {
+        defaultModel: updated.defaultModel,
+        tier1Model: updated.tier1Model,
+        tier2Model: updated.tier2Model,
+        tier3Model: updated.tier3Model,
+        fallbacks: updated.fallbacks,
+        rtkEnabled: updated.rtkEnabled,
+        rotationStrategy: updated.rotationStrategy,
+      },
+    };
+  }
+
   regenerateKey(): GatewaySettings {
     const next = { ...settings(), apiKey: newKey() };
     writeJson(SETTINGS_FILE, next);
