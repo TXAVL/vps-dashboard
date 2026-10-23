@@ -97,6 +97,7 @@ export const AI_PROVIDERS: ProviderDef[] = [
 export function cleanErrorMessage(rawText: string, status = 500, provider?: string): string {
   if (!rawText) return `Lỗi HTTP ${status}`;
   let message = '';
+  let providerName = '';
   try {
     const parsed = JSON.parse(rawText) as unknown;
     if (Array.isArray(parsed) && parsed.length > 0) {
@@ -105,11 +106,32 @@ export function cleanErrorMessage(rawText: string, status = 500, provider?: stri
       else if (first?.error?.message) message = first.error.message;
       else if (first?.message) message = first.message;
     } else if (parsed && typeof parsed === 'object') {
-      const obj = parsed as { error?: { message?: string; type?: string; code?: string | number } | string; message?: string; detail?: string };
-      if (typeof obj.error === 'string') message = obj.error;
-      else if (obj.error?.message) message = obj.error.message;
-      else if (obj.message) message = obj.message;
-      else if (obj.detail) message = obj.detail;
+      const obj = parsed as {
+        error?: {
+          message?: string;
+          type?: string;
+          code?: string | number;
+          metadata?: { provider_name?: string; raw?: string };
+        } | string;
+        message?: string;
+        detail?: string;
+        metadata?: { provider_name?: string; raw?: string };
+      };
+      if (typeof obj.error === 'string') {
+        message = obj.error;
+      } else if (obj.error?.message) {
+        message = obj.error.message;
+        if (typeof obj.error === 'object' && obj.error.metadata?.provider_name) {
+          providerName = obj.error.metadata.provider_name;
+        }
+      } else if (obj.message) {
+        message = obj.message;
+      } else if (obj.detail) {
+        message = obj.detail;
+      }
+      if (!providerName && obj.metadata?.provider_name) {
+        providerName = obj.metadata.provider_name;
+      }
     }
   } catch {
     message = rawText.trim();
@@ -160,7 +182,26 @@ export function cleanErrorMessage(rawText: string, status = 500, provider?: stri
     return 'Tài khoản vượt quá hạn mức yêu cầu (429 Rate Limit / Quota Exceeded). Hệ thống sẽ tự động tạm dừng hoặc chuyển sang tài khoản khác.';
   }
 
-  // 5. Chuẩn hóa nếu chuỗi vẫn còn format json thô
+  // 5. Lỗi OpenRouter / Đối tác hạ tầng Upstream (Provider returned error / 502 / No available providers)
+  if (
+    message.includes('Provider returned error') ||
+    message.includes('No available providers') ||
+    message.includes('temporarily unavailable') ||
+    message.includes('upstream provider') ||
+    message.includes('down for maintenance') ||
+    message.includes('Endpoint is down') ||
+    (status >= 502 && (message.toLowerCase().includes('provider') || rawText.includes('metadata')))
+  ) {
+    const upstream = providerName ? `từ đối tác "${providerName}" trên ` : '';
+    return `Hạ tầng mô hình AI (${upstream}${provider || 'OpenRouter'}) đang quá tải hoặc gặp sự cố gián đoạn tạm thời (502 Provider Error). Vui lòng thử lại sau giây lát hoặc đổi sang model khác.`;
+  }
+
+  // 6. Lỗi Bad Gateway / Service Unavailable chung (502, 503, 504)
+  if (status === 502 || status === 503 || status === 504) {
+    return `Máy chủ ${provider || 'nhà cung cấp AI'} đang tạm thời gián đoạn kết nối hoặc bảo trì (HTTP ${status}). Vui lòng thử lại sau giây lát.`;
+  }
+
+  // 7. Chuẩn hóa nếu chuỗi vẫn còn format json thô
   if (message.startsWith('{') || message.startsWith('[')) {
     try {
       const j = JSON.parse(message);

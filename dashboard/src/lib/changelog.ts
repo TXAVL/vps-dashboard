@@ -9,14 +9,34 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.2',
+    date: '2026-10-23',
+    highlights: [
+      {
+        title: '⏱️ Uptime Ứng Dụng Chạy Nền Đếm Từng Giây (1s/1 Lần)',
+        items: [
+          'Nhịp đếm thời gian thực mượt mà: Cột Uptime trong bảng danh sách Ứng dụng chạy nền (thay thế PM2) giờ đây tự động cập nhật liên tục 1 giây 1 lần theo thời gian thực mà không làm tăng tải VPS.',
+          'Chi tiết thời điểm khởi chạy: Khi di chuột vào cột Uptime, bạn sẽ xem được chính xác ngày giờ mà bot hoặc ứng dụng bắt đầu khởi động.',
+        ],
+      },
+      {
+        title: '🛡️ Nâng Cấp Playground & Xử Lý Sự Cố Mô Hình AI Chuẩn Xác',
+        items: [
+          'Tách biệt thông báo lỗi trong khung Chat thử: Bong bóng câu hỏi của bạn và thông báo phản hồi từ Trợ lý AI được bố trí riêng biệt, chấm dứt hoàn toàn hiện tượng câu hỏi bị dính liền vào thông báo lỗi khi có sự cố.',
+          'Khung cảnh báo lỗi AI chuyên nghiệp kèm nút "Thử gửi lại": Khi nhà cung cấp AI gặp trục trặc, hệ thống hiển thị khung cảnh báo màu trang nhã, phân tích rõ nguyên nhân và cung cấp sẵn nút bấm 1-click để bạn gửi lại câu hỏi ngay lập tức.',
+          'Bóc tách lỗi hạ tầng OpenRouter (502 Provider Error): Phản hồi lỗi kỹ thuật "Provider returned error" từ OpenRouter được tự động nhận diện và giải thích rõ ràng bằng tiếng Việt (máy chủ mô hình đối tác đang bảo trì/quá tải, gợi ý thử lại sau hoặc chuyển đổi model).',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.6.1',
     date: '2026-10-23',
     highlights: [
       {
-        title: '🎯 Tôn Trọng Model Mặc Định & Khai Tử Gemini 2.0 Flash',
+        title: '🎯 Tôn Trọng Model Mặc Định',
         items: [
           'Ưu tiên Model mặc định của người dùng: Toàn bộ hệ thống AI Gateway và các phòng ban AI Company giờ đây tôn trọng tuyệt đối Model mặc định do bạn lựa chọn, loại bỏ hoàn toàn tình trạng bị gọi model khác ngoài ý muốn.',
-          'Tự động chuyển đổi Gemini 2.0 Flash sang Gemini 2.5 Flash: Model gemini-2.0-flash cũ đã bị Google ngừng cung cấp (báo lỗi 404 NOT_FOUND). ZenPanel tự động chuyển đổi sang phiên bản mới gemini-2.5-flash siêu tốc độ, ổn định và thông minh hơn.',
         ],
       },
       {

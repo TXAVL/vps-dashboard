@@ -765,6 +765,7 @@ function ModelsTab({ onTry, gateway, saveGateway }: { onTry: (model: string) => 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  error?: string;
 }
 
 function PlaygroundTab({ initialModel, models }: { initialModel: string; models: AiModel[] }) {
@@ -808,11 +809,11 @@ function PlaygroundTab({ initialModel, models }: { initialModel: string; models:
     }
   };
 
-  const send = async (event: FormEvent) => {
-    event.preventDefault();
-    const text = input.trim();
+  const doSend = async (text: string) => {
     if (!text || streaming) return;
-    const history: ChatMessage[] = [...messages, { role: 'user', content: text }];
+    // Lọc bỏ các tin nhắn lỗi cũ ở phía sau
+    const cleaned = messages.filter((m) => !m.error && m.content.trim());
+    const history: ChatMessage[] = [...cleaned, { role: 'user', content: text }];
     setMessages([...history, { role: 'assistant', content: '' }]);
     setInput('');
     setError(null);
@@ -827,15 +828,17 @@ function PlaygroundTab({ initialModel, models }: { initialModel: string; models:
           : `${fixedIdentity}\n\n${system}`
         : fixedIdentity;
 
+      const apiHistory = history.map((m) => ({ role: m.role, content: m.content }));
+
       const res = await fetch('/api/ai/chat', {
         method: 'POST',
         signal: abort.current.signal,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ model: model || 'auto', stream: true, temperature, messages: [{ role: 'system', content: effectiveSystem }, ...history] }),
+        body: JSON.stringify({ model: model || 'auto', stream: true, temperature, messages: [{ role: 'system', content: effectiveSystem }, ...apiHistory] }),
       });
       if (!res.ok || !res.body) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `Lỗi ${res.status}`);
+        throw new Error(body?.error ?? `Lỗi HTTP ${res.status}`);
       }
       // Đọc stream SSE chuẩn OpenAI: "data: {...choices[0].delta.content}"
       const reader = res.body.getReader();
@@ -865,12 +868,20 @@ function PlaygroundTab({ initialModel, models }: { initialModel: string; models:
       setStats({ ms: performance.now() - started, chars: answer.length });
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
-        setError((err as Error).message);
+        const errorMsg = (err as Error).message;
+        setMessages([...history, { role: 'assistant', content: '', error: errorMsg }]);
+      } else {
         setMessages(history);
       }
     } finally {
       setStreaming(false);
     }
+  };
+
+  const send = (event: FormEvent) => {
+    event.preventDefault();
+    const text = input.trim();
+    if (text) void doSend(text);
   };
 
   return (
@@ -885,8 +896,42 @@ function PlaygroundTab({ initialModel, models }: { initialModel: string; models:
                 <div className={cn('flex size-8 shrink-0 items-center justify-center rounded-xl', m.role === 'user' ? 'bg-zen-blue/20 text-blue-300 font-semibold text-xs' : '')}>
                   {m.role === 'user' ? 'Bạn' : <ProviderLogo id={model} size="sm" />}
                 </div>
-                <div className={cn('max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-sm', m.role === 'user' ? 'bg-zen-blue/15 text-slate-100' : 'bg-ink-950/70 text-slate-200')}>
-                  {m.content || (streaming && i === messages.length - 1 ? <span className="animate-pulse text-slate-500">Đang trả lời...</span> : '')}
+                <div
+                  className={cn(
+                    'max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-sm',
+                    m.role === 'user'
+                      ? 'bg-zen-blue/15 text-slate-100 shadow-sm'
+                      : m.error
+                        ? 'border border-rose-500/40 bg-rose-950/40 text-rose-200 shadow-sm'
+                        : 'bg-ink-950/70 text-slate-200 shadow-sm',
+                  )}
+                >
+                  {m.error ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 font-semibold text-rose-300 text-xs tracking-wide">
+                        <AlertTriangle className="size-4 shrink-0 text-rose-400" />
+                        <span>Sự cố phản hồi từ AI</span>
+                      </div>
+                      <div className="text-xs text-rose-200/90 leading-relaxed font-sans">{m.error}</div>
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const prevUser = [...messages.slice(0, i)].reverse().find((msg) => msg.role === 'user');
+                            if (prevUser?.content) {
+                              void doSend(prevUser.content);
+                            }
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-900/30 px-2.5 py-1 text-xs font-medium text-rose-200 hover:bg-rose-900/50 hover:text-white transition-colors"
+                        >
+                          <RotateCw className="size-3" />
+                          Thử gửi lại
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    m.content || (streaming && i === messages.length - 1 ? <span className="animate-pulse text-slate-500">Đang trả lời...</span> : '')
+                  )}
                 </div>
               </div>
             ))

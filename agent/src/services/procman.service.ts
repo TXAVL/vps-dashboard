@@ -47,6 +47,7 @@ interface Runtime {
 export interface ProcView extends ManagedProcess {
   status: ProcStatus;
   pid: number | null;
+  startedAt: number | null;
   uptimeSec: number;
   restarts: number;
   lastExit: Runtime['lastExit'];
@@ -120,6 +121,7 @@ export class ProcessManager {
           ...p,
           status: r.status,
           pid: r.pid,
+          startedAt: r.startedAt,
           uptimeSec: r.startedAt && r.status === 'running' ? Math.floor((Date.now() - r.startedAt) / 1000) : 0,
           restarts: r.restarts,
           lastExit: r.lastExit,

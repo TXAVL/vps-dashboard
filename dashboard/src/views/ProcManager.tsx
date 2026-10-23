@@ -7,7 +7,7 @@ import { WindowMockup } from '../components/layout/WindowMockup';
 import { del, downloadFile, get, post, put } from '../lib/api';
 import { formatBytes, formatDuration, formatRelative } from '../lib/format';
 import { useApi } from '../lib/hooks';
-import { usePanel } from '../lib/panel';
+import { useNow, usePanel } from '../lib/panel';
 
 interface ManagedProc {
   id: string;
@@ -21,6 +21,7 @@ interface ManagedProc {
   maxMemoryMB: number;
   status: 'running' | 'stopped' | 'errored' | 'restarting';
   pid: number | null;
+  startedAt: number | null;
   uptimeSec: number;
   restarts: number;
   lastExit: { code: number | null; signal: string | null; at: string } | null;
@@ -312,6 +313,7 @@ function Pm2Import({ onClose, onDone }: { onClose: () => void; onDone: () => voi
 
 export default function ProcManager() {
   const { data, error, loading, reload } = useApi<ManagedProc[]>('/api/procs', 5000);
+  const now = useNow(1000); // Nhịp đếm thời gian thực 1 giây / 1 lần cho Uptime
   const [editing, setEditing] = useState<ManagedProc | 'new' | null>(null);
   const [logOf, setLogOf] = useState<ManagedProc | null>(null);
   const [pm2, setPm2] = useState(false);
@@ -416,7 +418,11 @@ export default function ProcManager() {
                         </div>
                       )}
                     </td>
-                    <td className={cn(td, 'mono text-xs text-slate-400')}>{p.status === 'running' ? formatDuration(p.uptimeSec) : '—'}</td>
+                    <td className={cn(td, 'mono text-xs text-slate-400')} data-tip={p.startedAt ? `Bắt đầu: ${new Date(p.startedAt).toLocaleString('vi-VN')}` : undefined}>
+                      {p.status === 'running'
+                        ? formatDuration(p.startedAt ? Math.max(0, Math.floor((now - p.startedAt) / 1000)) : p.uptimeSec)
+                        : '—'}
+                    </td>
                     <td className={cn(td, 'mono text-right text-slate-300')}>{p.cpu !== null ? `${p.cpu.toFixed(1)}%` : '—'}</td>
                     <td className={cn(td, 'mono text-right text-slate-300')}>
                       {p.memory !== null ? formatBytes(p.memory) : '—'}
