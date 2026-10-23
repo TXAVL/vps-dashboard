@@ -947,53 +947,76 @@ export default function AppStore() {
                             {app.isCompatible === false ? 'Không tương thích' : 'Cài đặt'}
                           </Button>
                         )
-                      ) : (
-                        <>
-                          {app.webPort ? (
-                            <Button size="sm" variant="primary" icon={ExternalLink} onClick={() => setAccess(app.id)}>
-                              Truy cập
-                            </Button>
-                          ) : (
-                            <Button size="sm" variant="primary" icon={Play} onClick={() => void act(app, 'start', 'Khởi chạy')}>
-                              Khởi chạy
-                            </Button>
-                          )}
-                          {app.id === 'n8n' && (
-                            <Button size="sm" variant="soft" icon={Wand2} onClick={() => setWizard(app)}>
-                              Thiết lập
-                            </Button>
-                          )}
-                          {app.category === 'database' && (
-                            <Link to="/databases">
-                              <Button size="sm" variant="soft" icon={Database}>
-                                Quản lý
+                      ) : (() => {
+                        const isRunning = app.status === 'running' || app.status === 'partial';
+                        return (
+                          <>
+                            {isRunning ? (
+                              app.webPort ? (
+                                <Button size="sm" variant="primary" icon={ExternalLink} onClick={() => setAccess(app.id)}>
+                                  Truy cập
+                                </Button>
+                              ) : app.category === 'database' ? (
+                                <Link to="/databases">
+                                  <Button size="sm" variant="primary" icon={Database}>
+                                    Quản lý DB
+                                  </Button>
+                                </Link>
+                              ) : (
+                                <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-950/40 px-2.5 py-1 text-xs font-semibold text-emerald-400">
+                                  <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span>Đang chạy</span>
+                                </div>
+                              )
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                icon={Play}
+                                onClick={() => void act(app, 'start', 'Khởi chạy')}
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                              >
+                                Khởi chạy
                               </Button>
-                            </Link>
-                          )}
-                          <div className="ml-auto flex">
-                            {app.appType !== 'native' && (app.status === 'running' || app.status === 'partial') ? (
-                              <>
-                                <IconButton icon={RotateCw} title="Khởi động lại" onClick={() => void act(app, 'restart', 'Khởi động lại')} />
-                                <IconButton icon={Square} title="Dừng" onClick={() => void act(app, 'stop', 'Dừng')} />
-                              </>
-                            ) : app.appType !== 'native' ? (
-                              <IconButton icon={Play} title="Khởi động" onClick={() => void act(app, 'start', 'Khởi động')} />
-                            ) : (
-                              <IconButton icon={Square} title="Dừng ứng dụng" onClick={() => void act(app, 'stop', 'Dừng')} />
                             )}
-                            {app.appType !== 'native' ? (
-                              <>
-                                <IconButton icon={Settings2} title="Cấu hình lại (đổi cổng, mật khẩu, API key)" onClick={() => setReconfig(app)} />
-                                <IconButton icon={Download} title="Cập nhật image lên bản mới nhất" onClick={() => void act(app, 'update', 'Cập nhật')} />
-                                <IconButton icon={FileCode} title="Xem docker-compose.yml" onClick={() => void composePath(app)} />
-                              </>
-                            ) : (
-                              <IconButton icon={Download} title="Cập nhật ứng dụng native lên bản mới nhất" onClick={() => void act(app, 'update', 'Cập nhật')} />
+                            {app.id === 'n8n' && isRunning && (
+                              <Button size="sm" variant="soft" icon={Wand2} onClick={() => setWizard(app)}>
+                                Thiết lập
+                              </Button>
                             )}
-                            <IconButton icon={Trash2} title="Gỡ cài đặt" className="hover:text-zen-red" onClick={() => setUninstall({ app, removeData: false })} />
-                          </div>
-                        </>
-                      )}
+                            {app.category === 'database' && !isRunning && (
+                              <Link to="/databases">
+                                <Button size="sm" variant="soft" icon={Database}>
+                                  Quản lý
+                                </Button>
+                              </Link>
+                            )}
+                            <div className="ml-auto flex items-center gap-0.5">
+                              {isRunning ? (
+                                <>
+                                  <IconButton icon={RotateCw} title="Khởi động lại" onClick={() => void act(app, 'restart', 'Khởi động lại')} />
+                                  <IconButton icon={Square} title="Dừng ứng dụng" className="hover:text-amber-400" onClick={() => void act(app, 'stop', 'Dừng')} />
+                                </>
+                              ) : (
+                                <IconButton icon={Play} title="Khởi động ứng dụng" className="text-emerald-400 hover:text-emerald-300" onClick={() => void act(app, 'start', 'Khởi chạy')} />
+                              )}
+                              {app.webPort && (
+                                <IconButton icon={Link2} title="Cấu hình Link / Cổng truy cập" onClick={() => setAccess(app.id)} />
+                              )}
+                              {app.appType !== 'native' ? (
+                                <>
+                                  <IconButton icon={Settings2} title="Cấu hình lại (đổi cổng, mật khẩu, API key)" onClick={() => setReconfig(app)} />
+                                  <IconButton icon={Download} title="Cập nhật image lên bản mới nhất" onClick={() => void act(app, 'update', 'Cập nhật')} />
+                                  <IconButton icon={FileCode} title="Xem docker-compose.yml" onClick={() => void composePath(app)} />
+                                </>
+                              ) : (
+                                <IconButton icon={Download} title="Cập nhật ứng dụng native lên bản mới nhất" onClick={() => void act(app, 'update', 'Cập nhật')} />
+                              )}
+                              <IconButton icon={Trash2} title="Gỡ cài đặt" className="hover:text-zen-red" onClick={() => setUninstall({ app, removeData: false })} />
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 );

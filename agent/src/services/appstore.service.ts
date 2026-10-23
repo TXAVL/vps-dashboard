@@ -170,12 +170,28 @@ export class AppStoreService {
 
     return allDefs.map(({ compose: _compose, files: _files, ...app }) => {
       const record = installed.get(app.id) ?? null;
-      const own = containers.filter((c) => c.project === projectName(app.id));
+      const proj = projectName(app.id);
+      const projUnderscore = proj.replace(/-/g, '_');
+      const cName = containerName(app.id);
+
+      const own = containers.filter((c) => {
+        if (c.project && (c.project === proj || c.project === projUnderscore || c.project === app.id)) return true;
+        const n = c.name.startsWith('/') ? c.name.slice(1) : c.name;
+        return n === cName || n.startsWith(`${cName}-`) || n.startsWith(`${cName}_`);
+      });
       const running = own.filter((c) => c.state === 'running').length;
 
-      let status: AppView['status'] = !record ? 'not-installed' : running === 0 ? 'stopped' : running === own.length ? 'running' : 'partial';
+      let status: AppView['status'] = !record
+        ? 'not-installed'
+        : own.length === 0
+          ? 'stopped'
+          : running === 0
+            ? 'stopped'
+            : running === own.length
+              ? 'running'
+              : 'partial';
       if (record && app.appType === 'native') {
-        status = 'running';
+        status = (record as any).stopped ? 'stopped' : 'running';
       }
 
       const isCompatible =
@@ -753,6 +769,14 @@ export class AppStoreService {
     if (!installed.get(id)) throw badRequest('Ứng dụng chưa được cài đặt');
 
     if (app.appType === 'native') {
+      const record = installed.get(id);
+      if (action === 'stop' && record) {
+        installed.upsert({ ...record, stopped: true } as any);
+      } else if (action === 'start' && record) {
+        const { stopped: _, ...rest } = record as any;
+        installed.upsert(rest);
+      }
+
       if (action === 'update') {
         jobLog(`Đang cập nhật phiên bản mới nhất cho ứng dụng ${app.name}...`);
         await this.installNativeApp(app, appDir(id));
