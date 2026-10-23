@@ -43,7 +43,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       {
         title: '🎯 Dùng Đúng Trí Tuệ Nhân Tạo Bạn Thích Nhất',
         items: [
-          'Tôn trọng sở thích của bạn: Bạn chọn model AI nào làm mặc định (như Gemini Flash Lite siêu nhanh) thì hệ thống sẽ nhớ và dùng đúng loại đó, không bao giờ tự ý chuyển sang loại khác.',
+          'Tôn trọng sở thích của bạn: Bạn chọn model AI nào làm mặc định (như Gemini 3.5 Flash Lite tiêu chuẩn mới nhất) thì hệ thống sẽ nhớ và dùng đúng loại đó, không bao giờ tự ý chuyển sang loại khác.',
         ],
       },
       {

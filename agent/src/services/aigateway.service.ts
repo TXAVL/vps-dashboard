@@ -359,12 +359,12 @@ export class AiGatewayService {
     const s = settings();
     if (s.defaultModel) {
       return s.defaultModel.includes('gemini-2.0-flash')
-        ? s.defaultModel.replace('gemini-2.0-flash', 'gemini-2.5-flash')
+        ? s.defaultModel.replace('gemini-2.0-flash', 'gemini-3.5-flash-lite')
         : s.defaultModel;
     }
     for (const p of this.ai.list()) {
       if (p.configured && p.defaultModel) {
-        const m = p.defaultModel.includes('gemini-2.0-flash') ? 'gemini-2.5-flash' : p.defaultModel;
+        const m = p.defaultModel.includes('gemini-2.0-flash') ? 'gemini-3.5-flash-lite' : p.defaultModel;
         return `${p.id}/${m}`;
       }
     }
@@ -375,12 +375,12 @@ export class AiGatewayService {
   private resolveModel(requested: unknown): string {
     if (typeof requested === 'string' && requested && requested !== 'auto') {
       let reqStr = requested;
-      // Tự động chuyển đổi sang dòng model Flash Lite nhanh và tiết kiệm nhất
+      // Tự động chuyển đổi sang model chuẩn mới nhất Gemini 3.5 Flash Lite
       if (reqStr.includes('gemini-2.0-flash')) {
-        reqStr = reqStr.replace('gemini-2.0-flash', 'gemini-2.5-flash-lite');
+        reqStr = reqStr.replace('gemini-2.0-flash', 'gemini-3.5-flash-lite');
       }
-      if (reqStr.includes('3.5-flash-lite') || reqStr.includes('gemini-3.5-flash-lite')) {
-        reqStr = reqStr.replace(/gemini-3\.5-flash-lite|3\.5-flash-lite/g, 'gemini-2.5-flash-lite');
+      if (reqStr === 'gemini' || reqStr === '3.5-flash-lite' || reqStr === 'gemini/3.5-flash-lite') {
+        reqStr = 'gemini/gemini-3.5-flash-lite';
       }
       // Cho phép gọi tắt "anthropic" -> model mặc định của Anthropic
       if (PROVIDER_IDS.includes(reqStr)) {

@@ -189,7 +189,7 @@ export class AiCompanyService {
 
   /**
    * Xác định model thực thi tốt nhất cho từng worker:
-   * 1. Nếu worker chỉ định model cụ thể và provider của nó đã có key -> Dùng model đó (tự động chuyển gemini-2.0-flash -> 2.5).
+   * 1. Nếu worker chỉ định model cụ thể và provider của nó đã có key -> Dùng model đó (tự động chuyển gemini cũ -> 3.5-flash-lite).
    * 2. Nếu người dùng đã chọn Model Mặc định trong AI Gateway hoặc cho từng Provider -> ƯU TIÊN TUYỆT ĐỐI!
    * 3. Nếu có nhiều provider kết nối, phân chia model thông minh theo vai trò dựa trên model mặc định của nhà cung cấp.
    * 4. Tuyệt đối không hardcode gemini-2.0-flash (đã bị Google khai tử với mã 404).
@@ -198,8 +198,8 @@ export class AiCompanyService {
     // 1. Nếu worker chỉ định model cụ thể và provider của nó có key
     if (worker.targetModel && worker.targetModel !== 'auto') {
       let target = worker.targetModel;
-      if (target.includes('gemini-2.0-flash')) {
-        target = target.replace('gemini-2.0-flash', 'gemini-2.5-flash');
+      if (target.includes('gemini-2.0-flash') || target.includes('gemini-2.5-flash')) {
+        target = target.replace(/gemini-2\.[05]-flash(-lite)?/g, 'gemini-3.5-flash-lite');
       }
       const slash = target.indexOf('/');
       const provider = slash > 0 ? target.slice(0, slash) : '';
@@ -212,8 +212,8 @@ export class AiCompanyService {
     const gatewayDefault = this.gateway.getDefaultModel();
     if (gatewayDefault && gatewayDefault !== 'auto') {
       let def = gatewayDefault;
-      if (def.includes('gemini-2.0-flash')) {
-        def = def.replace('gemini-2.0-flash', 'gemini-2.5-flash');
+      if (def.includes('gemini-2.0-flash') || def.includes('gemini-2.5-flash')) {
+        def = def.replace(/gemini-2\.[05]-flash(-lite)?/g, 'gemini-3.5-flash-lite');
       }
       const slash = def.indexOf('/');
       const p = slash > 0 ? def.slice(0, slash) : '';
@@ -246,7 +246,7 @@ export class AiCompanyService {
       return getProviderModel('openai', 'gpt-4o');
     }
     if (worker.id === 'content' && configuredProviders.includes('gemini')) {
-      return getProviderModel('gemini', 'gemini-2.5-flash-lite');
+      return getProviderModel('gemini', 'gemini-3.5-flash-lite');
     }
     if (worker.id === 'qa' && configuredProviders.includes('openai')) {
       return getProviderModel('openai', 'gpt-4o-mini');

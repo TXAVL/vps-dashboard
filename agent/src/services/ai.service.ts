@@ -147,7 +147,7 @@ export function cleanErrorMessage(rawText: string, status = 500, provider?: stri
   ) {
     const modelMatch = message.match(/models\/([a-zA-Z0-9.-]+)/);
     const modelName = modelMatch ? modelMatch[1] : 'yêu cầu';
-    return `Model "${modelName}" không còn khả dụng hoặc đã bị nhà cung cấp ngừng hỗ trợ. Vui lòng chọn model mới hơn (như gemini-2.5-flash) trong cấu hình.`;
+    return `Model "${modelName}" không còn khả dụng hoặc đã bị nhà cung cấp ngừng hỗ trợ. Vui lòng chọn model mới hơn (như gemini-3.5-flash-lite) trong cấu hình.`;
   }
 
   // 2. Hết credit / Số dư tài khoản không đủ (Anthropic Claude, OpenAI, OpenRouter)

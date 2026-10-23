@@ -2649,7 +2649,7 @@ function ApiKeysTab({
               {curlCommand}
             </pre>
             <p className="text-[11px] text-slate-400">
-              * Thay <code className="text-indigo-300">auto</code> bằng bất kỳ model nào: <code className="text-white">gemini/gemini-2.5-flash</code>, <code className="text-white">anthropic/claude-3-7-sonnet</code>, <code className="text-white">openai/gpt-4o</code> hoặc Sub-Agent <code className="text-purple-300">agent/tên_agent</code>.
+              * Thay <code className="text-indigo-300">auto</code> bằng bất kỳ model nào: <code className="text-white">gemini/gemini-3.5-flash-lite</code>, <code className="text-white">anthropic/claude-3-7-sonnet</code>, <code className="text-white">openai/gpt-4o</code> hoặc Sub-Agent <code className="text-purple-300">agent/tên_agent</code>.
             </p>
           </div>
         </div>
@@ -2836,7 +2836,7 @@ function OverviewTab({
     curl: `curl ${base}/chat/completions \\\n  -H "Authorization: Bearer <API_KEY_CỦA_BẠN>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${model}", "messages": [{"role": "user", "content": "Xin chào"}]}'`,
     python: `from openai import OpenAI\n\nclient = OpenAI(base_url="${base}", api_key="<API_KEY_CỦA_BẠN>")\nres = client.chat.completions.create(\n    model="${model}",\n    messages=[{"role": "user", "content": "Xin chào"}],\n)\nprint(res.choices[0].message.content)`,
     node: `import OpenAI from 'openai';\n\nconst client = new OpenAI({ baseURL: '${base}', apiKey: '<API_KEY_CỦA_BẠN>' });\nconst res = await client.chat.completions.create({\n  model: '${model}',\n  messages: [{ role: 'user', content: 'Xin chào' }],\n});\nconsole.log(res.choices[0].message.content);`,
-    n8n: `=== CÁCH KẾT NỐI N8N VỚI ZENPANEL AI GATEWAY ===\n\n1. Tạo Credential trong n8n:\n   - Menu trái: Credentials → Add Credential → Chọn "OpenAI"\n   - API Key: Dán API Key bạn tạo tại tab "Cấp phát API Keys" (tzp_live_...)\n   - Base URL (trong Advanced/URL Options):\n     * Nếu n8n chạy Docker trên cùng VPS (Khuyên dùng):\n       ${dockerBase}\n     * Nếu n8n chạy ngoài hoặc qua Domain/Tunnel:\n       ${base}\n\n2. Kéo Node trong Workflow:\n   - Kéo node "AI Agent" (hoặc "Chat Model")\n   - Kéo node "OpenAI Chat Model" gắn vào cổng Model của AI Agent\n   - Chọn Credential OpenAI vừa tạo ở trên\n\n3. BẬT CUSTOM MODEL (Mấu chốt):\n   - Ô "Model" bấm biểu tượng chuyển sang "Custom" / "Expression"\n   - Gõ tên model bất kỳ:\n     • gemini/gemini-2.5-flash (siêu nhanh, rẻ)\n     • anthropic/claude-3-7-sonnet (thông minh nhất)\n     • openai/gpt-4o\n     • agent/coder (Sub-Agent của bạn)\n     • auto (ZenPanel tự động phân luồng)`,
+    n8n: `=== CÁCH KẾT NỐI N8N VỚI ZENPANEL AI GATEWAY ===\n\n1. Tạo Credential trong n8n:\n   - Menu trái: Credentials → Add Credential → Chọn "OpenAI"\n   - API Key: Dán API Key bạn tạo tại tab "Cấp phát API Keys" (tzp_live_...)\n   - Base URL (trong Advanced/URL Options):\n     * Nếu n8n chạy Docker trên cùng VPS (Khuyên dùng):\n       ${dockerBase}\n     * Nếu n8n chạy ngoài hoặc qua Domain/Tunnel:\n       ${base}\n\n2. Kéo Node trong Workflow:\n   - Kéo node "AI Agent" (hoặc "Chat Model")\n   - Kéo node "OpenAI Chat Model" gắn vào cổng Model của AI Agent\n   - Chọn Credential OpenAI vừa tạo ở trên\n\n3. BẬT CUSTOM MODEL (Mấu chốt):\n   - Ô "Model" bấm biểu tượng chuyển sang "Custom" / "Expression"\n   - Gõ tên model bất kỳ:\n     • gemini/gemini-3.5-flash-lite (siêu nhanh, rẻ, chuẩn mới nhất)\n     • anthropic/claude-3-7-sonnet (thông minh nhất)\n     • openai/gpt-4o\n     • agent/coder (Sub-Agent của bạn)\n     • auto (ZenPanel tự động phân luồng)`,
   };
 
   return (
@@ -3067,7 +3067,7 @@ function OverviewTab({
                 ⚠️ Bấm biểu tượng bút/chuyển đổi cạnh ô <strong>Model</strong> sang chế độ <strong>Expression (Custom Input)</strong> để gõ tay:
               </p>
               <div className="mono text-[11px] text-slate-300 space-y-0.5">
-                <div>• <code className="text-sky-300">gemini/gemini-2.5-flash</code></div>
+                <div>• <code className="text-sky-300">gemini/gemini-3.5-flash-lite</code></div>
                 <div>• <code className="text-orange-300">anthropic/claude-3-7-sonnet</code></div>
                 <div>• <code className="text-purple-300">agent/coder</code> (Sub-Agent)</div>
               </div>

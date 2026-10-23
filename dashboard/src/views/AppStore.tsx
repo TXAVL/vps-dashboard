@@ -560,7 +560,7 @@ function N8nWizard({ app, onClose, onDone }: { app: AppView; onClose: () => void
             <li>
               Trong n8n: Credentials → New → <b>OpenAI</b> → Base URL <code className="mono">http://host.docker.internal:4000/v1</code>, API key = <code className="mono">sk-&lt;master key&gt;</code> của gateway.
             </li>
-            <li>Dùng node "AI Agent" với model như anthropic/claude-sonnet-5-5, gemini/gemini-2.5-flash, openai/gpt-4o.</li>
+            <li>Dùng node "AI Agent" với model như anthropic/claude-sonnet-5-5, gemini/gemini-3.5-flash-lite, openai/gpt-4o.</li>
           </ol>
           <Button variant="success" icon={CheckCircle2} onClick={onClose}>
             Hoàn tất

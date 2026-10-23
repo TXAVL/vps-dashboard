@@ -26,7 +26,7 @@ export const APP_GUIDES: Record<string, AppGuide> = {
       '  3. API Key: Lấy API Key trong tab Cài đặt → AI Gateway (hoặc LiteLLM master key).',
       '  4. Trong Workflow: Kéo node "AI Agent" + gắn node "OpenAI Chat Model" vào cổng Model.',
       '  5. ⚠️ MẪU CHỐT Ô MODEL: Bấm vào biểu tượng bút/chuyển đổi cạnh ô "Model" sang chế độ "Expression (Custom Model Name)" để gõ model mong muốn:',
-      '     • gemini/gemini-2.5-flash (Google Gemini siêu nhanh, miễn phí/rẻ)',
+      '     • gemini/gemini-3.5-flash-lite (Google Gemini 3.5 Flash Lite siêu nhanh, chuẩn mới nhất)',
       '     • anthropic/claude-3-7-sonnet (Claude thông minh bậc nhất)',
       '     • openai/gpt-4o',
       '     • agent/coder (Sub-Agent của ZenPanel tự nạp system prompt)',
@@ -71,7 +71,7 @@ export const APP_GUIDES: Record<string, AppGuide> = {
     steps: [
       'Lưu API key của ChatGPT / Claude / Gemini / OpenRouter / NVIDIA trong Cài đặt → AI, rồi bấm "Cấu hình lại" gateway.',
       'Endpoint chuẩn OpenAI: http://<host>:<cổng>/v1 (trong Docker: http://host.docker.internal:<cổng>/v1).',
-      'Tên model: openai/gpt-4o, anthropic/claude-sonnet-5-5, gemini/gemini-2.5-flash, openrouter/<model>, nvidia_nim/<model>.',
+      'Tên model: openai/gpt-4o, anthropic/claude-sonnet-5-5, gemini/gemini-3.5-flash-lite, openrouter/<model>, nvidia_nim/<model>.',
       'Dùng cho n8n, Flowise, AnythingLLM, Open WebUI... bằng cách chọn nhà cung cấp "OpenAI" và đổi Base URL.',
       'Trang quản trị: http://<host>:<cổng>/ui (đăng nhập bằng master key).',
     ],
