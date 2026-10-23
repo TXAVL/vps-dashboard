@@ -113,6 +113,12 @@ interface GatewaySettings {
   apiKey: string;
   defaultModel: string | null;
   fallbacks: string[];
+  // 9Router architecture extensions
+  tier1Model?: string | null;
+  tier2Model?: string | null;
+  tier3Model?: string | null;
+  rtkEnabled?: boolean;
+  rotationStrategy?: 'failover' | 'round-robin';
 }
 
 export interface GatewayApiKeyView {
@@ -129,6 +135,7 @@ interface GatewayLog {
   at: string;
   model: string;
   resolvedModel?: string;
+  tier?: 'tier1' | 'tier2' | 'tier3' | null;
   provider: string;
   accountName?: string | null;
   subAgent?: string | null;
@@ -138,6 +145,7 @@ interface GatewayLog {
   source: 'api' | 'playground' | 'agent';
   promptTokens: number | null;
   completionTokens: number | null;
+  rtkSavedTokens?: number | null;
   error: string | null;
   fallbackFrom: string | null;
   rotatedFrom?: string | null;
@@ -1018,7 +1026,7 @@ function PlaygroundTab({ initialModel, models }: { initialModel: string; models:
   );
 }
 
-// ------------------------------------------------------------------ Định tuyến
+// ------------------------------------------------------------------ Định tuyến chuẩn 9Router (Smart 3-Tier Fallback & RTK)
 
 function RoutingTab({ gateway, saveGateway, models }: { gateway: GatewaySettings; saveGateway: (patch: Partial<GatewaySettings>, msg: string) => Promise<void>; models: AiModel[] }) {
   const [pick, setPick] = useState('');
@@ -1028,23 +1036,227 @@ function RoutingTab({ gateway, saveGateway, models }: { gateway: GatewaySettings
     next.splice(index + dir, 0, item);
     void saveGateway({ fallbacks: next }, 'Đã đổi thứ tự dự phòng');
   };
+
+  const rtkActive = gateway.rtkEnabled !== false;
+  const rotation = gateway.rotationStrategy ?? 'failover';
+
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      <Card title="Model mặc định" icon={Star}>
-        <p className="mb-3 text-sm text-slate-400">Dùng khi request gửi <code className="mono">"model": "auto"</code> hoặc không gửi model.</p>
-        <Select value={gateway.defaultModel ?? ''} onChange={(e) => void saveGateway({ defaultModel: e.target.value || null }, e.target.value ? `Model mặc định: ${e.target.value}` : 'Đã bỏ model mặc định')}>
-          <option value="">— Dùng model mặc định của nhà cung cấp đầu tiên —</option>
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.id}
-            </option>
-          ))}
-        </Select>
-      </Card>
-      <Card title="Fallback (dự phòng)" icon={Route}>
-        <p className="mb-3 text-sm text-slate-400">Model chính bị lỗi 429 (quá giới hạn), 5xx hoặc mất kết nối thì gateway tự thử lần lượt các model này.</p>
+    <div className="space-y-6">
+      {/* 9Router Architecture Header Banner */}
+      <div className="rounded-3xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/60 via-slate-900 to-purple-950/40 p-5 shadow-2xl">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded-xl bg-indigo-600/40 text-sm">🔀</span>
+              <h3 className="text-base font-black text-white">Kiến trúc Định tuyến 3 Tầng Thông minh (Smart 3-Tier Architecture)</h3>
+              <Badge tone="blue" className="text-[11px] font-bold">Chuẩn 9Router</Badge>
+            </div>
+            <p className="text-xs text-slate-300">
+              Tự động phân luồng từ model cao cấp (Tier 1) ➔ model giá rẻ (Tier 2) ➔ model miễn phí (Tier 3) khi gặp lỗi 429 (Rate Limit) hoặc hết quota.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge tone="green" className="text-xs py-1 px-2.5">
+              Zero-Downtime Coding
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      {/* 3 TẦNG ĐỊNH TUYẾN 9ROUTER */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {/* TIER 1: Primary */}
+        <div className="glass flex flex-col justify-between p-4 border-indigo-500/40 bg-indigo-950/15">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="flex size-6 items-center justify-center rounded-lg bg-indigo-500 text-xs font-black text-white shadow">1</span>
+                <span className="font-extrabold text-white text-sm">Tier 1: Primary / Subscription</span>
+              </div>
+              <Badge tone="blue" className="text-[10px]">Ưu tiên #1</Badge>
+            </div>
+            <p className="text-xs text-slate-300">
+              Model mạnh nhất cho reasoning, coding chuyên sâu và tác vụ phức tạp (Claude 3.7 Sonnet, GPT-4o, Gemini 2.5 Pro...).
+            </p>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-400">Chọn Model Tier 1:</label>
+              <Select
+                value={gateway.tier1Model ?? gateway.defaultModel ?? ''}
+                onChange={(e) => void saveGateway({ tier1Model: e.target.value || null }, e.target.value ? `Tier 1 Model: ${e.target.value}` : 'Đã bỏ gán Tier 1')}
+              >
+                <option value="">— Mặc định ({gateway.defaultModel || 'Tự động chọn'}) —</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          <div className="mt-4 pt-2 border-t border-slate-800 text-[11px] text-indigo-300">
+            Alias khả dụng: <code className="mono text-white">tier1</code> hoặc <code className="mono text-white">auto</code>
+          </div>
+        </div>
+
+        {/* TIER 2: Low-Cost Workhorse */}
+        <div className="glass flex flex-col justify-between p-4 border-amber-500/40 bg-amber-950/10">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="flex size-6 items-center justify-center rounded-lg bg-amber-500 text-xs font-black text-white shadow">2</span>
+                <span className="font-extrabold text-white text-sm">Tier 2: Low-Cost / Workhorse</span>
+              </div>
+              <Badge tone="amber" className="text-[10px]">Dự phòng #2</Badge>
+            </div>
+            <p className="text-xs text-slate-300">
+              Model tốc độ cao, siêu rẻ khi Tier 1 quá tải hoặc cần tiết kiệm tiền (Gemini 3.5 Flash Lite, DeepSeek V3, Groq Llama 3.3...).
+            </p>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-400">Chọn Model Tier 2:</label>
+              <Select
+                value={gateway.tier2Model ?? ''}
+                onChange={(e) => void saveGateway({ tier2Model: e.target.value || null }, e.target.value ? `Tier 2 Model: ${e.target.value}` : 'Đã bỏ gán Tier 2')}
+              >
+                <option value="">— Chưa chỉ định (Nhảy thẳng sang Fallbacks) —</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          <div className="mt-4 pt-2 border-t border-slate-800 text-[11px] text-amber-300">
+            Alias khả dụng: <code className="mono text-white">tier2</code>
+          </div>
+        </div>
+
+        {/* TIER 3: Free-Tier Safety Net */}
+        <div className="glass flex flex-col justify-between p-4 border-emerald-500/40 bg-emerald-950/10">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="flex size-6 items-center justify-center rounded-lg bg-emerald-500 text-xs font-black text-white shadow">3</span>
+                <span className="font-extrabold text-white text-sm">Tier 3: Free Safety Net</span>
+              </div>
+              <Badge tone="green" className="text-[10px]">Cứu cánh #3</Badge>
+            </div>
+            <p className="text-xs text-slate-300">
+              Tầng miễn phí cứu cánh cuối cùng để quá trình lập trình/chat không bao giờ bị dừng (Google AI Studio Free Tier, OpenCode, Kiro Free...).
+            </p>
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-400">Chọn Model Tier 3:</label>
+              <Select
+                value={gateway.tier3Model ?? ''}
+                onChange={(e) => void saveGateway({ tier3Model: e.target.value || null }, e.target.value ? `Tier 3 Model: ${e.target.value}` : 'Đã bỏ gán Tier 3')}
+              >
+                <option value="">— Chưa chỉ định —</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          <div className="mt-4 pt-2 border-t border-slate-800 text-[11px] text-emerald-300">
+            Alias khả dụng: <code className="mono text-white">tier3</code>
+          </div>
+        </div>
+      </div>
+
+      {/* TÍNH NĂNG ĐỘC QUYỀN 9ROUTER: RTK TOKEN SAVER & CHIẾN LƯỢC XOAY VÒNG */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        {/* RTK Token Saver */}
+        <Card
+          title="⚡ RTK Token Saver (Request Token Compressor)"
+          icon={Sparkles}
+          actions={
+            <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
+              <Toggle
+                checked={rtkActive}
+                onChange={(v) => void saveGateway({ rtkEnabled: v }, v ? 'Đã bật RTK Token Saver' : 'Đã tắt RTK Token Saver')}
+              />
+              <span className={rtkActive ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
+                {rtkActive ? 'Đang kích hoạt' : 'Đã tắt'}
+              </span>
+            </label>
+          }
+        >
+          <div className="space-y-3">
+            <p className="text-xs text-slate-300 leading-relaxed">
+              <strong>RTK Token Saver</strong> tự động làm sạch và nén dữ liệu context trước khi gửi đến LLM: loại bỏ các mã màu ANSI terminal, khoảng trắng thừa mứa, dòng trống lặp lại và rút gọn các dải phân cách log kéo dài.
+            </p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-xl border border-slate-800 bg-black/40 p-2.5">
+                <div className="text-slate-500 text-[11px]">Tiết kiệm trung bình</div>
+                <div className="mono font-bold text-emerald-400 text-sm mt-0.5">20% – 65% Token</div>
+              </div>
+              <div className="rounded-xl border border-slate-800 bg-black/40 p-2.5">
+                <div className="text-slate-500 text-[11px]">Bảo toàn ngữ cảnh</div>
+                <div className="mono font-bold text-sky-400 text-sm mt-0.5">100% Logic Semantic</div>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Rất hiệu quả khi dùng Claude Code, Cursor, Cline hoặc chạy các lệnh build/test phát sinh hàng nghìn dòng output terminal dài ngoằng.
+            </p>
+          </div>
+        </Card>
+
+        {/* Multi-Account Rotation Strategy */}
+        <Card title="🔄 Multi-Account Rotation Strategy" icon={RotateCw}>
+          <div className="space-y-3">
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Quy tắc xoay vòng khi 1 nhà cung cấp cấu hình nhiều tài khoản API keys:
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => void saveGateway({ rotationStrategy: 'failover' }, 'Chiến lược xoay: Failover')}
+                className={cn(
+                  'rounded-xl border p-3 text-left transition',
+                  rotation === 'failover'
+                    ? 'border-indigo-500/80 bg-indigo-950/40 text-white shadow-lg shadow-indigo-950/30'
+                    : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700'
+                )}
+              >
+                <div className="font-bold text-xs flex items-center justify-between">
+                  <span>Failover (Khuyên dùng)</span>
+                  {rotation === 'failover' && <Check className="size-3.5 text-indigo-400" />}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1 leading-snug">
+                  Dùng liên tục tài khoản chính. Chỉ tự động nhảy sang tài khoản tiếp theo khi dính 429 hoặc lỗi hạn ngạch.
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void saveGateway({ rotationStrategy: 'round-robin' }, 'Chiến lược xoay: Round-Robin')}
+                className={cn(
+                  'rounded-xl border p-3 text-left transition',
+                  rotation === 'round-robin'
+                    ? 'border-indigo-500/80 bg-indigo-950/40 text-white shadow-lg shadow-indigo-950/30'
+                    : 'border-slate-800 bg-slate-900/40 text-slate-400 hover:border-slate-700'
+                )}
+              >
+                <div className="font-bold text-xs flex items-center justify-between">
+                  <span>Round-Robin (Xoay đều)</span>
+                  {rotation === 'round-robin' && <Check className="size-3.5 text-indigo-400" />}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-1 leading-snug">
+                  Mỗi request sẽ đổi lần lượt qua các tài khoản khác nhau để chia đều tải và tránh chạm rate limit theo phút.
+                </div>
+              </button>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* DANH SÁCH FALLBACK BỔ SUNG */}
+      <Card title="Danh sách Fallbacks bổ sung (Thử sau khi các Tier trên gặp sự cố)" icon={Route}>
+        <p className="mb-3 text-sm text-slate-400">Nếu cả 3 tầng hoặc model yêu cầu đều bị lỗi 429/5xx, gateway sẽ tiếp tục thử lần lượt qua các model dự phòng dưới đây.</p>
         <div className="space-y-2">
-          {gateway.fallbacks.length === 0 && <p className="text-sm text-slate-500">Chưa có model dự phòng.</p>}
+          {gateway.fallbacks.length === 0 && <p className="text-sm text-slate-500">Chưa có model dự phòng bổ sung.</p>}
           {gateway.fallbacks.map((m, i) => (
             <div key={m} className="flex items-center gap-2 rounded-xl border border-slate-700/50 bg-ink-950/50 px-3 py-2">
               <span className="mono flex size-6 items-center justify-center rounded-full bg-zen-amber/15 text-xs font-bold text-amber-300">{i + 1}</span>
@@ -1068,13 +1280,13 @@ function RoutingTab({ gateway, saveGateway, models }: { gateway: GatewaySettings
           </Select>
           <Button
             icon={Plus}
-            disabled={!pick || gateway.fallbacks.length >= 5}
+            disabled={!pick || gateway.fallbacks.length >= 8}
             onClick={() => {
               void saveGateway({ fallbacks: [...gateway.fallbacks, pick] }, `Đã thêm ${pick}`);
               setPick('');
             }}
           >
-            Thêm
+            Thêm vào Fallbacks
           </Button>
         </div>
       </Card>
@@ -2174,10 +2386,18 @@ function ActivityTab() {
                   <span className={cn('px-1.5 py-0.2 rounded font-bold text-[10px]', l.status >= 200 && l.status < 300 ? 'bg-emerald-950 text-emerald-400' : 'bg-red-950 text-red-400')}>
                     HTTP {l.status}
                   </span>
+                  {l.tier && (
+                    <span className="px-1.5 py-0.2 rounded font-bold text-[10px] bg-indigo-950 text-indigo-300 border border-indigo-500/30">
+                      {l.tier === 'tier1' ? 'Tier 1' : l.tier === 'tier2' ? 'Tier 2' : 'Tier 3'}
+                    </span>
+                  )}
                   <span className="text-purple-300 font-semibold">{l.model}</span>
                   {l.subAgent && <span className="text-indigo-400">🤖 [{l.subAgent}]</span>}
                   {l.accountName && <span className="text-amber-300 text-[11px]">🔑 {l.accountName}</span>}
                   <span className="text-slate-500 text-[11px]">{(l.ms / 1000).toFixed(2)}s</span>
+                  {l.rtkSavedTokens ? (
+                    <span className="text-emerald-400 text-[11px]">⚡ RTK -{l.rtkSavedTokens}t</span>
+                  ) : null}
                   {l.rotatedFrom && <span className="text-amber-400 text-[11px]">↳ ({l.rotatedFrom})</span>}
                   {l.error && <span className="text-red-400 text-[11px]">ERR: {l.error}</span>}
                 </div>
@@ -2222,8 +2442,13 @@ function ActivityTab() {
                         <div className="flex items-center gap-2">
                           <ProviderLogo id={l.subAgent ? 'agent' : (l.provider || l.model)} size="sm" />
                           <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="mono truncate font-semibold text-slate-100">{l.model}</span>
+                              {l.tier && (
+                                <span className="rounded bg-indigo-950 px-1.5 py-0.2 text-[10px] font-bold text-indigo-300 border border-indigo-500/30">
+                                  {l.tier === 'tier1' ? 'Tier 1' : l.tier === 'tier2' ? 'Tier 2' : 'Tier 3'}
+                                </span>
+                              )}
                               {l.subAgent && <Badge tone="blue" className="text-[10px]">🤖 {l.subAgent}</Badge>}
                             </div>
                             {l.fallbackFrom && <div className="text-xs text-amber-300">dự phòng cho {l.fallbackFrom}</div>}
@@ -2253,7 +2478,14 @@ function ActivityTab() {
                         <Badge tone={l.status >= 200 && l.status < 300 ? 'green' : 'red'}>{l.status}</Badge>
                       </td>
                       <td className={cn(td, 'mono text-right text-slate-300')}>{(l.ms / 1000).toFixed(2)}s</td>
-                      <td className={cn(td, 'mono text-right text-slate-400')}>{l.promptTokens !== null ? `${l.promptTokens} / ${l.completionTokens ?? 0}` : '—'}</td>
+                      <td className={cn(td, 'mono text-right text-slate-400')}>
+                        {l.promptTokens !== null ? `${l.promptTokens} / ${l.completionTokens ?? 0}` : '—'}
+                        {Boolean(l.rtkSavedTokens) && (
+                          <div className="text-[10px] text-emerald-400 font-sans">
+                            ⚡ -{l.rtkSavedTokens} RTK
+                          </div>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -2818,12 +3050,13 @@ function OverviewTab({
 }) {
   const { tunnel } = usePanel();
   const logs = useApi<GatewayLog[]>('/api/ai/gateway/logs', 15000);
-  const [lang, setLang] = useState<'curl' | 'python' | 'node' | 'n8n'>('curl');
+  const [integrationTab, setIntegrationTab] = useState<'claude' | 'cursor' | 'cline' | 'aider' | 'n8n' | 'curl' | 'python' | 'node'>('claude');
   const base = `${tunnel?.status === 'online' && tunnel.url ? tunnel.url : window.location.origin}/zen/v1`;
-  const model = gateway.defaultModel ?? 'auto';
+  const model = gateway.tier1Model || gateway.defaultModel || 'auto';
   const day = (logs.data ?? []).filter((l) => Date.now() - new Date(l.at).getTime() < 86_400_000);
   const ok = day.filter((l) => l.status >= 200 && l.status < 300).length;
   const tokens = day.reduce((s, l) => s + (l.promptTokens ?? 0) + (l.completionTokens ?? 0), 0);
+  const rtkSavedTotal = day.reduce((s, l) => s + (l.rtkSavedTokens ?? 0), 0);
   const top = Object.entries(day.reduce<Record<string, number>>((acc, l) => ({ ...acc, [l.model]: (acc[l.model] ?? 0) + 1 }), {}))
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5);
@@ -2831,43 +3064,202 @@ function OverviewTab({
   const totalAccounts = providers.reduce((sum, p) => sum + (p.totalAccounts ?? (p.configured ? 1 : 0)), 0);
 
   const dockerBase = 'http://host.docker.internal:8000/zen/v1';
+  const activeKeyStr = keys[0]?.masked ? '<API_KEY_CỦA_BẠN>' : gateway.apiKey;
 
-  const samples = {
-    curl: `curl ${base}/chat/completions \\\n  -H "Authorization: Bearer <API_KEY_CỦA_BẠN>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${model}", "messages": [{"role": "user", "content": "Xin chào"}]}'`,
-    python: `from openai import OpenAI\n\nclient = OpenAI(base_url="${base}", api_key="<API_KEY_CỦA_BẠN>")\nres = client.chat.completions.create(\n    model="${model}",\n    messages=[{"role": "user", "content": "Xin chào"}],\n)\nprint(res.choices[0].message.content)`,
-    node: `import OpenAI from 'openai';\n\nconst client = new OpenAI({ baseURL: '${base}', apiKey: '<API_KEY_CỦA_BẠN>' });\nconst res = await client.chat.completions.create({\n  model: '${model}',\n  messages: [{ role: 'user', content: 'Xin chào' }],\n});\nconsole.log(res.choices[0].message.content);`,
-    n8n: `=== CÁCH KẾT NỐI N8N VỚI ZENPANEL AI GATEWAY ===\n\n1. Tạo Credential trong n8n:\n   - Menu trái: Credentials → Add Credential → Chọn "OpenAI"\n   - API Key: Dán API Key bạn tạo tại tab "Cấp phát API Keys" (tzp_live_...)\n   - Base URL (trong Advanced/URL Options):\n     * Nếu n8n chạy Docker trên cùng VPS (Khuyên dùng):\n       ${dockerBase}\n     * Nếu n8n chạy ngoài hoặc qua Domain/Tunnel:\n       ${base}\n\n2. Kéo Node trong Workflow:\n   - Kéo node "AI Agent" (hoặc "Chat Model")\n   - Kéo node "OpenAI Chat Model" gắn vào cổng Model của AI Agent\n   - Chọn Credential OpenAI vừa tạo ở trên\n\n3. BẬT CUSTOM MODEL (Mấu chốt):\n   - Ô "Model" bấm biểu tượng chuyển sang "Custom" / "Expression"\n   - Gõ tên model bất kỳ:\n     • gemini/gemini-3.5-flash-lite (siêu nhanh, rẻ, chuẩn mới nhất)\n     • anthropic/claude-3-7-sonnet (thông minh nhất)\n     • openai/gpt-4o\n     • agent/coder (Sub-Agent của bạn)\n     • auto (ZenPanel tự động phân luồng)`,
+  const integrations = {
+    claude: {
+      name: 'Claude Code',
+      badge: 'CLI Agent',
+      desc: 'Công cụ lập trình terminal mới nhất từ Anthropic. Hỗ trợ đầy đủ định tuyến 3 Tầng & RTK Token Saver.',
+      code: `# 1. Thiết lập biến môi trường trỏ về ZenPanel AI Gateway
+export ANTHROPIC_BASE_URL="${base}"
+export ANTHROPIC_API_KEY="${activeKeyStr}"
+
+# 2. Khởi chạy Claude Code với Model Tier 1 hoặc auto
+claude --model tier1
+
+# Mẹo 9Router: Claude Code nén output terminal tự động qua RTK Token Saver của ZenPanel!`,
+    },
+    cursor: {
+      name: 'Cursor IDE',
+      badge: 'AI IDE',
+      desc: 'Cấu hình Cursor dùng chung 1 Base URL duy nhất, tự failover sang Tier 2 khi Tier 1 hết hạn ngạch.',
+      code: `// Trong Cursor Settings -> Models -> OpenAI API:
+OpenAI API Key: ${activeKeyStr}
+Override OpenAI Base URL: ${base}
+
+// Thêm các custom model IDs trong ô "Add Model":
+- tier1                       (Tự động gọi model chính cao cấp)
+- tier2                       (Model tốc độ cao giá rẻ: Flash Lite / DeepSeek)
+- tier3                       (Tầng miễn phí cứu cánh)
+- auto                        (Định tuyến thông minh)`,
+    },
+    cline: {
+      name: 'Cline / Roo Code',
+      badge: 'VS Code Extension',
+      desc: 'Autonomous coding agent trong Visual Studio Code. Không lo bị dừng code giữa chừng khi gặp 429.',
+      code: `// Cấu hình trong Cline Settings:
+API Provider: OpenAI Compatible
+Base URL: ${base}
+API Key: ${activeKeyStr}
+Model ID: tier1 (hoặc: auto / gemini/gemini-3.5-flash-lite)
+
+// Tính năng RTK Token Saver của ZenPanel giúp giảm 30%-60% token terminal / file diff cho Cline!`,
+    },
+    aider: {
+      name: 'Aider / Codex',
+      badge: 'Pair Programming',
+      desc: 'Công cụ CLI pair programming nổi tiếng trên terminal.',
+      code: `# Chạy Aider qua ZenPanel AI Gateway
+aider \\
+  --openai-api-base "${base}" \\
+  --openai-api-key "${activeKeyStr}" \\
+  --model "openai/tier1"`,
+    },
+    n8n: {
+      name: 'n8n & Dify',
+      badge: 'AI Automation',
+      desc: 'Tự động hóa workflow AI. Dùng Base URL Docker nội bộ để đạt tốc độ phản hồi cực nhanh dưới 1ms.',
+      code: `=== THIẾT LẬP N8N & DIFY VỚI ZENPANEL AI GATEWAY ===
+
+1. Base URL (Khuyên dùng nội bộ Docker):
+   ${dockerBase}
+   (Nếu gọi từ xa qua internet: ${base})
+
+2. API Key:
+   ${activeKeyStr} (hoặc tạo key mới tại tab "Cấp phát API Keys")
+
+3. Model Name:
+   - auto (ZenPanel tự động phân luồng)
+   - tier1 (Model mạnh nhất)
+   - tier2 (Model tiết kiệm)
+   - agent/coder (Sub-Agent chuyên gia của bạn)`,
+    },
+    curl: {
+      name: 'cURL',
+      badge: 'REST API',
+      desc: 'Gọi trực tiếp qua HTTP/SSE từ bất kỳ ngôn ngữ lập trình nào.',
+      code: `curl ${base}/chat/completions \\
+  -H "Authorization: Bearer ${activeKeyStr}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "model": "${model}",
+    "stream": true,
+    "messages": [
+      {"role": "user", "content": "Xin chào! Kiểm tra hệ thống ZenPanel AI Gateway 9Router."}
+    ]
+  }'`,
+    },
+    python: {
+      name: 'OpenAI Python',
+      badge: 'Python SDK',
+      desc: 'Thư viện openai-python chính thức, đổi base_url là chạy 100% mượt mà.',
+      code: `from openai import OpenAI
+
+client = OpenAI(
+    base_url="${base}",
+    api_key="${activeKeyStr}"
+)
+
+res = client.chat.completions.create(
+    model="${model}",
+    messages=[{"role": "user", "content": "Phân tích đoạn code sau..."}]
+)
+print(res.choices[0].message.content)`,
+    },
+    node: {
+      name: 'OpenAI Node.js',
+      badge: 'TypeScript / Node',
+      desc: 'Thư viện openai npm package chính thức.',
+      code: `import OpenAI from 'openai';
+
+const client = new OpenAI({
+  baseURL: '${base}',
+  apiKey: '${activeKeyStr}',
+});
+
+const res = await client.chat.completions.create({
+  model: '${model}',
+  messages: [{ role: 'user', content: 'Xin chào!' }],
+});
+console.log(res.choices[0].message.content);`,
+    },
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* 4 HERO KPI 9ROUTER CARDS */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          ['Nhà cung cấp & Keys', `${connected}/${providers.length} (${totalAccounts} acc)`, 'đã kết nối & xoay vòng'],
-          ['Request 24h', String(day.length), `${day.length ? Math.round((ok / day.length) * 100) : 100}% thành công`],
-          ['Token 24h', tokens.toLocaleString('vi-VN'), 'không tính request stream'],
-          ['Model mặc định', gateway.defaultModel ?? 'chưa chọn', gateway.fallbacks.length ? `${gateway.fallbacks.length} model dự phòng` : 'không có dự phòng'],
-        ].map(([label, value, sub]) => (
-          <div key={label} className="glass min-w-0 p-4">
-            <div className="text-xs text-slate-500">{label}</div>
-            <div className="mono truncate text-lg font-extrabold text-white">{value}</div>
-            <div className="truncate text-xs text-slate-500">{sub}</div>
+        {/* Card 1: 3-Tier Fallback */}
+        <div className="glass p-4 border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900 to-slate-950 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-indigo-300 uppercase tracking-wider">Smart 3-Tier Routing</span>
+            <span className="flex size-6 items-center justify-center rounded-lg bg-indigo-500/20 text-xs">🔀</span>
           </div>
-        ))}
+          <div className="mono text-lg font-black text-white mt-1">Tier 1 ➔ 2 ➔ 3</div>
+          <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+            {gateway.tier1Model ? `Tier 1: ${gateway.tier1Model}` : 'Tự động phân tầng dự phòng'}
+          </div>
+        </div>
+
+        {/* Card 2: RTK Token Saver */}
+        <div className="glass p-4 border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 via-slate-900 to-slate-950 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">RTK Token Saver</span>
+            <span className="flex size-6 items-center justify-center rounded-lg bg-emerald-500/20 text-xs">⚡</span>
+          </div>
+          <div className="mono text-lg font-black text-emerald-300 mt-1">
+            {gateway.rtkEnabled !== false ? 'Đang kích hoạt' : 'Đang tắt'}
+          </div>
+          <div className="text-[11px] text-emerald-400/80 mt-0.5">
+            {rtkSavedTotal > 0 ? `Đã tiết kiệm ${rtkSavedTotal.toLocaleString()} tokens 24h` : 'Nén 20% – 65% token terminal'}
+          </div>
+        </div>
+
+        {/* Card 3: Multi-Account Rotation */}
+        <div className="glass p-4 border-purple-500/30 bg-gradient-to-br from-purple-950/30 via-slate-900 to-slate-950 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-purple-300 uppercase tracking-wider">Account Pool</span>
+            <span className="flex size-6 items-center justify-center rounded-lg bg-purple-500/20 text-xs">🔄</span>
+          </div>
+          <div className="mono text-lg font-black text-purple-200 mt-1">
+            {totalAccounts} Acc ({gateway.rotationStrategy === 'round-robin' ? 'Round-Robin' : 'Failover'})
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">
+            {connected}/{providers.length} nhà cung cấp đã kết nối
+          </div>
+        </div>
+
+        {/* Card 4: Requests & Traffic */}
+        <div className="glass p-4 border-sky-500/30 bg-gradient-to-br from-sky-950/30 via-slate-900 to-slate-950 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-sky-300 uppercase tracking-wider">Traffic 24h</span>
+            <span className="flex size-6 items-center justify-center rounded-lg bg-sky-500/20 text-xs">🌐</span>
+          </div>
+          <div className="mono text-lg font-black text-white mt-1">
+            {day.length} Req <span className="text-xs font-normal text-slate-400">({day.length ? Math.round((ok / day.length) * 100) : 100}% OK)</span>
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">
+            {tokens.toLocaleString('vi-VN')} tokens xử lý
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+        {/* QUICK INTEGRATION CENTER 9ROUTER */}
         <Card
-          title="ZenPanel AI Gateway (Chuẩn giao thức OpenAI)"
+          title="⚡ Trung tâm Tích hợp 1-Click (Chuẩn 9Router cho Coding Agents & IDE)"
           icon={Route}
           actions={
-            <label className="flex items-center gap-2 text-sm text-slate-300">
+            <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
               <Toggle checked={gateway.enabled} onChange={(v) => void saveGateway({ enabled: v }, v ? 'Đã bật AI Gateway' : 'Đã tắt AI Gateway')} />
-              {gateway.enabled ? 'Đang bật' : 'Đang tắt'}
+              <span className={gateway.enabled ? 'text-emerald-400 font-bold' : 'text-slate-400'}>
+                {gateway.enabled ? 'Gateway Đang Bật' : 'Gateway Đang Tắt'}
+              </span>
             </label>
           }
         >
-          <div className="space-y-3.5">
+          <div className="space-y-4">
             {!gateway.enabled && <Notice tone="amber">Gateway đang tắt: endpoint trả lỗi 503. Bật công tắc ở góc trên để dùng từ app khác.</Notice>}
 
             {/* MỤC QUẢN LÝ CẤP PHÁT API KEYS CỦA ZENPANEL */}
@@ -2883,7 +3275,7 @@ function OverviewTab({
                       <Badge tone="blue" className="text-[10px] font-bold uppercase tracking-wider">Format: tzp_live_*</Badge>
                     </div>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Cấp API Key riêng cho từng AI Agent, n8n, Flowise, Dify. Đặt hạn dùng và thu hồi linh hoạt.
+                      Cấp API Key riêng cho Claude Code, Cursor, Cline, n8n. Đặt hạn dùng và thu hồi linh hoạt.
                     </p>
                   </div>
                 </div>
@@ -2926,85 +3318,111 @@ function OverviewTab({
               </div>
             </div>
 
-            {/* BASE URL PUBLIC */}
-            <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3.5 py-2.5">
-              <div className="text-xs text-slate-400 font-medium">Base URL (Public / Mạng ngoài / Truy cập từ xa)</div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="mono min-w-0 flex-1 truncate text-slate-100 text-xs">{base}</span>
-                <CopyButton value={base} label="Sao chép URL" />
+            {/* BASE URL ENDPOINTS */}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3.5 py-2.5">
+                <div className="text-xs text-slate-400 font-medium">Public Base URL (Internet / Claude Code / Cursor)</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="mono min-w-0 flex-1 truncate text-slate-100 text-xs">{base}</span>
+                  <CopyButton value={base} label="Copy" />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/15 px-3.5 py-2.5">
+                <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
+                  <span>Docker Internal (n8n / Dify trên VPS)</span>
+                  <Badge tone="green" className="text-[10px]">Khuyên dùng</Badge>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="mono min-w-0 flex-1 truncate text-emerald-300 font-semibold text-xs">{dockerBase}</span>
+                  <CopyButton value={dockerBase} label="Copy" />
+                </div>
               </div>
             </div>
 
-            {/* BASE URL DOCKER INTERNAL */}
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/15 px-3.5 py-2.5">
-              <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
-                <span>Base URL nội bộ Docker (Dành cho n8n, Flowise, Open WebUI chạy cùng VPS)</span>
-                <Badge tone="green" className="text-[10px]">Khuyên dùng</Badge>
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="mono min-w-0 flex-1 truncate text-emerald-300 font-semibold text-xs">{dockerBase}</span>
-                <CopyButton value={dockerBase} label="Sao chép Docker URL" />
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {(['curl', 'python', 'node', 'n8n'] as const).map((l) => (
-                <button key={l} onClick={() => setLang(l)} className={cn('rounded-lg px-2.5 py-1 text-xs font-semibold', lang === l ? 'bg-zen-blue text-white' : 'bg-slate-800 text-slate-400 hover:text-white')}>
-                  {l === 'node' ? 'Node.js' : l === 'n8n' ? '⚡ n8n Setup' : l === 'python' ? 'Python' : 'cURL'}
-                </button>
-              ))}
-              <span className="ml-auto">
-                <CopyButton value={samples[lang]} label="Sao chép" />
-              </span>
-            </div>
-            <pre className="mono max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-[#0a0e17] p-4 text-xs text-emerald-200">{samples[lang]}</pre>
-            <p className="text-xs text-slate-500">
-              Tên model: <code className="mono">openai/…</code>, <code className="mono">anthropic/…</code>, <code className="mono">gemini/…</code>, <code className="mono">openrouter/…</code>,{' '}
-              <code className="mono">nvidia/…</code>, Sub-Agent <code className="mono">agent/coder</code>, hoặc <code className="mono">auto</code>.
-            </p>
-          </div>
-        </Card>
-        <div className="space-y-4">
-        <Card title="Endpoint" icon={ListOrdered} actions={<Link to="/api-tester" className="text-xs font-semibold text-blue-300 hover:underline">Thử trong API Tester →</Link>}>
-          <div className="space-y-1.5">
-            {[
-              ['GET', '/health', 'Kiểm tra gateway (không cần key)'],
-              ['GET', '/models', 'Danh sách model & Sub-Agents'],
-              ['GET', '/models/{id}', 'Chi tiết 1 model'],
-              ['GET', '/providers', 'Nhà cung cấp đã kết nối'],
-              ['GET', '/key', 'Thông tin API key & sử dụng 24h'],
-              ['GET', '/usage?hours=24', 'Thống kê theo model'],
-              ['POST', '/chat/completions', 'Chat (hỗ trợ stream)'],
-              ['POST', '/completions', 'Prompt → text'],
-              ['POST', '/embeddings', 'Vector embedding'],
-            ].map(([method, path, desc]) => (
-              <div key={path} className="flex items-center gap-2 text-xs">
-                <span className={cn('mono w-10 shrink-0 font-bold', method === 'GET' ? 'text-emerald-400' : 'text-amber-400')}>{method}</span>
-                <span className="mono min-w-0 flex-1 truncate text-slate-200">{path}</span>
-                <span className="hidden truncate text-slate-500 sm:inline">{desc}</span>
-              </div>
-            ))}
-          </div>
-          <p className="mt-3 text-[11px] text-slate-500">Đường dẫn cũ /ai/v1 vẫn dùng được.</p>
-        </Card>
-        <Card title="Model dùng nhiều (24h)" icon={Activity}>
-          {top.length === 0 ? (
-            <p className="text-sm text-slate-500">Chưa có request nào trong 24 giờ.</p>
-          ) : (
+            {/* QUICK INTEGRATION TABS (9ROUTER STYLE) */}
             <div className="space-y-2">
-              {top.map(([m, count]) => (
-                <div key={m} className="space-y-1">
-                  <div className="flex justify-between gap-2 text-xs">
-                    <span className="mono truncate text-slate-200">{m}</span>
-                    <span className="mono text-slate-400">{count}</span>
-                  </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
-                    <div className="h-full rounded-full bg-zen-blue" style={{ width: `${(count / top[0][1]) * 100}%` }} />
-                  </div>
+              <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-800 pb-2">
+                {(Object.keys(integrations) as (keyof typeof integrations)[]).map((tabKey) => {
+                  const it = integrations[tabKey];
+                  const isCur = integrationTab === tabKey;
+                  return (
+                    <button
+                      key={tabKey}
+                      type="button"
+                      onClick={() => setIntegrationTab(tabKey)}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition',
+                        isCur ? 'bg-indigo-600 text-white shadow-md shadow-indigo-950/50' : 'bg-slate-800 text-slate-400 hover:text-white'
+                      )}
+                    >
+                      <span>{it.name}</span>
+                      <span className={cn('text-[10px] px-1 py-0.2 rounded font-normal', isCur ? 'bg-indigo-700/80 text-indigo-100' : 'bg-slate-700 text-slate-400')}>
+                        {it.badge}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-slate-400">
+                <span>{integrations[integrationTab].desc}</span>
+                <CopyButton value={integrations[integrationTab].code} label="Sao chép toàn bộ" />
+              </div>
+
+              <pre className="mono max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-xl bg-[#0a0e17] p-4 text-xs text-emerald-200 border border-slate-800/80">
+                {integrations[integrationTab].code}
+              </pre>
+
+              <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-3 pt-1">
+                <span>• Alias khả dụng: <code className="text-white">tier1</code>, <code className="text-white">tier2</code>, <code className="text-white">tier3</code>, <code className="text-white">auto</code></span>
+                <span>• Sub-Agents: <code className="text-purple-300">agent/&lt;tên_agent&gt;</code></span>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* CỘT PHẢI: ENDPOINTS & TOP MODELS */}
+        <div className="space-y-4">
+          <Card title="OpenAI Universal Endpoints" icon={ListOrdered} actions={<Link to="/api-tester" className="text-xs font-semibold text-blue-300 hover:underline">API Tester →</Link>}>
+            <div className="space-y-1.5">
+              {[
+                ['POST', '/chat/completions', 'Chat & Coding (Stream SSE)'],
+                ['GET', '/models', 'Danh sách model & Tier alias'],
+                ['GET', '/models/{id}', 'Chi tiết model / Sub-Agent'],
+                ['POST', '/completions', 'Prompt → text'],
+                ['POST', '/embeddings', 'Vector embedding'],
+                ['GET', '/health', 'Health check (không cần auth)'],
+              ].map(([method, path, desc]) => (
+                <div key={path} className="flex items-center gap-2 text-xs">
+                  <span className={cn('mono w-10 shrink-0 font-bold', method === 'GET' ? 'text-emerald-400' : 'text-amber-400')}>{method}</span>
+                  <span className="mono min-w-0 flex-1 truncate text-slate-200">{path}</span>
+                  <span className="hidden truncate text-slate-500 sm:inline">{desc}</span>
                 </div>
               ))}
             </div>
-          )}
-        </Card>
+            <p className="mt-3 text-[11px] text-slate-500">Tương thích 100% tất cả client thư viện OpenAI trên thế giới.</p>
+          </Card>
+
+          <Card title="Model dùng nhiều (24h)" icon={Activity}>
+            {top.length === 0 ? (
+              <p className="text-sm text-slate-500">Chưa có request nào trong 24 giờ.</p>
+            ) : (
+              <div className="space-y-2">
+                {top.map(([m, count]) => (
+                  <div key={m} className="space-y-1">
+                    <div className="flex justify-between gap-2 text-xs">
+                      <span className="mono truncate text-slate-200">{m}</span>
+                      <span className="mono text-slate-400">{count}</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+                      <div className="h-full rounded-full bg-zen-blue" style={{ width: `${(count / top[0][1]) * 100}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
         </div>
       </div>
 

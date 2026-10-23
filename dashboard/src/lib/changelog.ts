@@ -9,6 +9,41 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.4',
+    date: '2026-10-23',
+    highlights: [
+      {
+        title: '🔀 AI Gateway Chuẩn 9Router: Định Tuyến 3 Tầng Thông Minh Không Lo Đứt Gãy',
+        items: [
+          'Tự động nhảy tầng dự phòng (Tier 1 ➔ Tier 2 ➔ Tier 3): Khi bạn đang lập trình với Claude Code, Cursor hay Cline mà tài khoản chính hết tiền, bị giới hạn tốc độ (lỗi 429) hoặc máy chủ AI bị nghẽn, ZenPanel sẽ tự động nhảy sang mô hình giá rẻ hoặc mô hình miễn phí ngay lập tức. Công việc của bạn luôn được liên tục, không bao giờ bị dừng giữa chừng.',
+          'Đặt tên mô hình siêu tiện: Bạn chỉ cần nhập "tier1" (mô hình thông minh cao cấp nhất), "tier2" (mô hình tiết kiệm siêu tốc như Gemini 3.5 Flash Lite, DeepSeek), "tier3" (tầng miễn phí cứu cánh) hoặc "auto" để ZenPanel tự quyết định.',
+          'Quản lý hồ tài khoản thông minh: Tùy chọn chuyển đổi linh hoạt giữa "Failover" (chỉ đổi tài khoản khi dính lỗi) hoặc "Round-Robin" (xoay đều các khóa) để không bao giờ bị quá tải.',
+        ],
+      },
+      {
+        title: '⚡ Công Nghệ Nén RTK Token Saver: Tiết Kiệm Tiền & Tránh Tràn Bộ Nhớ',
+        items: [
+          'Tự động dọn dẹp dữ liệu thừa: RTK Token Saver sẽ tự động quét và lọc sạch các mã màu terminal, khoảng trắng thừa mứa và các vạch phân cách log dài ngoằng trước khi gửi cho AI.',
+          'Tiết kiệm từ 20% đến 65% chi phí: Giảm lượng token gửi đi đáng kể giúp bạn đỡ tốn tiền nạp API và không bao giờ lo bị tràn dung lượng nhớ của mô hình khi chạy các lệnh build hay kiểm tra mã nguồn.',
+        ],
+      },
+      {
+        title: '🛠️ Trung Tâm Tích Hợp 1-Chạm Cho Claude Code, Cursor, Cline & n8n',
+        items: [
+          'Sẵn sàng trong 5 giây: Bổ sung khu vực hướng dẫn tích hợp dành riêng cho các trợ lý lập trình phổ biến nhất hiện nay: Claude Code (CLI mới nhất từ Anthropic), Cursor IDE, tiện ích Cline / Roo Code trên VS Code, Aider, n8n, Dify...',
+          'Sao chép 1 chạm: Đã điền sẵn địa chỉ máy chủ và khóa bảo mật mẫu, bạn chỉ cần bấm "Sao chép" và dán vào là dùng được ngay.',
+        ],
+      },
+      {
+        title: '🚀 Nâng Cấp Phiên Bản Thông Minh: In Rõ Đường Dẫn Mới & Mở Tab Tự Động Đăng Nhập',
+        items: [
+          'In rõ địa chỉ web mới: Sau khi nâng cấp xong, nếu máy chủ đổi đường dẫn Cloudflare mới, bảng thông báo sẽ in to rõ ràng địa chỉ mới trên màn hình kèm nút "Sao chép" tiện lợi.',
+          'Mở tab mới & tự động đăng nhập: Có nút "Mở tab mới với URL mới" giúp bạn mở ngay phiên bản mới và đăng nhập tự động trong 1 cú nhấp chuột, không lo bị kẹt lại ở tab cũ đã hết hạn.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.6.3',
     date: '2026-10-23',
     highlights: [

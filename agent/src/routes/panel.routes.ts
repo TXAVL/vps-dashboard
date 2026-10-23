@@ -88,7 +88,15 @@ export async function panelRoutes(
   app.post('/api/update/packages/:id/install', async (req) => updates.install((req.params as { id: string }).id));
   app.get('/api/update/log', async () => ({ log: await updates.installLog() }));
   app.get('/api/update/status', async () => {
-    const tunnel = ctx.tunnel?.getState() ?? null;
+    let tunnel = ctx.tunnel?.getState() ?? null;
+    // Nếu tunnel đang khởi động và chưa có URL, đợi nhanh tối đa 3.5 giây để bắt kịp URL mới
+    if (ctx.tunnel && (!tunnel?.url) && (tunnel?.status === 'idle' || tunnel?.status === 'starting')) {
+      for (let w = 0; w < 7; w++) {
+        await new Promise((r) => setTimeout(r, 500));
+        tunnel = ctx.tunnel.getState();
+        if (tunnel.url) break;
+      }
+    }
     return {
       version: updates.getState().current,
       tunnelUrl: tunnel?.url ?? null,

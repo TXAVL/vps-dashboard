@@ -916,11 +916,13 @@ function UpdateCard() {
     etaSec: number;
   } | null>(null);
 
-  // Modal thông báo thành công kèm URL Cloudflare Tunnel mới
+  // Modal thông báo thành công kèm URL truy cập mới và nút mở tab mới
   const [successModal, setSuccessModal] = useState<{
     version: string;
     tunnelUrl: string | null;
-    autoLoginUrl: string | null;
+    targetUrl: string;
+    autoLoginUrl: string;
+    isDifferent: boolean;
   } | null>(null);
 
   const [copiedLog, setCopiedLog] = useState(false);
@@ -978,6 +980,7 @@ function UpdateCard() {
 
     // Vòng lặp giám sát tiến trình và chờ agent khởi động lại
     let newTunnelUrl: string | null = null;
+    const isTryCloudflare = typeof window !== 'undefined' && window.location.hostname.endsWith('trycloudflare.com');
 
     for (let i = 0; i < 90; i++) {
       await new Promise((r) => setTimeout(r, 2000));
@@ -1005,12 +1008,19 @@ function UpdateCard() {
 
       setUpdating((prev) => (prev ? { ...prev, percent: simulatedPct, stage: currentStage, etaSec: remaining } : null));
 
-      // Sau 20 giây, bắt đầu kiểm tra trạng thái online qua /api/update/status
+      // Sau 15 giây, bắt đầu kiểm tra trạng thái online qua /api/update/status
       if (elapsed >= 15) {
         try {
-          const statusRes = await get<{ version: string; tunnelUrl: string | null; startedAt: number }>('/api/update/status');
+          const statusRes = await get<{ version: string; tunnelUrl: string | null; tunnelStatus?: string; startedAt: number }>('/api/update/status');
           if (statusRes && statusRes.startedAt > startTime - 5000) {
-            newTunnelUrl = statusRes.tunnelUrl;
+            if (statusRes.tunnelUrl) {
+              newTunnelUrl = statusRes.tunnelUrl;
+              break;
+            }
+            // Nếu tab hiện tại đang dùng trycloudflare hoặc tunnel đang connecting, tiếp tục đợi thêm để bắt URL mới
+            if ((isTryCloudflare || statusRes.tunnelStatus === 'starting' || statusRes.tunnelStatus === 'idle') && elapsed < 80) {
+              continue;
+            }
             break;
           }
         } catch {
@@ -1026,18 +1036,18 @@ function UpdateCard() {
     // Mở khoá giao diện
     setUpdating(null);
 
-    // Chuẩn bị URL auto-login
+    // Chuẩn bị URL truy cập & auto-login
     const currentToken = getToken();
-    let autoLoginUrl: string | null = null;
-    if (newTunnelUrl) {
-      const cleanUrl = newTunnelUrl.replace(/\/+$/, '');
-      autoLoginUrl = currentToken ? `${cleanUrl}/?token=${encodeURIComponent(currentToken)}&auto_login=1` : cleanUrl;
-    }
+    const baseFinal = (newTunnelUrl || window.location.origin).replace(/\/+$/, '');
+    const autoLoginUrl = currentToken ? `${baseFinal}/?token=${encodeURIComponent(currentToken)}&auto_login=1` : baseFinal;
+    const isDifferent = Boolean(newTunnelUrl && !window.location.origin.includes(new URL(newTunnelUrl).hostname));
 
     setSuccessModal({
       version: pkg.version,
       tunnelUrl: newTunnelUrl,
+      targetUrl: baseFinal,
       autoLoginUrl,
+      isDifferent,
     });
 
     void refreshUpdate();
@@ -1291,7 +1301,7 @@ function UpdateCard() {
         </div>
       )}
 
-      {/* MODAL THÀNH CÔNG VỚI NÚT MỞ PUBLIC TRY CLOUDFLARE TỰ ĐỘNG LOGIN */}
+      {/* MODAL THÀNH CÔNG VỚI NÚT MỞ TAB MỚI & IN RÕ URL MỚI */}
       {successModal && (
         <Modal
           open={true}
@@ -1306,35 +1316,49 @@ function UpdateCard() {
         >
           <div className="space-y-5">
             <div className="space-y-2 rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-5">
-              <h4 className="font-bold text-white">ZenPanel đã hoạt động trở lại ở phiên bản v{successModal.version}</h4>
+              <h4 className="font-bold text-white text-base">ZenPanel đã hoạt động trở lại ở phiên bản v{successModal.version}</h4>
               <p className="text-xs text-slate-300">
-                Hệ thống đã hoàn tất nâng cấp, tái khởi động dịch vụ thành công và bảo toàn toàn bộ dữ liệu.
+                Hệ thống đã hoàn tất nâng cấp, tái khởi động dịch vụ thành công và bảo toàn toàn bộ dữ liệu, cấu hình.
               </p>
             </div>
 
-            {successModal.tunnelUrl ? (
-              <div className="space-y-3 rounded-2xl border border-zen-blue/40 bg-zen-blue/10 p-5">
+            {/* Hộp in rõ URL mới với nút sao chép */}
+            <div className="space-y-3 rounded-2xl border border-indigo-500/40 bg-indigo-950/30 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <Globe className="size-5 text-zen-blue" />
-                  <span className="text-sm font-bold text-white">Liên kết Cloudflare Tunnel Công Khai Mới:</span>
+                  <Globe className="size-5 text-indigo-400" />
+                  <span className="text-sm font-bold text-white">Đường dẫn truy cập ZenPanel mới:</span>
                 </div>
-                <div className="flex items-center gap-2 rounded-xl bg-ink-950 p-3">
-                  <code className="mono flex-1 truncate text-xs text-emerald-300">
-                    {successModal.tunnelUrl}
-                  </code>
-                  <CopyButton value={successModal.tunnelUrl} label="Sao chép" />
-                </div>
-                <p className="text-[11px] text-slate-400">
-                  ⚡ Khi bấm nút bên dưới, trình duyệt sẽ tự động mở tab mới và <b>đăng nhập tự động ngay lập tức</b> mà bạn không cần phải nhập lại mật khẩu.
-                </p>
+                {successModal.isDifferent && (
+                  <Badge tone="amber" className="text-xs font-semibold">
+                    Đã đổi đường dẫn mới
+                  </Badge>
+                )}
               </div>
-            ) : (
-              <Notice tone="blue">
-                ZenPanel đang chạy trên mạng nội bộ / IP máy chủ. Bạn có thể bật Cloudflare Tunnel trong mục Cài đặt bất cứ lúc nào.
-              </Notice>
-            )}
+              <div className="flex items-center gap-2 rounded-xl bg-ink-950 p-3 ring-1 ring-slate-800">
+                <code className="mono flex-1 text-sm text-emerald-300 font-bold break-all select-all">
+                  {successModal.targetUrl}
+                </code>
+                <CopyButton value={successModal.targetUrl} label="Sao chép URL" />
+              </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+              {successModal.isDifferent ? (
+                <div className="rounded-xl border border-amber-500/40 bg-amber-950/40 p-3 text-xs text-amber-200 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-amber-300">
+                    <span>⚠️ ĐƯỜNG DẪN TẠI TAB NÀY ĐÃ HẾT HẠN</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-amber-200/90">
+                    Vì bạn đang truy cập qua Cloudflare Tunnel, mỗi lần khởi động lại máy chủ sẽ được cấp một tên miền mới. Tab cũ này không thể tải lại được nữa. Vui lòng bấm nút <strong>"Mở tab mới với URL mới"</strong> bên dưới!
+                  </p>
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-400">
+                  ⚡ Bạn có thể bấm nút bên dưới để mở tab mới và <b>tự động đăng nhập ngay lập tức</b> mà không cần nhập lại mật khẩu.
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-slate-800">
               <Button
                 variant="ghost"
                 onClick={() => {
@@ -1344,29 +1368,17 @@ function UpdateCard() {
               >
                 Tải lại tab hiện tại
               </Button>
-              {successModal.autoLoginUrl ? (
-                <Button
-                  variant="primary"
-                  icon={ExternalLink}
-                  onClick={() => {
-                    window.open(successModal.autoLoginUrl!, '_blank');
-                    setSuccessModal(null);
-                  }}
-                  className="bg-gradient-to-r from-zen-purple to-zen-blue text-white hover:opacity-95"
-                >
-                  🚀 Mở ZenPanel Mới (Tự động đăng nhập)
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  onClick={() => {
-                    setSuccessModal(null);
-                    window.location.reload();
-                  }}
-                >
-                  Xác nhận & Tải lại
-                </Button>
-              )}
+              <Button
+                variant="primary"
+                icon={ExternalLink}
+                onClick={() => {
+                  window.open(successModal.autoLoginUrl, '_blank');
+                  setSuccessModal(null);
+                }}
+                className="bg-gradient-to-r from-zen-purple to-zen-blue text-white font-bold text-sm hover:opacity-95 shadow-lg shadow-indigo-900/40"
+              >
+                🚀 Mở tab mới với URL mới (Tự động đăng nhập)
+              </Button>
             </div>
           </div>
         </Modal>

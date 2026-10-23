@@ -29,6 +29,14 @@ export interface GatewaySettings {
   defaultModel: string | null;
   /** Thử lần lượt khi model chính lỗi (429, 5xx, hết quota) */
   fallbacks: string[];
+  /** 9Router Architecture: Smart 3-Tier Fallback */
+  tier1Model: string | null; // Primary (Subscription / Trả phí cao cấp)
+  tier2Model: string | null; // Low-Cost (Giá rẻ / Siêu tốc)
+  tier3Model: string | null; // Free-Tier (Miễn phí 100%)
+  /** 9Router Feature: RTK Token Saver (Request Token Compressor) */
+  rtkEnabled: boolean;
+  /** Chiến lược xoay vòng tài khoản: failover (hết quota/lỗi mới đổi) vs round-robin (xoay đều) */
+  rotationStrategy: 'failover' | 'round-robin';
 }
 
 export interface GatewayLog {
@@ -47,6 +55,8 @@ export interface GatewayLog {
   error: string | null;
   fallbackFrom: string | null;
   rotatedFrom?: string | null;
+  tier?: 'tier1' | 'tier2' | 'tier3' | 'custom';
+  rtkSavedTokens?: number;
 }
 
 export interface GatewayApiKey {
@@ -89,10 +99,58 @@ function withIdentity(messages: unknown, extraSystemPrompt?: string): ChatMessag
   return [{ role: 'system', content: systems.join('\n\n') }, ...rest];
 }
 
+/**
+ * 9Router RTK Token Saver: Nén output terminal, ANSI codes, khoảng trắng thừa
+ * và rút gọn ký tự phân cách lặp lại trước khi gửi tới LLM.
+ */
+function compressWithRtk(messages: ChatMessage[]): { messages: ChatMessage[]; savedChars: number } {
+  let savedChars = 0;
+  const compressed = messages.map((msg) => {
+    if (typeof msg.content !== 'string') return msg;
+    const original = msg.content;
+    let text = original;
+
+    // 1. Loại bỏ ANSI escape sequences (màu mè terminal từ CLI / Claude Code / Cursor)
+    const noAnsi = text.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '');
+    savedChars += Math.max(0, text.length - noAnsi.length);
+    text = noAnsi;
+
+    // 2. Thu gọn 3+ dòng trống liên tiếp thành 2 dòng
+    const noMultiNewlines = text.replace(/\n{3,}/g, '\n\n');
+    savedChars += Math.max(0, text.length - noMultiNewlines.length);
+    text = noMultiNewlines;
+
+    // 3. Rút gọn trailing whitespace ở mỗi dòng
+    const noTrailingSpaces = text.replace(/[ \t]+$/gm, '');
+    savedChars += Math.max(0, text.length - noTrailingSpaces.length);
+    text = noTrailingSpaces;
+
+    // 4. Nén các chuỗi phân cách lặp lại trong output terminal như `=====` hoặc `-----` dài quá 15 ký tự
+    const noRepeatSeparators = text.replace(/([=\-_*#])\1{15,}/g, '$1$1$1$1$1$1$1$1$1$1');
+    savedChars += Math.max(0, text.length - noRepeatSeparators.length);
+    text = noRepeatSeparators;
+
+    return { ...msg, content: text };
+  });
+
+  return { messages: compressed, savedChars };
+}
+
 function settings(): GatewaySettings {
   const current = readJson<Partial<GatewaySettings>>(SETTINGS_FILE, {});
   const valid = typeof current.apiKey === 'string' && current.apiKey.startsWith(KEY_PREFIX);
-  const value: GatewaySettings = { enabled: false, defaultModel: null, fallbacks: [], ...current, apiKey: valid ? current.apiKey! : newKey() };
+  const value: GatewaySettings = {
+    enabled: false,
+    defaultModel: null,
+    fallbacks: [],
+    tier1Model: current.tier1Model ?? null,
+    tier2Model: current.tier2Model ?? null,
+    tier3Model: current.tier3Model ?? null,
+    rtkEnabled: current.rtkEnabled !== undefined ? Boolean(current.rtkEnabled) : true,
+    rotationStrategy: current.rotationStrategy === 'round-robin' ? 'round-robin' : 'failover',
+    ...current,
+    apiKey: valid ? current.apiKey! : newKey(),
+  };
   // Lần đầu (hoặc key cũ dạng zp-): sinh API key tzp_ mới và lưu lại
   if (!valid) writeJson(SETTINGS_FILE, value);
   return value;
@@ -123,6 +181,22 @@ export class AiGatewayService {
     if (input.defaultModel !== undefined) {
       if (input.defaultModel) parseModel(input.defaultModel);
       next.defaultModel = input.defaultModel || null;
+    }
+    if (input.tier1Model !== undefined) {
+      if (input.tier1Model) parseModel(input.tier1Model);
+      next.tier1Model = input.tier1Model || null;
+    }
+    if (input.tier2Model !== undefined) {
+      if (input.tier2Model) parseModel(input.tier2Model);
+      next.tier2Model = input.tier2Model || null;
+    }
+    if (input.tier3Model !== undefined) {
+      if (input.tier3Model) parseModel(input.tier3Model);
+      next.tier3Model = input.tier3Model || null;
+    }
+    if (input.rtkEnabled !== undefined) next.rtkEnabled = Boolean(input.rtkEnabled);
+    if (input.rotationStrategy !== undefined) {
+      next.rotationStrategy = input.rotationStrategy === 'round-robin' ? 'round-robin' : 'failover';
     }
     if (input.fallbacks !== undefined) {
       if (!Array.isArray(input.fallbacks) || input.fallbacks.length > 5) throw badRequest('Tối đa 5 model dự phòng');
@@ -520,6 +594,7 @@ export class AiGatewayService {
    * 4. Model Fallback dự phòng khi toàn bộ keys của provider lỗi
    */
   async chat(body: Record<string, unknown>, source: GatewayLog['source']): Promise<Response> {
+    const s = settings();
     let subAgentName: string | null = null;
     let extraSystemPrompt: string | undefined;
 
@@ -531,13 +606,46 @@ export class AiGatewayService {
       if (matchedSub.temperature !== undefined && body.temperature === undefined) {
         body.temperature = matchedSub.temperature;
       }
-      // Định hướng sang model của SubAgent
       body.model = matchedSub.targetModel;
     }
 
-    const primary = this.resolveModel(body.model);
-    body = { ...body, messages: withIdentity(body.messages, extraSystemPrompt) };
-    const candidates = [primary, ...settings().fallbacks.filter((m) => m !== primary)];
+    // 9Router Model Alias Resolution (tier1, tier2, tier3, auto)
+    let requested = body.model;
+    let currentTier: 'tier1' | 'tier2' | 'tier3' | 'custom' = 'custom';
+    if (requested === 'tier1') {
+      requested = s.tier1Model || this.getDefaultModel();
+      currentTier = 'tier1';
+    } else if (requested === 'tier2') {
+      requested = s.tier2Model || s.fallbacks[0] || this.getDefaultModel();
+      currentTier = 'tier2';
+    } else if (requested === 'tier3') {
+      requested = s.tier3Model || s.fallbacks[1] || s.fallbacks[0] || this.getDefaultModel();
+      currentTier = 'tier3';
+    } else if (requested === 'auto' || !requested) {
+      requested = s.tier1Model || this.getDefaultModel();
+      currentTier = 'tier1';
+    }
+
+    const primary = this.resolveModel(requested);
+
+    // 9Router RTK Token Saver (Request Token Compressor)
+    let rtkSavedTokens = 0;
+    let finalMessages = withIdentity(body.messages, extraSystemPrompt);
+    if (s.rtkEnabled) {
+      const rtk = compressWithRtk(finalMessages);
+      finalMessages = rtk.messages;
+      rtkSavedTokens = Math.round(rtk.savedChars / 3.8);
+    }
+    body = { ...body, messages: finalMessages };
+
+    // 9Router 3-Tier Fallback Chain: Primary -> Tier 2 -> Tier 3 -> các fallback khác
+    const fallbackPool: string[] = [];
+    if (s.tier2Model && s.tier2Model !== primary && !fallbackPool.includes(s.tier2Model)) fallbackPool.push(s.tier2Model);
+    if (s.tier3Model && s.tier3Model !== primary && !fallbackPool.includes(s.tier3Model)) fallbackPool.push(s.tier3Model);
+    for (const fb of s.fallbacks) {
+      if (fb !== primary && !fallbackPool.includes(fb)) fallbackPool.push(fb);
+    }
+    const candidates = [primary, ...fallbackPool];
     const stream = Boolean(body.stream);
     let lastError: HttpError | null = null;
 
@@ -588,6 +696,8 @@ export class AiGatewayService {
           error: null,
           fallbackFrom: candidateIndex > 0 ? primary : null,
           rotatedFrom: rotatedNote,
+          tier: currentTier,
+          rtkSavedTokens,
         };
 
         let res: Response;
