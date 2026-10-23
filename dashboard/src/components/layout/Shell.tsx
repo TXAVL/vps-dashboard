@@ -1,8 +1,8 @@
 // ZenPanel - Khung giao diện chính: Sidebar Jupiter + Header (GUI/CLI toggle) + Terminal dock ở chế độ CLI
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
-import { CalendarClock, ChevronDown, Cloud, LogOut, Menu, Monitor, MousePointer2, Sparkles, SquareTerminal, StickyNote, X } from 'lucide-react';
-import { logout } from '../../lib/api';
+import { CalendarClock, ChevronDown, Cloud, Globe, HeartPulse, LogOut, Menu, Monitor, MousePointer2, Sparkles, SquareTerminal, StickyNote, X } from 'lucide-react';
+import { get, logout } from '../../lib/api';
 import { formatPercent } from '../../lib/format';
 import { useLocalStorage } from '../../lib/hooks';
 import { usePanel } from '../../lib/panel';
@@ -14,6 +14,7 @@ import { ALL_NAV, NAV_SECTIONS } from './nav';
 import { ThemePicker } from './ThemePicker';
 import { WindowMockup } from './WindowMockup';
 import { ServerNotepadModal } from './ServerNotepadModal';
+import { VpsDoctorModal } from '../VpsDoctorModal';
 
 function Logo() {
   return (
@@ -132,6 +133,32 @@ function ModeToggle({ mode, onChange }: { mode: 'gui' | 'cli'; onChange: (m: 'gu
   );
 }
 
+function PublicIpChip({ onOpenDoctor }: { onOpenDoctor?: () => void }) {
+  const [ipInfo, setIpInfo] = useState<{ publicIp: string | null; isBehindNat: boolean } | null>(null);
+
+  useEffect(() => {
+    void get<{ publicIp: string | null; isBehindNat: boolean }>('/api/system/public-ip')
+      .then(setIpInfo)
+      .catch(() => {});
+  }, []);
+
+  if (!ipInfo?.publicIp) return null;
+
+  return (
+    <div
+      onClick={onOpenDoctor}
+      className="hidden cursor-pointer items-center gap-1.5 rounded-xl border border-slate-700/60 bg-ink-950/70 py-1 pl-2.5 pr-1 text-xs transition hover:border-slate-600 md:flex"
+      data-tip="Public IPv4 của máy chủ (Bấm để mở Bác Sĩ VPS)"
+    >
+      <Globe className="size-3.5 text-zen-green" />
+      <span className="mono font-semibold text-slate-200">{ipInfo.publicIp}</span>
+      <div onClick={(e) => e.stopPropagation()}>
+        <CopyButton value={ipInfo.publicIp} />
+      </div>
+    </div>
+  );
+}
+
 function TunnelChip() {
   const { tunnel } = usePanel();
   if (!tunnel || tunnel.status === 'stopped' || tunnel.status === 'idle') return null;
@@ -203,6 +230,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const [mode, setMode] = useLocalStorage<'gui' | 'cli'>('zenpanel.mode', 'gui');
   const [dockOpen, setDockOpen] = useState(true);
   const [notepadOpen, setNotepadOpen] = useState(false);
+  const [doctorOpen, setDoctorOpen] = useState(false);
   const { info, connected } = usePanel();
   const location = useLocation();
   const current = ALL_NAV.find((item) => (item.to === '/' ? location.pathname === '/' : location.pathname.startsWith(item.to)));
@@ -240,6 +268,7 @@ export function Shell({ children }: { children: ReactNode }) {
             <div className="truncate text-sm font-bold text-white">{current?.label ?? 'ZenPanel'}</div>
             <div className="hidden truncate text-xs text-slate-500 sm:block">{current?.description}</div>
           </div>
+          <PublicIpChip onOpenDoctor={() => setDoctorOpen(true)} />
           <TunnelChip />
           {info && (
             <span className="hidden items-center gap-1.5 rounded-xl border border-slate-700/60 bg-ink-950/70 px-3 py-1.5 text-xs font-semibold text-slate-300 md:flex">
@@ -250,6 +279,14 @@ export function Shell({ children }: { children: ReactNode }) {
             <StatusDot tone={connected ? 'green' : 'red'} pulse={connected} />
           </span>
           <ModeToggle mode={mode} onChange={setMode} />
+          <button
+            onClick={() => setDoctorOpen(true)}
+            className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-emerald-400"
+            data-tip="Bác Sĩ VPS & Tương thích đa nền tảng (VPS Doctor)"
+            aria-label="Bác Sĩ VPS"
+          >
+            <HeartPulse className="size-5" />
+          </button>
           <button
             onClick={() => setNotepadOpen(true)}
             className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-amber-400"
@@ -271,6 +308,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </header>
 
         <ServerNotepadModal open={notepadOpen} onClose={() => setNotepadOpen(false)} />
+        <VpsDoctorModal open={doctorOpen} onClose={() => setDoctorOpen(false)} />
 
         <UpdateBanner />
         <ExpiryBanner />

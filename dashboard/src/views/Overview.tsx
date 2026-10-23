@@ -13,6 +13,7 @@ import {
   Gauge,
   Globe,
   HardDrive,
+  HeartPulse,
   Info,
   MemoryStick,
   Network,
@@ -26,6 +27,7 @@ import { AreaChart, CoreGrid, RingGauge } from '../components/charts';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, Notice, PageHeader, ResourceBar, Spinner, cn, td, th, tr } from '../components/ui';
 import { ALL_NAV } from '../components/layout/nav';
+import { VpsDoctorModal } from '../components/VpsDoctorModal';
 import { post } from '../lib/api';
 import { formatBytes, formatDate, formatDuration, formatPercent, formatRate, txaformat } from '../lib/format';
 import { useApi } from '../lib/hooks';
@@ -189,6 +191,7 @@ function PowerCard() {
 export default function Overview() {
   const { info, latest, history, tunnel, prefs } = usePanel();
   const uptime = useLiveUptime();
+  const [doctorOpen, setDoctorOpen] = useState(false);
   const network = useApi<NetworkInfo>('/api/system/network');
   const processes = useApi<ProcessInfo[]>('/api/processes', 20_000);
   const unit = prefs.networkUnit;
@@ -219,11 +222,18 @@ export default function Overview() {
         description={`${info.os.hostname} · ${info.os.name} · ${info.os.arch}`}
         icon={Gauge}
         actions={
-          <Badge tone="green" className="mono text-[11px] sm:text-xs">
-            <Clock className="size-3.5" /> Uptime {uptime !== null ? formatDuration(uptime) : '—'}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="soft" icon={HeartPulse} onClick={() => setDoctorOpen(true)}>
+              Bác sĩ VPS
+            </Button>
+            <Badge tone="green" className="mono text-[11px] sm:text-xs">
+              <Clock className="size-3.5" /> Uptime {uptime !== null ? formatDuration(uptime) : '—'}
+            </Badge>
+          </div>
         }
       />
+
+      <VpsDoctorModal open={doctorOpen} onClose={() => setDoctorOpen(false)} />
 
       {!info.os.isAdmin && (
         <div className="mb-4">

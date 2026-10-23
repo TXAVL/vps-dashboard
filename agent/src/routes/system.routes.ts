@@ -6,11 +6,13 @@ import { config } from '../config.js';
 import { startJob } from '../core/jobs.js';
 import { badRequest, HttpError, isIpOrCidr, isPortSpec, isServiceName } from '../core/validate.js';
 import type { CleanService } from '../services/clean.service.js';
+import { VpsDoctorService } from '../services/vpsdoctor.service.js';
 
 const SERVICE_ACTIONS: ServiceAction[] = ['start', 'stop', 'restart', 'enable', 'disable'];
 
 export async function systemRoutes(app: FastifyInstance, ctx: AppContext, services?: { clean?: CleanService }): Promise<void> {
   const { adapter } = ctx;
+  const doctor = new VpsDoctorService(ctx);
 
   const expected: Record<ServiceAction, (s: ServiceInfo) => boolean> = {
     start: (s) => s.state === 'running',
@@ -144,5 +146,30 @@ export async function systemRoutes(app: FastifyInstance, ctx: AppContext, servic
       }
     }
     return { ok: true, killedCount: killed.length, killed };
+  });
+
+  // ------------------------------------------------------------ Bác Sĩ VPS & Tương thích đa nền tảng (VPS Doctor)
+  app.get('/api/system/public-ip', async () => {
+    const publicIp = await doctor.getPublicIp();
+    const privateIps = doctor.getPrivateIps();
+    const isBehindNat = doctor.isBehindNat(publicIp, privateIps);
+    return { publicIp, privateIps, isBehindNat };
+  });
+
+  app.get('/api/system/vps-doctor', async () => {
+    return doctor.diagnose();
+  });
+
+  app.post('/api/system/vps-doctor/create-swap', async (req) => {
+    const sizeMb = Number((req.body as { sizeMb?: number } | undefined)?.sizeMb ?? 2048);
+    return startJob(`Tạo bộ nhớ ảo Swap (${sizeMb} MB)`, 'vps_doctor', () => doctor.createSwap(sizeMb));
+  });
+
+  app.post('/api/system/vps-doctor/enable-bbr', async () => {
+    return startJob('Kích hoạt thuật toán Google TCP BBR', 'vps_doctor', () => doctor.enableBbr());
+  });
+
+  app.post('/api/system/vps-doctor/fix-firewall', async () => {
+    return startJob('Cấu hình tự động tường lửa (ZenPanel & SSH)', 'vps_doctor', () => doctor.fixFirewall());
   });
 }
