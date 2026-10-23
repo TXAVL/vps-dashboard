@@ -20,11 +20,40 @@ let publicIpCache: { at: number; ipv4: string | null; ipv6: string | null; rever
 
 async function lookup(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
     return res.ok ? (await res.text()).trim() || null : null;
   } catch {
     return null;
   }
+}
+
+async function resolvePublicIpv4(): Promise<string | null> {
+  const sources = [
+    'https://api.ipify.org',
+    'https://icanhazip.com',
+    'https://ifconfig.me/ip',
+    'https://checkip.amazonaws.com',
+  ];
+  for (const src of sources) {
+    const text = await lookup(src);
+    if (text) {
+      const clean = text.replace(/[^0-9.]/g, '').trim();
+      if (/^(\d{1,3}\.){3}\d{1,3}$/.test(clean)) return clean;
+    }
+  }
+
+  // Fallback: Tìm IP public từ network interfaces trên card mạng ngoài WAN
+  for (const addrs of Object.values(os.networkInterfaces())) {
+    for (const a of addrs ?? []) {
+      if (a.family === 'IPv4' && !a.internal) {
+        const ip = a.address;
+        if (!ip.startsWith('10.') && !ip.startsWith('192.168.') && !ip.startsWith('127.') && !/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) {
+          return ip;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 export async function panelRoutes(
@@ -163,7 +192,7 @@ export async function panelRoutes(
   // ------------------------------------------------------------ Mạng
   app.get('/api/system/network', async () => {
     if (!publicIpCache || Date.now() - publicIpCache.at > 10 * 60_000) {
-      const [ipv4, ipv6] = await Promise.all([lookup('https://api.ipify.org'), lookup('https://api64.ipify.org')]);
+      const [ipv4, ipv6] = await Promise.all([resolvePublicIpv4(), lookup('https://api64.ipify.org')]);
       // Reverse DNS: nhiều nhà cung cấp VPS gán sẵn hostname (vd vps123.provider.net) cho IP
       const reverseDns = ipv4 ? ((await dns.reverse(ipv4).catch(() => []))[0] ?? null) : null;
       publicIpCache = { at: Date.now(), ipv4, ipv6: ipv6 && ipv6.includes(':') ? ipv6 : null, reverseDns };

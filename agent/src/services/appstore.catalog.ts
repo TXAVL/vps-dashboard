@@ -197,7 +197,7 @@ export const APP_CATALOG: AppDefinition[] = [
         container: c,
         image: 'redis:7-alpine',
         ports: [`${p.port}:6379`],
-        command: q(`redis-server --appendonly yes --requirepass ${p.password}`),
+        command: q(`redis-server --appendonly yes --requirepass ${p.password} --protected-mode no`),
         volumes: { data: '/data' },
       }),
   },

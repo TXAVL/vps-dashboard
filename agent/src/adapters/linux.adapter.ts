@@ -531,6 +531,13 @@ export class LinuxAdapter implements OSAdapter {
         if (rule.action === 'deny' && existing.length) args.unshift('insert', '1');
         await execOk('ufw', args);
       }
+      // Đảm bảo iptables INPUT chain cũng cho phép (đặc biệt quan trọng cho các image Oracle Cloud / Debian có iptables DROP mặc định)
+      if (rule.action === 'allow' && rule.port) {
+        for (const proto of protos) {
+          const p = proto || 'tcp';
+          await exec('iptables', ['-I', 'INPUT', '-p', p, '--dport', rule.port.replace('-', ':'), '-j', 'ACCEPT']).catch(() => undefined);
+        }
+      }
       return;
     }
 

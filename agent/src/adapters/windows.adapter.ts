@@ -329,6 +329,7 @@ export class WindowsAdapter implements OSAdapter {
         '-Direction Inbound',
         `-Action ${rule.action === 'allow' ? 'Allow' : 'Block'}`,
         `-Protocol ${proto}`,
+        '-Profile Any',
       ];
       if (rule.port) parts.push(`-LocalPort ${psQuote(rule.port)}`);
       if (rule.source) parts.push(`-RemoteAddress ${psQuote(rule.source)}`);

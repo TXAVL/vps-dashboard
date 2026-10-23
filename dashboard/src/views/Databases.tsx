@@ -104,10 +104,13 @@ function connectionUri(server: DatabaseServer, host: string, db?: string, user?:
 }
 
 function ExternalAccess({ server }: { server: DatabaseServer }) {
-  const { host, source } = usePublicHost();
+  const { host, rawIp, isTunnel } = usePublicHost();
   const [source_, setSource] = useState('');
   const [busy, setBusy] = useState(false);
   const { run } = useFeedback();
+
+  // Host thực tế để kết nối: nếu đang dùng trycloudflare thì bắt buộc dùng IP công khai thực tế của VPS
+  const effectiveHost = isTunnel ? (rawIp || '<IP_VPS_CỦA_BẠN>') : host;
 
   const open = async () => {
     setBusy(true);
@@ -123,24 +126,28 @@ function ExternalAccess({ server }: { server: DatabaseServer }) {
       <div className="flex items-center gap-2 font-semibold text-white">
         <Globe className="size-4 text-zen-blue" /> Kết nối từ máy khác / bên ngoài
       </div>
-      <ConnectionInfo rows={[['Host', host], ['Port', String(server.port)], ['User', server.username], ['Password', server.password]]} />
+      <ConnectionInfo rows={[['Host', effectiveHost], ['Port', String(server.port)], ['User', server.username], ['Password', server.password]]} />
       <div className="flex items-center gap-2 rounded-lg bg-ink-950/80 px-3 py-2">
-        <code className="mono min-w-0 flex-1 truncate text-xs text-emerald-300">{connectionUri(server, host)}</code>
-        <CopyButton value={connectionUri(server, host)} />
+        <code className="mono min-w-0 flex-1 truncate text-xs text-emerald-300">{connectionUri(server, effectiveHost)}</code>
+        <CopyButton value={connectionUri(server, effectiveHost)} />
       </div>
-      <p className="text-xs text-slate-500">
-        {source === 'custom' ? 'Host là domain/IP bạn đặt' : source === 'ip' ? 'Host là IP public tự phát hiện' : 'Chưa lấy được IP public'} — đặt domain riêng (vd db.example.com trỏ về IP VPS) trong{' '}
-        <Link to="/settings?tab=system" className="text-blue-300 underline">
-          Cài đặt → Hệ thống
-        </Link>
-        . Database dùng TCP nên không đi qua link trycloudflare được.
-      </p>
+
+      <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 text-xs text-amber-200 space-y-1">
+        <p className="font-semibold flex items-center gap-1.5 text-amber-300">
+          <AlertTriangle className="size-3.5 shrink-0" /> Lưu ý quan trọng khi kết nối từ bên ngoài:
+        </p>
+        <ul className="list-disc pl-4 space-y-0.5 text-slate-300">
+          <li>Database dùng giao thức TCP trực tiếp nên <b>không đi qua domain trycloudflare.com</b> được. Phải kết nối bằng IP Public của VPS hoặc domain trỏ DNS (A record) thẳng về IP VPS.</li>
+          <li>Nếu bạn dùng VPS Cloud (AWS, Google Cloud, Oracle Cloud, Azure, Vultr...), sau khi bấm "Mở cổng" bên dưới, bạn <b>bắt buộc phải mở thêm cổng {server.port} trong Security Group / Ingress Rules</b> trên trang quản lý của nhà cung cấp VPS.</li>
+        </ul>
+      </div>
+
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Chỉ cho phép IP (khuyên dùng)">
           <input className="input mono h-9 w-48 py-0" value={source_} onChange={(e) => setSource(e.target.value)} placeholder="Để trống = mọi IP" />
         </Field>
         <Button size="sm" variant="soft" icon={DoorOpen} loading={busy} onClick={() => void open()}>
-          Mở cổng {server.port}
+          Mở cổng {server.port} trên tường lửa
         </Button>
       </div>
     </div>
@@ -268,7 +275,7 @@ function AdminAccessModal({
   onClose: () => void;
   onReloadApps: () => void;
 }) {
-  const { host } = usePublicHost();
+  const { host, rawIp, isTunnel } = usePublicHost();
   const { toast, run } = useFeedback();
   const [enabling, setEnabling] = useState(false);
   const [openingPort, setOpeningPort] = useState(false);
@@ -279,8 +286,9 @@ function AdminAccessModal({
     ? `pgsql=host.docker.internal:${server.port}&username=postgres`
     : `server=host.docker.internal:${server.port}&username=root`;
 
+  const effectiveHost = isTunnel ? (rawIp || '<IP_VPS_CỦA_BẠN>') : host;
   const tunnelUrl = app?.publicLink?.url ? `${app.publicLink.url}/?${queryStr}` : null;
-  const directIpUrl = `http://${host}:${port}/?${queryStr}`;
+  const directIpUrl = `http://${effectiveHost}:${port}/?${queryStr}`;
   const localUrl = `http://localhost:${port}/?${queryStr}`;
 
   const enablePublicLink = async () => {

@@ -260,10 +260,11 @@ function AccessModal({ app, onClose, onChanged, onWizard }: { app: AppView; onCl
   const [link, setLink] = useState<(TunnelState & { enabled: boolean }) | null>(app.publicLink);
   const [busy, setBusy] = useState(false);
   const [opening, setOpening] = useState(false);
-  const { host, source } = usePublicHost();
+  const { host, source, rawIp, isTunnel } = usePublicHost();
   const { run, toast } = useFeedback();
   const port = webPortOf(app);
-  const direct = port ? `${app.webScheme ?? 'http'}://${host.includes(':') ? `[${host}]` : host}:${port}` : null;
+  const effectiveHost = isTunnel ? (rawIp || '<IP_VPS_CỦA_BẠN>') : host;
+  const direct = port ? `${app.webScheme ?? 'http'}://${effectiveHost.includes(':') ? `[${effectiveHost}]` : effectiveHost}:${port}` : null;
 
   const toggleLink = async (enabled: boolean) => {
     setBusy(true);
@@ -338,15 +339,17 @@ function AccessModal({ app, onClose, onChanged, onWizard }: { app: AppView; onCl
                   Mở cổng {port} trên tường lửa
                 </Button>
               </div>
-              <ul className="list-disc space-y-1 pl-5 text-xs text-slate-500">
+              <ul className="list-disc space-y-1.5 pl-5 text-xs text-slate-400">
                 <li>
-                  {source === 'custom' ? 'Đang dùng domain/IP bạn đặt' : source === 'ip' ? 'Đang dùng IP public tự phát hiện' : 'Không lấy được IP public, đang dùng host của trình duyệt'} — đổi trong{' '}
-                  <Link to="/settings?tab=system" className="text-blue-300 underline">
+                  {isTunnel ? 'Bạn đang mở panel qua Cloudflare Tunnel (trycloudflare.com) nên đường link trực tiếp trên đã tự chuyển sang IP Public thực tế của VPS.' : source === 'custom' ? 'Đang dùng domain/IP bạn đặt' : source === 'ip' ? 'Đang dùng IP public tự phát hiện' : 'Đang dùng IP máy chủ'} — bạn có thể đặt domain cố định trong{' '}
+                  <Link to="/settings?tab=system" className="text-blue-300 underline font-semibold">
                     Cài đặt → Hệ thống
                   </Link>
                   .
                 </li>
-                <li>Nếu vẫn không vào được: mở cổng {port} trong firewall/security group của nhà cung cấp VPS (AWS, GCP, Azure, Vultr...).</li>
+                <li className="text-amber-300 font-medium">
+                  ⚠️ Lưu ý quan trọng: Sau khi bấm "Mở cổng trên tường lửa" ở trên, nếu dùng VPS Cloud (như AWS, Google Cloud, Oracle Cloud, Azure, Vultr...), bạn <b>bắt buộc phải mở thêm cổng {port} trong Security Group / Ingress Rules</b> trên console nhà cung cấp VPS để cho phép truy cập từ internet.
+                </li>
               </ul>
             </section>
           </>
