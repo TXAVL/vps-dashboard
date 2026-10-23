@@ -76,6 +76,21 @@ async function main() {
   const php = new PhpService(adapter);
 
   const app = Fastify({ logger: { level: process.env.ZENPANEL_LOG_LEVEL ?? 'warn' }, bodyLimit: 10 * 1024 * 1024 });
+
+  // CORS toàn diện: Hỗ trợ mọi web app từ App Store (Open WebUI, LibreChat, NextChat, Dify...),
+  // website ngoài có gắn domain hoặc link public, và client OpenAI SDK kết nối từ bên ngoài
+  app.addHook('onRequest', async (req, reply) => {
+    reply.header('Access-Control-Allow-Origin', '*');
+    reply.header('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS');
+    reply.header('Access-Control-Allow-Headers', 'Authorization, Content-Type, Accept, Origin, User-Agent, DNT, Cache-Control, X-Mx-ReqToken, Keep-Alive, X-Requested-With, If-Modified-Since, x-api-key, *');
+    reply.header('Access-Control-Expose-Headers', '*');
+    reply.header('Access-Control-Max-Age', '86400');
+
+    if (req.method === 'OPTIONS') {
+      return reply.code(204).send();
+    }
+  });
+
   await app.register(fastifyWebsocket);
   await app.register(fastifyMultipart, { limits: { fileSize: 4 * 1024 * 1024 * 1024 } });
 
@@ -123,7 +138,15 @@ async function main() {
     });
     // SPA: mọi đường dẫn không phải API trả về index.html
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith('/api/') || req.url.startsWith('/ws/') || req.url.startsWith('/ai/') || req.url.startsWith('/zen/')) return reply.code(404).send({ error: 'Not found' });
+      if (
+        req.url.startsWith('/api/') ||
+        req.url.startsWith('/ws/') ||
+        req.url.startsWith('/ai/') ||
+        req.url.startsWith('/zen/') ||
+        req.url.startsWith('/v1/')
+      ) {
+        return reply.code(404).send({ error: 'Not found' });
+      }
       return reply.sendFile('index.html');
     });
   } else {

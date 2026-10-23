@@ -7,9 +7,16 @@ import type { AiService } from '../services/ai.service.js';
 import type { AiGatewayService, GatewayLog } from '../services/aigateway.service.js';
 import type { AiCompanyService } from '../services/aicompany.service.js';
 
-/** Trả nguyên response của nhà cung cấp (giữ stream SSE) */
+/** Trả nguyên response của nhà cung cấp (giữ stream SSE, chống proxy buffer, CORS mở hoàn toàn) */
 function pipe(reply: FastifyReply, res: Response) {
-  reply.code(res.status).header('Content-Type', res.headers.get('content-type') ?? 'application/json').header('Cache-Control', 'no-cache');
+  reply.code(res.status)
+    .header('Content-Type', res.headers.get('content-type') ?? 'application/json')
+    .header('Cache-Control', 'no-cache, no-transform')
+    .header('Connection', 'keep-alive')
+    .header('X-Accel-Buffering', 'no')
+    .header('Access-Control-Allow-Origin', '*')
+    .header('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, DELETE, PATCH, OPTIONS')
+    .header('Access-Control-Allow-Headers', 'Authorization, Content-Type, x-api-key, *');
   return reply.send(res.body ? Readable.fromWeb(res.body as ReadableStream) : '');
 }
 
@@ -107,8 +114,8 @@ export async function aiPanelRoutes(app: FastifyInstance, deps: { ai: AiService;
   app.post('/api/ai/chat', async (req, reply) => pipe(reply, await gateway.chat((req.body ?? {}) as Record<string, unknown>, 'playground')));
 }
 
-/** Prefix chính của AI Gateway; /ai/v1 giữ lại để app đã cấu hình bản cũ vẫn chạy */
-export const GATEWAY_PREFIXES = ['/zen/v1', '/ai/v1'];
+/** Prefix chính của AI Gateway; hỗ trợ đầy đủ /zen/v1, /ai/v1 và chuẩn OpenAI quốc tế /v1 */
+export const GATEWAY_PREFIXES = ['/zen/v1', '/ai/v1', '/v1'];
 
 /** Endpoint công khai chuẩn OpenAI: http(s)://<panel>/zen/v1 */
 export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiGatewayService }): Promise<void> {

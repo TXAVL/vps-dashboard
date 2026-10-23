@@ -3051,7 +3051,22 @@ function OverviewTab({
   const { tunnel } = usePanel();
   const logs = useApi<GatewayLog[]>('/api/ai/gateway/logs', 15000);
   const [integrationTab, setIntegrationTab] = useState<'claude' | 'cursor' | 'cline' | 'aider' | 'n8n' | 'curl' | 'python' | 'node'>('claude');
-  const base = `${tunnel?.status === 'online' && tunnel.url ? tunnel.url : window.location.origin}/zen/v1`;
+
+  // Tính toán các loại Base URL chính xác theo cổng và mạng
+  const currentPort = window.location.port || (window.location.protocol === 'https:' ? '443' : '80') || '2083';
+  const hostname = window.location.hostname;
+  const isTunnelOrigin = hostname.includes('trycloudflare.com');
+  const directOrigin = isTunnelOrigin ? `http://<IP_VPS_CỦA_BẠN>:${currentPort}` : window.location.origin;
+
+  const directBase = `${directOrigin}/zen/v1`;
+  const dockerLinuxBase = `http://172.17.0.1:${currentPort}/zen/v1`;
+  const dockerWinBase = `http://host.docker.internal:${currentPort}/zen/v1`;
+  const dockerBase = dockerLinuxBase;
+  const tunnelBase = tunnel?.status === 'online' && tunnel.url ? `${tunnel.url}/zen/v1` : null;
+
+  const [urlMode, setUrlMode] = useState<'direct' | 'docker' | 'tunnel'>(isTunnelOrigin && tunnelBase ? 'tunnel' : 'direct');
+  const base = urlMode === 'docker' ? dockerLinuxBase : urlMode === 'tunnel' && tunnelBase ? tunnelBase : directBase;
+
   const model = gateway.tier1Model || gateway.defaultModel || 'auto';
   const day = (logs.data ?? []).filter((l) => Date.now() - new Date(l.at).getTime() < 86_400_000);
   const ok = day.filter((l) => l.status >= 200 && l.status < 300).length;
@@ -3063,7 +3078,6 @@ function OverviewTab({
   const connected = providers.filter((p) => p.configured).length;
   const totalAccounts = providers.reduce((sum, p) => sum + (p.totalAccounts ?? (p.configured ? 1 : 0)), 0);
 
-  const dockerBase = 'http://host.docker.internal:8000/zen/v1';
   const activeKeyStr = keys[0]?.masked ? '<API_KEY_CỦA_BẠN>' : gateway.apiKey;
 
   const integrations = {
@@ -3318,25 +3332,131 @@ console.log(res.choices[0].message.content);`,
               </div>
             </div>
 
-            {/* BASE URL ENDPOINTS */}
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3.5 py-2.5">
-                <div className="text-xs text-slate-400 font-medium">Public Base URL (Internet / Claude Code / Cursor)</div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="mono min-w-0 flex-1 truncate text-slate-100 text-xs">{base}</span>
-                  <CopyButton value={base} label="Copy" />
+            {/* BASE URL ENDPOINTS - 3 CHẾ ĐỘ RÕ RÀNG */}
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-bold text-slate-200">Chọn Base URL mẫu cho các hướng dẫn tích hợp bên dưới:</span>
+                <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setUrlMode('direct')}
+                    className={cn('px-2.5 py-1 rounded font-semibold transition', urlMode === 'direct' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}
+                  >
+                    🌐 Cổng Mở VPS / Domain
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUrlMode('docker')}
+                    className={cn('px-2.5 py-1 rounded font-semibold transition', urlMode === 'docker' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}
+                  >
+                    🐳 Nội Bộ Docker
+                  </button>
+                  {tunnelBase && (
+                    <button
+                      type="button"
+                      onClick={() => setUrlMode('tunnel')}
+                      className={cn('px-2.5 py-1 rounded font-semibold transition', urlMode === 'tunnel' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white')}
+                    >
+                      ☁️ Cloudflare Tunnel
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/15 px-3.5 py-2.5">
-                <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
-                  <span>Docker Internal (n8n / Dify trên VPS)</span>
-                  <Badge tone="green" className="text-[10px]">Khuyên dùng</Badge>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {/* 1. DIRECT PORT / IP / DOMAIN */}
+                <div
+                  onClick={() => setUrlMode('direct')}
+                  className={cn(
+                    'rounded-xl border p-3 cursor-pointer transition flex flex-col justify-between',
+                    urlMode === 'direct'
+                      ? 'border-indigo-500 bg-indigo-950/40 ring-1 ring-indigo-500/50'
+                      : 'border-slate-800 bg-ink-950/60 hover:border-slate-700'
+                  )}
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        <span>🌐 Cổng Mở VPS / Domain</span>
+                      </span>
+                      <Badge tone="green" className="text-[9px]">CORS: All (*)</Badge>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-tight">
+                      Dành cho app App Store có gán link public/domain & bên ngoài.
+                    </p>
+                    <div className="flex items-center gap-1 mt-1 pt-1 border-t border-slate-800/80">
+                      <span className="mono min-w-0 flex-1 truncate text-indigo-300 font-bold text-xs">{directBase}</span>
+                      <CopyButton value={directBase} label="Copy" />
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[10px] text-slate-500">Hỗ trợ cả alias: <code className="text-slate-300">{directOrigin}/v1</code></div>
                 </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="mono min-w-0 flex-1 truncate text-emerald-300 font-semibold text-xs">{dockerBase}</span>
-                  <CopyButton value={dockerBase} label="Copy" />
+
+                {/* 2. DOCKER INTERNAL */}
+                <div
+                  onClick={() => setUrlMode('docker')}
+                  className={cn(
+                    'rounded-xl border p-3 cursor-pointer transition flex flex-col justify-between',
+                    urlMode === 'docker'
+                      ? 'border-emerald-500 bg-emerald-950/40 ring-1 ring-emerald-500/50'
+                      : 'border-slate-800 bg-ink-950/60 hover:border-slate-700'
+                  )}
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        <span>🐳 Nội Bộ Docker (Same VPS)</span>
+                      </span>
+                      <Badge tone="blue" className="text-[9px]">Dưới 1ms</Badge>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-tight">
+                      Dành cho n8n, Open WebUI, Dify, LibreChat chạy cùng VPS.
+                    </p>
+                    <div className="flex items-center gap-1 mt-1 pt-1 border-t border-slate-800/80">
+                      <span className="mono min-w-0 flex-1 truncate text-emerald-300 font-bold text-xs">{dockerLinuxBase}</span>
+                      <CopyButton value={dockerLinuxBase} label="Copy" />
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[10px] text-slate-500">Windows/Mac Docker: <code className="text-slate-300">{dockerWinBase}</code></div>
                 </div>
+
+                {/* 3. CLOUDFLARE TUNNEL */}
+                <div
+                  onClick={() => tunnelBase && setUrlMode('tunnel')}
+                  className={cn(
+                    'rounded-xl border p-3 cursor-pointer transition flex flex-col justify-between',
+                    urlMode === 'tunnel'
+                      ? 'border-purple-500 bg-purple-950/40 ring-1 ring-purple-500/50'
+                      : 'border-slate-800 bg-ink-950/60 hover:border-slate-700'
+                  )}
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        <span>☁️ Cloudflare Quick Tunnel</span>
+                      </span>
+                      <Badge tone={tunnelBase ? 'blue' : 'slate'} className="text-[9px]">
+                        {tunnelBase ? 'Online' : 'Chưa bật'}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-tight">
+                      Truy cập từ xa không cần mở cổng modem/VPS.
+                    </p>
+                    <div className="flex items-center gap-1 mt-1 pt-1 border-t border-slate-800/80">
+                      <span className="mono min-w-0 flex-1 truncate text-purple-300 font-bold text-xs">{tunnelBase ?? 'Chưa bật tunnel'}</span>
+                      {tunnelBase && <CopyButton value={tunnelBase} label="Copy" />}
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[10px] text-slate-500">Domain ngẫu nhiên *.trycloudflare.com</div>
+                </div>
+              </div>
+
+              {/* Thông báo fix lỗi truy cập ngoài & CORS */}
+              <div className="rounded-xl border border-indigo-500/30 bg-indigo-950/20 p-2.5 text-[11px] text-indigo-200 flex items-center gap-2">
+                <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
+                <span>
+                  <strong>Đã kích hoạt Full CORS & Hỗ trợ cả 2 chuẩn endpoint:</strong> Mọi web app từ App Store (dù có gán link public hay domain riêng) đều gửi request qua cổng VPS (port <code className="text-white font-bold">{currentPort}</code>) mượt mà mà không bao giờ bị chặn preflight OPTIONS!
+                </span>
               </div>
             </div>
 
