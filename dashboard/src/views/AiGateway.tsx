@@ -15,8 +15,10 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
+  Code,
   Copy,
   Download,
+  Globe,
   KeyRound,
   Layers,
   ListOrdered,
@@ -37,13 +39,14 @@ import {
   Trash2,
   Users,
   X,
+  Zap,
 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Select, Spinner, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
 import { del, get, getToken, post, put } from '../lib/api';
 import { formatRelative, txaformat } from '../lib/format';
 import { useApi } from '../lib/hooks';
-import { useNow, usePanel } from '../lib/panel';
+import { useNow, usePanel, usePublicHost } from '../lib/panel';
 import type { AiAccountKey, AiProvider } from '../lib/types';
 
 interface AiModel {
@@ -3049,6 +3052,7 @@ function OverviewTab({
   onSwitchToKeysTab: () => void;
 }) {
   const { tunnel } = usePanel();
+  const { host: publicHost, rawIp } = usePublicHost();
   const logs = useApi<GatewayLog[]>('/api/ai/gateway/logs', 15000);
   const [integrationTab, setIntegrationTab] = useState<'postman' | 'claude' | 'cursor' | 'cline' | 'openwebui' | 'dify' | 'n8n' | 'aider' | 'curl' | 'python' | 'node'>('postman');
 
@@ -3056,7 +3060,10 @@ function OverviewTab({
   const currentPort = window.location.port || (window.location.protocol === 'https:' ? '443' : '80') || '2083';
   const hostname = window.location.hostname;
   const isTunnelOrigin = hostname.includes('trycloudflare.com');
-  const directOrigin = isTunnelOrigin ? `http://<IP_VPS_CỦA_BẠN>:${currentPort}` : window.location.origin;
+  const resolvedIp = rawIp || (publicHost && !publicHost.includes('<') ? publicHost : null);
+  const directOrigin = isTunnelOrigin
+    ? (resolvedIp ? `http://${resolvedIp}:${currentPort}` : `http://<IP_VPS_CỦA_BẠN>:${currentPort}`)
+    : window.location.origin;
 
   const directBase = `${directOrigin}/zen/v1`;
   const dockerLinuxBase = `http://172.17.0.1:${currentPort}/zen/v1`;
@@ -3795,7 +3802,354 @@ console.log(res.choices[0].message.content);`,
   );
 }
 
-type TabId = 'overview' | 'apikeys' | 'company' | 'subagents' | 'providers' | 'models' | 'playground' | 'routing' | 'activity';
+/** 9Router & OpenRouter Presets Tab: Cấu hình nhanh cho Cursor, Claude Code, Cline, Windsurf, OpenRouter */
+function NineRouterTab({
+  gateway,
+  saveGateway,
+  keys,
+  providers,
+  onSwitchToProviders,
+}: {
+  gateway: GatewaySettings;
+  saveGateway: (patch: Partial<GatewaySettings>, msg: string) => Promise<void>;
+  keys: GatewayApiKeyView[];
+  providers: AiProvider[];
+  onSwitchToProviders: () => void;
+}) {
+  const [client, setClient] = useState<'cursor' | 'claude' | 'cline' | 'windsurf' | 'continue' | 'aider'>('cursor');
+  const [selectedKey, setSelectedKey] = useState<string>(gateway.apiKey);
+  const { host, rawIp, isTunnel } = usePublicHost();
+
+  const effectiveHost = isTunnel ? (rawIp || host || window.location.hostname) : host;
+  const baseUrl = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${effectiveHost.includes(':') ? `[${effectiveHost}]` : effectiveHost}${window.location.port ? `:${window.location.port}` : ''}/v1`
+    : 'http://127.0.0.1:3000/v1';
+
+  const openRouterConfigured = providers.find((p) => p.id === 'openrouter')?.configured ?? false;
+
+  return (
+    <div className="space-y-6">
+      {/* 9Router Master Banner */}
+      <div className="relative overflow-hidden rounded-3xl border border-purple-500/30 bg-gradient-to-br from-purple-950/60 via-ink-950 to-blue-950/60 p-6 shadow-2xl">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-2 max-w-2xl">
+            <div className="flex items-center gap-2">
+              <span className="flex size-9 items-center justify-center rounded-xl bg-purple-600 text-white shadow-lg shadow-purple-600/30">
+                <Zap className="size-5" />
+              </span>
+              <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+                9Router AI Hub & Developer Presets
+                <span className="rounded-full bg-purple-500/20 border border-purple-500/40 px-2.5 py-0.5 text-xs font-bold text-purple-300">
+                  9router.com
+                </span>
+              </h2>
+            </div>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Biến máy chủ VPS của bạn thành <b>AI Gateway trung tâm</b> tương thích 100% chuẩn OpenAI API và Anthropic API. Hỗ trợ 3-Tier Fallback thông minh, RTK Token Saver (Request Token Compressor) tiết kiệm đến 30% prompt tokens lãng phí khi code với AI.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-2xl border border-slate-700/60 bg-ink-900/80 p-3 text-xs space-y-1.5">
+              <div className="flex items-center justify-between gap-3 text-slate-300">
+                <span className="font-semibold flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-amber-400" /> RTK Token Saver:
+                </span>
+                <Toggle
+                  checked={Boolean(gateway.rtkEnabled)}
+                  onChange={(v) => void saveGateway({ rtkEnabled: v }, v ? 'Đã bật RTK Token Saver' : 'Đã tắt RTK')}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 max-w-[200px]">Tự động lọc ANSI colors & khoảng trắng lặp khi nén context IDE.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* 3-Tier Fallback Status */}
+        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3 border-t border-purple-500/20 pt-4 text-xs">
+          <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-2.5 space-y-1">
+            <div className="flex items-center justify-between text-blue-300 font-bold text-[11px]">
+              <span>TIER 1 (PRIMARY PRO)</span>
+              <Badge tone="blue">Ưu tiên 1</Badge>
+            </div>
+            <div className="mono font-semibold text-white truncate">{gateway.tier1Model || gateway.defaultModel || 'Chưa đặt'}</div>
+          </div>
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-2.5 space-y-1">
+            <div className="flex items-center justify-between text-emerald-300 font-bold text-[11px]">
+              <span>TIER 2 (LOW COST)</span>
+              <Badge tone="green">Dự phòng</Badge>
+            </div>
+            <div className="mono font-semibold text-white truncate">{gateway.tier2Model || 'Chưa đặt'}</div>
+          </div>
+          <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-2.5 space-y-1">
+            <div className="flex items-center justify-between text-amber-300 font-bold text-[11px]">
+              <span>TIER 3 (FREE / BACKUP)</span>
+              <Badge tone="amber">Cứu hộ</Badge>
+            </div>
+            <div className="mono font-semibold text-white truncate">{gateway.tier3Model || 'Chưa đặt'}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* IDE Presets Section */}
+      <Card title="Cấu hình 1-Click cho Coding Assistants & IDEs">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-400">Chọn IDE bạn đang dùng để lấy ngay file cấu hình hoặc câu lệnh terminal hoàn chỉnh:</p>
+          {/* Key selector & Base URL display */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-2xl border border-slate-700/60 bg-ink-950/60 p-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Network className="size-3.5 text-zen-blue" /> OpenAI Compatible Base URL:
+              </label>
+              <div className="flex items-center gap-2">
+                <input readOnly value={baseUrl} className="input mono text-xs h-9 flex-1 text-blue-300" />
+                <CopyButton value={baseUrl} />
+              </div>
+              <p className="text-[11px] text-slate-400">
+                {isTunnel ? 'Đang tự resolve sang IP Public thực tế của VPS để kết nối trực tiếp.' : 'Dùng domain hoặc IP VPS của bạn.'}
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <KeyRound className="size-3.5 text-purple-400" /> Chọn API Key phát ra:
+              </label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedKey}
+                  onChange={(e) => setSelectedKey(e.target.value)}
+                  className="input text-xs h-9 flex-1 mono"
+                >
+                  <option value={gateway.apiKey}>Master Key ({gateway.apiKey.slice(0, 8)}...)</option>
+                  {keys.map((k) => (
+                    <option key={k.id} value={k.masked}>
+                      {k.name} ({k.masked})
+                    </option>
+                  ))}
+                </select>
+                <CopyButton value={selectedKey} />
+              </div>
+              <p className="text-[11px] text-slate-400">Có thể tạo thêm key độc lập theo từng dự án ở tab "Cấp phát API Keys".</p>
+            </div>
+          </div>
+
+          {/* Client Navigation Pills */}
+          <div className="flex flex-wrap gap-2 pt-2">
+            {[
+              { id: 'cursor', label: 'Cursor IDE', icon: Code },
+              { id: 'claude', label: 'Claude Code (CLI)', icon: Terminal },
+              { id: 'cline', label: 'Cline / Roo Code (VS Code)', icon: Bot },
+              { id: 'windsurf', label: 'Windsurf (Codeium)', icon: Sparkles },
+              { id: 'continue', label: 'Continue.dev', icon: Layers },
+              { id: 'aider', label: 'Aider AI', icon: Terminal },
+            ].map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setClient(item.id as any)}
+                className={cn(
+                  'flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition shadow-sm',
+                  client === item.id
+                    ? 'bg-purple-600 text-white shadow-purple-600/30 ring-1 ring-purple-400'
+                    : 'bg-slate-800/80 text-slate-300 hover:bg-slate-700 hover:text-white',
+                )}
+              >
+                <item.icon className="size-4" />
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Client Instruction Details */}
+          <div className="rounded-2xl border border-slate-700/60 bg-ink-950 p-5 space-y-4">
+            {client === 'cursor' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-white flex items-center gap-2">
+                    <Code className="size-4 text-purple-400" /> Cấu hình Cursor IDE
+                  </h4>
+                  <CopyButton
+                    value={`Base URL: ${baseUrl}\nAPI Key: ${selectedKey}\nModels: auto, openai/gpt-4o, anthropic/claude-3-7-sonnet, gemini/gemini-2.5-flash`}
+                  />
+                </div>
+                <ol className="list-decimal space-y-2 pl-5 text-xs text-slate-300">
+                  <li>Mở Cursor → Nhấn <kbd className="rounded bg-slate-800 px-1.5 py-0.5 text-white">Ctrl + Shift + J</kbd> (hoặc Settings → Cursor Settings → Models).</li>
+                  <li>Kéo xuống mục <b>OpenAI API Key</b>:
+                    <div className="mt-1.5 space-y-1 font-mono text-[11px] bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                      <div><b>Override OpenAI Base URL:</b> <span className="text-blue-300">{baseUrl}</span></div>
+                      <div><b>OpenAI API Key:</b> <span className="text-amber-300">{selectedKey}</span></div>
+                    </div>
+                  </li>
+                  <li>Ở danh sách Model, thêm các model mong muốn: <code className="mono text-emerald-300">auto</code>, <code className="mono text-emerald-300">openai/gpt-4o</code>, <code className="mono text-emerald-300">anthropic/claude-3-7-sonnet</code> hoặc <code className="mono text-emerald-300">gemini/gemini-2.5-flash</code>.</li>
+                  <li>Bật toggle cho model đó. Khi chat hoặc agent sinh code, Cursor sẽ đi qua 9Router của VPS với đầy đủ fallback tự động!</li>
+                </ol>
+              </div>
+            )}
+
+            {client === 'claude' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-white flex items-center gap-2">
+                    <Terminal className="size-4 text-purple-400" /> Cấu hình Claude Code CLI (Anthropic)
+                  </h4>
+                  <CopyButton
+                    value={`export ANTHROPIC_BASE_URL="${baseUrl}"\nexport ANTHROPIC_API_KEY="${selectedKey}"\nclaude`}
+                  />
+                </div>
+                <p className="text-xs text-slate-300">Chạy các câu lệnh sau trong terminal để trỏ Claude Code về AI Gateway:</p>
+                <pre className="rounded-xl bg-slate-900 p-3 text-xs font-mono text-emerald-300 border border-slate-800 overflow-x-auto">
+{`# 1. Đặt biến môi trường Endpoint & Key
+export ANTHROPIC_BASE_URL="${baseUrl}"
+export ANTHROPIC_API_KEY="${selectedKey}"
+
+# 2. Khởi động Claude Code
+claude`}
+                </pre>
+                <p className="text-[11px] text-slate-400">
+                  💡 Bạn có thể thêm 2 dòng export trên vào <code className="mono">~/.bashrc</code> hoặc <code className="mono">~/.zshrc</code> để dùng vĩnh viễn.
+                </p>
+              </div>
+            )}
+
+            {client === 'cline' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-white flex items-center gap-2">
+                    <Bot className="size-4 text-purple-400" /> Cấu hình Cline / Roo Code (VS Code Extension)
+                  </h4>
+                  <CopyButton
+                    value={JSON.stringify(
+                      {
+                        apiProvider: 'openai-compatible',
+                        openAiBaseUrl: baseUrl,
+                        openAiApiKey: selectedKey,
+                        openAiModelId: gateway.defaultModel || 'auto',
+                      },
+                      null,
+                      2,
+                    )}
+                  />
+                </div>
+                <div className="space-y-2 text-xs text-slate-300">
+                  <p>Trong extension Cline / Roo Code trên VS Code, chọn biểu tượng bánh răng Settings và điền:</p>
+                  <div className="space-y-1 font-mono text-[11px] bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                    <div><b>API Provider:</b> <span className="text-purple-300">OpenAI Compatible</span></div>
+                    <div><b>Base URL:</b> <span className="text-blue-300">{baseUrl}</span></div>
+                    <div><b>API Key:</b> <span className="text-amber-300">{selectedKey}</span></div>
+                    <div><b>Model ID:</b> <span className="text-emerald-300">{gateway.defaultModel || 'auto'}</span></div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {client === 'windsurf' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-white flex items-center gap-2">
+                    <Sparkles className="size-4 text-purple-400" /> Cấu hình Windsurf (Codeium)
+                  </h4>
+                  <CopyButton
+                    value={`OpenAI Base URL: ${baseUrl}\nAPI Key: ${selectedKey}\nModel: ${gateway.defaultModel || 'auto'}`}
+                  />
+                </div>
+                <p className="text-xs text-slate-300">
+                  Trong Windsurf Settings → Cascade → Advanced AI Provider:
+                </p>
+                <div className="space-y-1 font-mono text-[11px] bg-slate-900 p-2.5 rounded-lg border border-slate-800">
+                  <div><b>Custom LLM Base URL:</b> <span className="text-blue-300">{baseUrl}</span></div>
+                  <div><b>API Key:</b> <span className="text-amber-300">{selectedKey}</span></div>
+                </div>
+              </div>
+            )}
+
+            {client === 'continue' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-white flex items-center gap-2">
+                    <Layers className="size-4 text-purple-400" /> Cấu hình Continue.dev (~/.continue/config.json)
+                  </h4>
+                  <CopyButton
+                    value={JSON.stringify(
+                      {
+                        models: [
+                          {
+                            title: 'ZenPanel 9Router (Auto Fallback)',
+                            provider: 'openai',
+                            model: gateway.defaultModel || 'auto',
+                            apiKey: selectedKey,
+                            apiBase: baseUrl,
+                          },
+                        ],
+                      },
+                      null,
+                      2,
+                    )}
+                  />
+                </div>
+                <pre className="rounded-xl bg-slate-900 p-3 text-xs font-mono text-slate-300 border border-slate-800 overflow-x-auto">
+{`{
+  "models": [
+    {
+      "title": "ZenPanel 9Router",
+      "provider": "openai",
+      "model": "${gateway.defaultModel || 'auto'}",
+      "apiKey": "${selectedKey}",
+      "apiBase": "${baseUrl}"
+    }
+  ]
+}`}
+                </pre>
+              </div>
+            )}
+
+            {client === 'aider' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-white flex items-center gap-2">
+                    <Terminal className="size-4 text-purple-400" /> Cấu hình Aider AI
+                  </h4>
+                  <CopyButton
+                    value={`export OPENAI_API_BASE="${baseUrl}"\nexport OPENAI_API_KEY="${selectedKey}"\naider --model openai/${gateway.defaultModel || 'auto'}`}
+                  />
+                </div>
+                <pre className="rounded-xl bg-slate-900 p-3 text-xs font-mono text-emerald-300 border border-slate-800 overflow-x-auto">
+{`export OPENAI_API_BASE="${baseUrl}"
+export OPENAI_API_KEY="${selectedKey}"
+aider --model openai/${gateway.defaultModel || 'auto'}`}
+                </pre>
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* OpenRouter Integration Banner */}
+      <div className="rounded-2xl border border-slate-700/60 bg-ink-950/60 p-5 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30">
+              <Globe className="size-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-sm">Tích hợp OpenRouter (openrouter.ai)</h3>
+              <p className="text-xs text-slate-400">Kết nối hơn 200+ Open Models: DeepSeek R1/V3, Llama 3.3, Mistral, Qwen 2.5 Coder</p>
+            </div>
+          </div>
+
+          <Button
+            size="sm"
+            variant={openRouterConfigured ? 'ghost' : 'primary'}
+            icon={KeyRound}
+            onClick={onSwitchToProviders}
+          >
+            {openRouterConfigured ? '✅ OpenRouter đã kết nối' : '⚡ Kết nối OpenRouter API Key'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type TabId = 'overview' | 'ninerouter' | 'apikeys' | 'company' | 'subagents' | 'providers' | 'models' | 'playground' | 'routing' | 'activity';
 
 export default function AiGateway() {
   const providers = useApi<AiProvider[]>('/api/ai/providers');
@@ -3860,6 +4214,7 @@ export default function AiGateway() {
           onChange={setTab}
           tabs={[
             { id: 'overview', label: 'Tổng quan', icon: Route },
+            { id: 'ninerouter', label: '🚀 9Router Presets (IDE)', icon: Zap },
             { id: 'apikeys', label: '🔑 Cấp phát API Keys', icon: KeyRound, count: keysApi.data?.length },
             { id: 'company', label: '🏢 AI Company (Sếp & Công nhân)', icon: Building2 },
             { id: 'subagents', label: 'Sub AI Agents', icon: Bot, count: subagents.data?.length },
@@ -3882,6 +4237,15 @@ export default function AiGateway() {
             setCreateKeyModalOpen(true);
           }}
           onSwitchToKeysTab={() => setTab('apikeys')}
+        />
+      )}
+      {tab === 'ninerouter' && (
+        <NineRouterTab
+          gateway={gateway}
+          saveGateway={saveGateway}
+          keys={keysApi.data ?? []}
+          providers={providers.data}
+          onSwitchToProviders={() => setTab('providers')}
         />
       )}
       {tab === 'apikeys' && (

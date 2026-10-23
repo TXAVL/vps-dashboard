@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { AlertTriangle, Database, DoorOpen, ExternalLink, Globe, Plus, RefreshCw, Server, Table2, Trash2 } from 'lucide-react';
+import { Activity, AlertTriangle, Database, DoorOpen, ExternalLink, Globe, Plus, RefreshCw, Server, Table2, Trash2 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Secret, Spinner, cn, td, th, tr } from '../components/ui';
 import { del, post } from '../lib/api';
@@ -279,6 +279,16 @@ function AdminAccessModal({
   const { toast, run } = useFeedback();
   const [enabling, setEnabling] = useState(false);
   const [openingPort, setOpeningPort] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diag, setDiag] = useState<{
+    localListening: boolean;
+    bindAddress?: string;
+    process?: string;
+    latencyMs?: number;
+    iptablesAllowed?: boolean;
+    cloudWarning?: string;
+    suggestion: string;
+  } | null>(null);
 
   const port = app?.installed?.params.port ?? (server.engine === 'postgres' ? 8082 : 8083);
   const isPostgres = server.engine === 'postgres';
@@ -286,7 +296,7 @@ function AdminAccessModal({
     ? `pgsql=host.docker.internal:${server.port}&username=postgres`
     : `server=host.docker.internal:${server.port}&username=root`;
 
-  const effectiveHost = isTunnel ? (rawIp || '<IP_VPS_CỦA_BẠN>') : host;
+  const effectiveHost = isTunnel ? (rawIp || host || window.location.hostname) : host;
   const tunnelUrl = app?.publicLink?.url ? `${app.publicLink.url}/?${queryStr}` : null;
   const directIpUrl = `http://${effectiveHost}:${port}/?${queryStr}`;
   const localUrl = `http://localhost:${port}/?${queryStr}`;
@@ -316,8 +326,27 @@ function AdminAccessModal({
 
   const openFirewallPort = async () => {
     setOpeningPort(true);
-    await run(() => post('/api/firewall/rules', { port: Number(port), protocol: 'tcp', direction: 'in', action: 'allow' }), `Đã mở cổng ${port} trên tường lửa`);
+    // Mở cả port web admin lẫn port database
+    await run(async () => {
+      await post('/api/firewall/rules', { port: Number(port), protocol: 'tcp', direction: 'in', action: 'allow', description: `ZenPanel - Adminer (${server.name})` });
+      if (server.port && server.port !== port) {
+        await post('/api/firewall/rules', { port: Number(server.port), protocol: 'tcp', direction: 'in', action: 'allow', description: `ZenPanel - Database (${server.name})` }).catch(() => {});
+      }
+    }, `Đã mở cổng web ${port} và cổng DB ${server.port} trên tường lửa VPS`);
     setOpeningPort(false);
+    void runDiagnose();
+  };
+
+  const runDiagnose = async () => {
+    setDiagnosing(true);
+    try {
+      const res = await post<any>('/api/system/tools/diagnose-port', { port: Number(port) });
+      if (res) setDiag(res);
+    } catch (e: any) {
+      toast(e?.message || 'Không thể kiểm tra cổng', 'error');
+    } finally {
+      setDiagnosing(false);
+    }
   };
 
   return (
@@ -343,7 +372,7 @@ function AdminAccessModal({
             <div className="flex items-center gap-2 font-semibold text-emerald-300">
               <Globe className="size-4" /> Link Public Cloudflare (Khuyên dùng)
             </div>
-            <p className="text-xs text-slate-300">Đã bật tunnel HTTPS riêng cho {app.name}, truy cập an toàn từ mọi nơi:</p>
+            <p className="text-xs text-slate-300">Đã bật tunnel HTTPS riêng cho {app.name}, truy cập an toàn từ mọi nơi mà không lo bị firewall Cloud chặn:</p>
             <div className="flex items-center gap-2">
               <input readOnly value={tunnelUrl ?? ''} className="input mono h-9 flex-1 text-xs" />
               <CopyButton value={tunnelUrl ?? ''} />
@@ -363,7 +392,7 @@ function AdminAccessModal({
               <Badge tone="blue">Tiện lợi nhất</Badge>
             </div>
             <p className="text-xs text-slate-300">
-              Tạo đường dẫn HTTPS riêng từ Cloudflare cho {app?.name ?? 'Adminer'}, mở được từ mọi thiết bị mà không cần mở cổng tường lửa.
+              Tạo đường dẫn HTTPS riêng từ Cloudflare cho {app?.name ?? 'Adminer'}, mở được từ mọi thiết bị mà không cần mở cổng tường lửa hay cấu hình Cloud Security Group.
             </p>
             <Button
               variant="primary"
@@ -382,9 +411,10 @@ function AdminAccessModal({
             <div className="flex items-center gap-2 font-semibold text-white">
               <Server className="size-4 text-slate-400" /> Cách 2: Truy cập bằng IP Public của VPS
             </div>
+            {rawIp && <Badge tone="blue">IP: {rawIp}</Badge>}
           </div>
           <p className="text-xs text-slate-400">
-            Dùng IP trực tiếp của máy chủ (cần mở cổng {port} trên tường lửa VPS và Security Group của nhà cung cấp):
+            Dùng IP trực tiếp của máy chủ (cần mở cổng {port} trên tường lửa VPS và Security Group của nhà mạng Cloud):
           </p>
           <div className="flex items-center gap-2">
             <input readOnly value={directIpUrl} className="input mono h-9 flex-1 text-xs" />
@@ -395,9 +425,32 @@ function AdminAccessModal({
               </Button>
             </a>
           </div>
-          <Button size="xs" variant="ghost" icon={DoorOpen} loading={openingPort} onClick={() => void openFirewallPort()}>
-            Mở cổng {port} trên tường lửa VPS
-          </Button>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <Button size="xs" variant="ghost" icon={DoorOpen} loading={openingPort} onClick={() => void openFirewallPort()}>
+              Mở cổng {port} (Web) & {server.port} (DB) trên tường lửa
+            </Button>
+            <Button size="xs" variant="ghost" icon={Activity} loading={diagnosing} onClick={() => void runDiagnose()}>
+              Kiểm tra kết nối cổng {port}
+            </Button>
+          </div>
+
+          {diag && (
+            <div className="space-y-1.5 rounded-lg border border-slate-700/70 bg-ink-900/90 p-2.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-white">Chẩn đoán cổng {port}:</span>
+                <Badge tone={diag.localListening ? 'green' : 'red'}>
+                  {diag.localListening ? `Đang Listen (${diag.latencyMs}ms)` : 'Chưa lắng nghe'}
+                </Badge>
+              </div>
+              <p className="text-slate-300 text-[11px]">{diag.suggestion}</p>
+              {diag.cloudWarning && (
+                <div className="mt-1 rounded border border-amber-500/30 bg-amber-950/30 p-2 text-[11px] text-amber-200">
+                  ⚠️ <b>Lưu ý Cloud VPS:</b> Nếu dùng AWS/Oracle/GCP, hãy mở thêm Ingress Rule cho cổng {port} trên Console nhà cung cấp!
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="space-y-1.5 rounded-xl border border-slate-800 bg-ink-950/30 p-3">

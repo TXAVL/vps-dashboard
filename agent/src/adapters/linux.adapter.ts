@@ -520,23 +520,28 @@ export class LinuxAdapter implements OSAdapter {
     const backend = await this.firewallBackend();
     const protos = rule.protocol === 'any' ? (rule.port ? ['tcp', 'udp'] : [null]) : [rule.protocol];
 
+    const portSpec = rule.port ? rule.port.replace('-', ':') : null;
+
     if (backend === 'ufw') {
       const existing = await this.ufwRules();
       for (const proto of protos) {
         const args = [rule.action === 'allow' ? 'allow' : 'deny', 'from', rule.source ?? 'any', 'to', 'any'];
-        if (rule.port) args.push('port', rule.port.replace('-', ':'));
+        if (rule.port) args.push('port', portSpec!);
         if (proto) args.push('proto', proto);
         args.push('comment', rule.description || 'ZenPanel');
         // Luật chặn IP phải đứng trước các luật cho phép
         if (rule.action === 'deny' && existing.length) args.unshift('insert', '1');
         await execOk('ufw', args);
       }
-      // Đảm bảo iptables INPUT chain cũng cho phép (đặc biệt quan trọng cho các image Oracle Cloud / Debian có iptables DROP mặc định)
-      if (rule.action === 'allow' && rule.port) {
+      // Đảm bảo iptables INPUT, FORWARD và DOCKER-USER chains cũng cho phép (đặc biệt quan trọng cho Docker và các image Oracle Cloud / Debian)
+      if (rule.action === 'allow' && portSpec) {
         for (const proto of protos) {
           const p = proto || 'tcp';
-          await exec('iptables', ['-I', 'INPUT', '-p', p, '--dport', rule.port.replace('-', ':'), '-j', 'ACCEPT']).catch(() => undefined);
+          await exec('iptables', ['-I', 'INPUT', '1', '-p', p, '--dport', portSpec, '-j', 'ACCEPT']).catch(() => undefined);
+          await exec('iptables', ['-I', 'FORWARD', '1', '-p', p, '--dport', portSpec, '-j', 'ACCEPT']).catch(() => undefined);
+          await exec('iptables', ['-I', 'DOCKER-USER', '1', '-p', p, '--dport', portSpec, '-j', 'ACCEPT']).catch(() => undefined);
         }
+        await this.saveIptables().catch(() => undefined);
       }
       return;
     }
@@ -555,18 +560,30 @@ export class LinuxAdapter implements OSAdapter {
         }
       }
       await execOk('firewall-cmd', ['--reload']);
+      if (rule.action === 'allow' && portSpec) {
+        for (const proto of protos) {
+          const p = proto || 'tcp';
+          await exec('iptables', ['-I', 'DOCKER-USER', '1', '-p', p, '--dport', portSpec, '-j', 'ACCEPT']).catch(() => undefined);
+          await exec('iptables', ['-I', 'FORWARD', '1', '-p', p, '--dport', portSpec, '-j', 'ACCEPT']).catch(() => undefined);
+        }
+      }
       return;
     }
 
     if (backend === 'iptables') {
       for (const proto of protos) {
-        const args = ['-I', 'INPUT'];
+        const args = ['-I', 'INPUT', '1'];
         if (rule.source) args.push('-s', rule.source);
         if (proto) args.push('-p', proto);
-        if (rule.port && proto) args.push('-m', proto, '--dport', rule.port.replace('-', ':'));
+        if (rule.port && proto) args.push('-m', proto, '--dport', portSpec!);
         args.push('-m', 'comment', '--comment', rule.description || 'ZenPanel');
         args.push('-j', rule.action === 'allow' ? 'ACCEPT' : 'DROP');
         await execOk('iptables', args);
+
+        if (rule.action === 'allow' && portSpec) {
+          await exec('iptables', ['-I', 'FORWARD', '1', '-p', proto || 'tcp', '--dport', portSpec, '-j', 'ACCEPT']).catch(() => undefined);
+          await exec('iptables', ['-I', 'DOCKER-USER', '1', '-p', proto || 'tcp', '--dport', portSpec, '-j', 'ACCEPT']).catch(() => undefined);
+        }
       }
       await this.saveIptables();
       return;

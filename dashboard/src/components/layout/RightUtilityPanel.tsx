@@ -5,11 +5,16 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  Code,
   Flame,
+  FolderCheck,
+  Gauge,
   Globe,
+  HardDrive,
   HeartPulse,
   KeyRound,
   Lock,
+  Network,
   Pin,
   PinOff,
   Radio,
@@ -19,11 +24,12 @@ import {
   Trash2,
   Wrench,
   X,
+  Zap,
 } from 'lucide-react';
 import { post } from '../../lib/api';
 import { formatBytes, formatPercent } from '../../lib/format';
 import { useLocalStorage } from '../../lib/hooks';
-import { usePanel } from '../../lib/panel';
+import { usePanel, usePublicHost } from '../../lib/panel';
 import { useFeedback } from '../feedback';
 import { CopyButton, cn } from '../ui';
 
@@ -36,9 +42,76 @@ interface Props {
 }
 
 export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onTogglePin }: Props) {
-  const [tab, setTab] = useState<'tools' | 'pulse' | 'scratchpad'>('tools');
+  const [tab, setTab] = useState<'tools' | 'router' | 'pulse' | 'scratchpad'>('tools');
   const { latest, info } = usePanel();
+  const { host: pubHost, rawIp: pubRawIp, isTunnel: pubIsTunnel } = usePublicHost();
   const { toast } = useFeedback();
+
+  // vPanel Tool: Đo tốc độ đĩa I/O (Disk Benchmark)
+  const [diskBenchLoading, setDiskBenchLoading] = useState(false);
+  const [diskBenchResult, setDiskBenchResult] = useState<{ speedMbPerSec: number; timeSec: number; blockSize: string; rawOutput: string } | null>(null);
+  const handleDiskBench = async () => {
+    setDiskBenchLoading(true);
+    try {
+      const res = await post<any>('/api/system/tools/disk-benchmark');
+      setDiskBenchResult(res);
+      toast(`Đo tốc độ đĩa hoàn thành: ${res.speedMbPerSec} MB/s`, 'success');
+    } catch (e: any) {
+      toast(e.message || 'Lỗi benchmark đĩa', 'error');
+    } finally {
+      setDiskBenchLoading(false);
+    }
+  };
+
+  // vPanel Tool: Sửa phân quyền thư mục website (Fix Permissions 755/644, www-data)
+  const [fixPermsPath, setFixPermsPath] = useState('/var/www');
+  const [fixPermsLoading, setFixPermsLoading] = useState(false);
+  const handleFixPerms = async () => {
+    setFixPermsLoading(true);
+    try {
+      const res = await post<any>('/api/system/tools/fix-permissions', { targetPath: fixPermsPath.trim() });
+      toast(res.message || 'Đã chuẩn hóa phân quyền thư mục website!', 'success');
+    } catch (e: any) {
+      toast(e.message || 'Lỗi sửa phân quyền', 'error');
+    } finally {
+      setFixPermsLoading(false);
+    }
+  };
+
+  // 1Router: Đo độ trễ tới các nhà cung cấp AI & DNS (Latency Tester)
+  const [aiLatencyLoading, setAiLatencyLoading] = useState(false);
+  const [aiLatencies, setAiLatencies] = useState<Record<string, { latencyMs: number; reachable: boolean; status?: number; error?: string }>>({});
+  const aiProvidersList = [
+    { id: 'openai', name: 'OpenAI API' },
+    { id: 'anthropic', name: 'Anthropic Claude' },
+    { id: 'gemini', name: 'Google Gemini' },
+    { id: 'openrouter', name: 'OpenRouter.ai' },
+    { id: 'groq', name: 'Groq Cloud' },
+    { id: 'cloudflare_dns', name: 'Cloudflare DNS (1.1.1.1)' },
+  ];
+  const handleTestAiLatencies = async () => {
+    setAiLatencyLoading(true);
+    const results: Record<string, any> = {};
+    await Promise.all(
+      aiProvidersList.map(async (p) => {
+        try {
+          const res = await post<any>('/api/system/tools/ai-latency', { provider: p.id });
+          results[p.id] = res;
+        } catch (e: any) {
+          results[p.id] = { reachable: false, latencyMs: 0, error: e.message };
+        }
+      })
+    );
+    setAiLatencies(results);
+    setAiLatencyLoading(false);
+  };
+
+  // 9Router: Presets cho IDEs (Cursor, Claude Code, Cline, Windsurf)
+  const [selectedIde, setSelectedIde] = useState<'cursor' | 'claude' | 'cline' | 'windsurf'>('cursor');
+  const effectiveAiHost = pubIsTunnel ? (pubRawIp || pubHost) : pubHost;
+  const aiBaseUrl = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${effectiveAiHost.includes(':') ? `[${effectiveAiHost}]` : effectiveAiHost}${window.location.port ? `:${window.location.port}` : ''}/v1`
+    : 'http://127.0.0.1:3000/v1';
 
   // Tool 1: Xả RAM
   const [purgingRam, setPurgingRam] = useState(false);
@@ -235,41 +308,53 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
         </div>
 
       {/* Tabs */}
-      <div className="grid grid-cols-3 border-b border-slate-800/80 bg-ink-900/40 p-1 text-xs">
+      <div className="grid grid-cols-4 border-b border-slate-800/80 bg-ink-900/40 p-1 text-[11px]">
         <button
           onClick={() => setTab('tools')}
           className={cn(
-            'flex items-center justify-center gap-1.5 rounded-lg py-2 font-semibold transition',
+            'flex items-center justify-center gap-1 rounded-lg py-2 font-semibold transition',
             tab === 'tools'
               ? 'bg-slate-800 text-white shadow-sm ring-1 ring-slate-700/60'
               : 'text-slate-400 hover:text-slate-200',
           )}
         >
-          <Sparkles className="size-3.5 text-amber-400" />
+          <Sparkles className="size-3 text-amber-400" />
           Tiện ích
+        </button>
+        <button
+          onClick={() => setTab('router')}
+          className={cn(
+            'flex items-center justify-center gap-1 rounded-lg py-2 font-semibold transition',
+            tab === 'router'
+              ? 'bg-gradient-to-r from-blue-900/60 to-purple-900/60 text-white shadow-sm ring-1 ring-blue-500/50'
+              : 'text-slate-400 hover:text-slate-200',
+          )}
+        >
+          <Zap className="size-3 text-purple-400" />
+          9Router
         </button>
         <button
           onClick={() => setTab('pulse')}
           className={cn(
-            'flex items-center justify-center gap-1.5 rounded-lg py-2 font-semibold transition',
+            'flex items-center justify-center gap-1 rounded-lg py-2 font-semibold transition',
             tab === 'pulse'
               ? 'bg-slate-800 text-white shadow-sm ring-1 ring-slate-700/60'
               : 'text-slate-400 hover:text-slate-200',
           )}
         >
-          <Activity className="size-3.5 text-emerald-400" />
+          <Activity className="size-3 text-emerald-400" />
           Chỉ số
         </button>
         <button
           onClick={() => setTab('scratchpad')}
           className={cn(
-            'flex items-center justify-center gap-1.5 rounded-lg py-2 font-semibold transition',
+            'flex items-center justify-center gap-1 rounded-lg py-2 font-semibold transition',
             tab === 'scratchpad'
               ? 'bg-slate-800 text-white shadow-sm ring-1 ring-slate-700/60'
               : 'text-slate-400 hover:text-slate-200',
           )}
         >
-          <Terminal className="size-3.5 text-blue-400" />
+          <Terminal className="size-3 text-blue-400" />
           Ghi chú
         </button>
       </div>
@@ -302,6 +387,65 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
                 </div>
                 <span className="text-[11px] text-slate-400">Swap, BBR & Mạng</span>
               </button>
+            </div>
+
+            {/* vPanel Toolkit: Benchmark đĩa & Sửa quyền web */}
+            <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-3.5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-300">
+                  <Gauge className="size-3.5 text-blue-400" />
+                  vPanel Toolkit (Tối Ưu VPS & Web)
+                </div>
+                <span className="rounded bg-blue-500/20 px-1.5 py-0.5 text-[9px] font-bold text-blue-300">vPanel.vn</span>
+              </div>
+
+              {/* Đo tốc độ I/O đĩa */}
+              <div className="space-y-1.5 rounded-lg border border-slate-800 bg-ink-950/70 p-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-200 flex items-center gap-1">
+                    <HardDrive className="size-3 text-amber-400" /> Đo tốc độ ghi đĩa I/O (Disk Bench)
+                  </span>
+                  <button
+                    onClick={handleDiskBench}
+                    disabled={diskBenchLoading}
+                    className="rounded bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white hover:bg-blue-500 disabled:opacity-50"
+                  >
+                    {diskBenchLoading ? 'Đang đo...' : 'Đo ngay'}
+                  </button>
+                </div>
+                {diskBenchResult && (
+                  <div className="flex items-center justify-between rounded bg-slate-900/80 px-2 py-1 text-xs">
+                    <span className="text-slate-400">Tốc độ ghi ({diskBenchResult.blockSize}):</span>
+                    <span className="mono font-bold text-emerald-300">{diskBenchResult.speedMbPerSec} MB/s</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Sửa phân quyền thư mục website */}
+              <div className="space-y-1.5 rounded-lg border border-slate-800 bg-ink-950/70 p-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-200 flex items-center gap-1">
+                    <FolderCheck className="size-3 text-emerald-400" /> Chuẩn hóa quyền Web (755 / 644)
+                  </span>
+                </div>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={fixPermsPath}
+                    onChange={(e) => setFixPermsPath(e.target.value)}
+                    placeholder="/var/www"
+                    className="input min-w-0 flex-1 text-xs py-1 mono"
+                  />
+                  <button
+                    onClick={handleFixPerms}
+                    disabled={fixPermsLoading}
+                    className="rounded bg-slate-700 px-2.5 py-1 text-xs font-bold text-white hover:bg-slate-600 disabled:opacity-50 shrink-0"
+                  >
+                    {fixPermsLoading ? '...' : 'Sửa quyền'}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400">Gán www-data, 755 cho thư mục, 644 cho file. Trị dứt lỗi upload WordPress/PHP.</p>
+              </div>
             </div>
 
             {/* Tool: Port Reachability */}
@@ -499,6 +643,152 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
               />
               <div className="rounded-lg bg-ink-950 p-2 text-[11px] text-slate-300 leading-relaxed border border-slate-800">
                 💡 {cronHuman}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: 9Router & 1Router AI Hub */}
+        {tab === 'router' && (
+          <div className="space-y-4">
+            {/* Banner 9Router.com & 1Router */}
+            <div className="rounded-2xl border border-purple-500/30 bg-gradient-to-br from-purple-950/40 via-ink-950/80 to-blue-950/40 p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex size-7 items-center justify-center rounded-lg bg-purple-600 text-white shadow-sm">
+                    <Zap className="size-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-white flex items-center gap-1">
+                      9Router AI Gateway Hub
+                      <span className="rounded bg-purple-500/20 px-1 py-0.2 text-[9px] text-purple-300">9router.com</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">1-Click Config cho Cursor, Claude Code, Cline</div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Biến VPS thành trạm proxy AI thông minh: chuẩn OpenAI API, 3-tier fallback, RTK Token Saver tiết kiệm 30% chi phí.
+              </p>
+            </div>
+
+            {/* 1Router Latency Tester */}
+            <div className="rounded-xl border border-slate-700/60 bg-ink-900/60 p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                  <Network className="size-3.5 text-zen-blue" />
+                  1Router AI & DNS Latency
+                </div>
+                <button
+                  onClick={handleTestAiLatencies}
+                  disabled={aiLatencyLoading}
+                  className="rounded bg-purple-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-purple-500 disabled:opacity-50"
+                >
+                  {aiLatencyLoading ? 'Đang đo...' : 'Đo tất cả'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                {aiProvidersList.map((p) => {
+                  const res = aiLatencies[p.id];
+                  return (
+                    <div key={p.id} className="flex items-center justify-between rounded-lg bg-ink-950/80 p-2 border border-slate-800">
+                      <span className="truncate text-slate-300">{p.name}</span>
+                      {res ? (
+                        <span className={cn('mono font-bold text-[10px]', res.reachable ? (res.latencyMs < 300 ? 'text-emerald-400' : 'text-amber-400') : 'text-rose-400')}>
+                          {res.reachable ? `${res.latencyMs}ms` : 'Lỗi'}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-500">-</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 9Router IDE Presets */}
+            <div className="rounded-xl border border-slate-700/60 bg-ink-900/60 p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                  <Code className="size-3.5 text-emerald-400" />
+                  Cấu Hình Nhanh IDE (1-Click)
+                </div>
+              </div>
+
+              {/* Selector */}
+              <div className="grid grid-cols-4 gap-1 text-[11px]">
+                {(['cursor', 'claude', 'cline', 'windsurf'] as const).map((ide) => (
+                  <button
+                    key={ide}
+                    onClick={() => setSelectedIde(ide)}
+                    className={cn(
+                      'rounded-lg py-1.5 font-bold uppercase transition',
+                      selectedIde === ide ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white',
+                    )}
+                  >
+                    {ide}
+                  </button>
+                ))}
+              </div>
+
+              {/* Snippet Output */}
+              <div className="space-y-1.5 rounded-lg bg-ink-950 p-2.5 border border-slate-800 text-[11px]">
+                {selectedIde === 'cursor' && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span>Cursor IDE Settings:</span>
+                      <CopyButton value={`Override OpenAI Base URL: ${aiBaseUrl}\nAPI Key: <API_KEY_GATEWAY_CỦA_BẠN>\nCustom Models: auto, openai/gpt-4o, anthropic/claude-3-7-sonnet, gemini/gemini-2.5-flash`} />
+                    </div>
+                    <div className="space-y-1 text-slate-300 font-mono text-[10px] bg-slate-900/90 p-2 rounded">
+                      <div><b className="text-purple-300">Base URL:</b> {aiBaseUrl}</div>
+                      <div><b className="text-purple-300">API Key:</b> <span className="text-amber-300">tzp_... (xem tab AI Gateway)</span></div>
+                      <div><b className="text-purple-300">Model:</b> auto hoặc openai/gpt-4o</div>
+                    </div>
+                  </div>
+                )}
+
+                {selectedIde === 'claude' && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span>Claude Code CLI:</span>
+                      <CopyButton value={`export ANTHROPIC_BASE_URL="${aiBaseUrl}"\nexport ANTHROPIC_API_KEY="<API_KEY_GATEWAY>"\nclaude`} />
+                    </div>
+                    <pre className="text-slate-300 font-mono text-[10px] bg-slate-900/90 p-2 rounded overflow-x-auto">
+{`export ANTHROPIC_BASE_URL="${aiBaseUrl}"
+export ANTHROPIC_API_KEY="tzp_..."
+claude`}
+                    </pre>
+                  </div>
+                )}
+
+                {selectedIde === 'cline' && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span>Cline / Roo Code Settings:</span>
+                      <CopyButton value={JSON.stringify({ "apiProvider": "openai-compatible", "baseUrl": aiBaseUrl, "apiKey": "tzp_...", "model": "auto" }, null, 2)} />
+                    </div>
+                    <pre className="text-slate-300 font-mono text-[10px] bg-slate-900/90 p-2 rounded overflow-x-auto">
+{`Provider: OpenAI Compatible
+Base URL: ${aiBaseUrl}
+API Key: tzp_...
+Model ID: auto`}
+                    </pre>
+                  </div>
+                )}
+
+                {selectedIde === 'windsurf' && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-slate-400">
+                      <span>Windsurf Cascade:</span>
+                      <CopyButton value={`Base URL: ${aiBaseUrl}\nAPI Key: tzp_...\nModel: auto`} />
+                    </div>
+                    <pre className="text-slate-300 font-mono text-[10px] bg-slate-900/90 p-2 rounded overflow-x-auto">
+{`Endpoint: ${aiBaseUrl}
+API Key: tzp_...`}
+                    </pre>
+                  </div>
+                )}
               </div>
             </div>
           </div>

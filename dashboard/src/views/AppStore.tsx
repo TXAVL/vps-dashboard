@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import {
   Activity,
+  AlertTriangle,
   Archive,
   Bot,
   Boxes,
@@ -260,10 +261,20 @@ function AccessModal({ app, onClose, onChanged, onWizard }: { app: AppView; onCl
   const [link, setLink] = useState<(TunnelState & { enabled: boolean }) | null>(app.publicLink);
   const [busy, setBusy] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diag, setDiag] = useState<{
+    localListening: boolean;
+    bindAddress?: string;
+    process?: string;
+    latencyMs?: number;
+    iptablesAllowed?: boolean;
+    cloudWarning?: string;
+    suggestion: string;
+  } | null>(null);
   const { host, source, rawIp, isTunnel } = usePublicHost();
   const { run, toast } = useFeedback();
   const port = webPortOf(app);
-  const effectiveHost = isTunnel ? (rawIp || '<IP_VPS_CỦA_BẠN>') : host;
+  const effectiveHost = isTunnel ? (rawIp || host || window.location.hostname) : host;
   const direct = port ? `${app.webScheme ?? 'http'}://${effectiveHost.includes(':') ? `[${effectiveHost}]` : effectiveHost}:${port}` : null;
 
   const toggleLink = async (enabled: boolean) => {
@@ -281,8 +292,23 @@ function AccessModal({ app, onClose, onChanged, onWizard }: { app: AppView; onCl
   const openFirewall = async () => {
     if (!port) return;
     setOpening(true);
-    await run(() => post('/api/firewall/rules', { action: 'allow', port, protocol: 'tcp', description: `ZenPanel - ${app.name}` }), `Đã mở cổng ${port} trên tường lửa`);
+    await run(() => post('/api/firewall/rules', { action: 'allow', port, protocol: 'tcp', description: `ZenPanel - ${app.name}` }), `Đã mở cổng ${port} trên tường lửa máy chủ`);
     setOpening(false);
+    // Tự động chạy chẩn đoán sau khi mở
+    void runDiagnose();
+  };
+
+  const runDiagnose = async () => {
+    if (!port) return;
+    setDiagnosing(true);
+    try {
+      const res = await post<any>('/api/system/tools/diagnose-port', { port });
+      if (res) setDiag(res);
+    } catch (e: any) {
+      toast(e?.message || 'Không thể kiểm tra cổng', 'error');
+    } finally {
+      setDiagnosing(false);
+    }
   };
 
   return (
@@ -294,9 +320,9 @@ function AccessModal({ app, onClose, onChanged, onWizard }: { app: AppView; onCl
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 font-bold text-white">
-                    <Link2 className="size-4 text-blue-300" /> Link public (khuyên dùng)
+                    <Link2 className="size-4 text-blue-300" /> Link public Cloudflare (Khuyên dùng)
                   </div>
-                  <p className="text-xs text-slate-400">Tunnel Cloudflare riêng cho app, có HTTPS, mở được từ mọi nơi, không cần mở cổng.</p>
+                  <p className="text-xs text-slate-400">Tunnel Cloudflare riêng cho app, có HTTPS, mở được từ mọi nơi kể cả khi bị chặn cổng bởi nhà mạng Cloud.</p>
                 </div>
                 <Toggle checked={Boolean(link?.enabled)} onChange={(v) => void toggleLink(v)} disabled={busy} label="Bật link public" />
               </div>
@@ -312,7 +338,7 @@ function AccessModal({ app, onClose, onChanged, onWizard }: { app: AppView; onCl
                       <CopyButton value={link.url} />
                       <a href={link.url} target="_blank" rel="noreferrer">
                         <Button size="xs" variant="primary" icon={ExternalLink}>
-                          Mở
+                          Mở ngay
                         </Button>
                       </a>
                     </>
@@ -325,20 +351,60 @@ function AccessModal({ app, onClose, onChanged, onWizard }: { app: AppView; onCl
             </section>
 
             <section className="space-y-3 rounded-2xl border border-slate-700/50 bg-ink-950/50 p-4">
-              <div className="flex items-center gap-2 font-bold text-white">
-                <Globe className="size-4 text-slate-400" /> Truy cập trực tiếp bằng IP / domain
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-white">
+                  <Globe className="size-4 text-slate-400" /> Truy cập trực tiếp qua IP Public / Domain
+                </div>
+                {rawIp && <Badge tone="blue">IP VPS: {rawIp}</Badge>}
               </div>
+
               <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-700/50 bg-ink-950/70 px-3 py-2">
                 <a href={direct!} target="_blank" rel="noreferrer" className="mono min-w-0 flex-1 truncate text-slate-200 hover:underline">
                   {direct}
                 </a>
                 <CopyButton value={direct!} />
+                <a href={direct!} target="_blank" rel="noreferrer">
+                  <Button size="xs" variant="soft" icon={ExternalLink}>
+                    Mở
+                  </Button>
+                </a>
               </div>
-              <div className="flex flex-wrap gap-2">
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
                 <Button size="sm" variant="soft" icon={DoorOpen} loading={opening} onClick={() => void openFirewall()}>
-                  Mở cổng {port} trên tường lửa
+                  Mở cổng {port} trên tường lửa VPS
+                </Button>
+                <Button size="sm" variant="ghost" icon={Activity} loading={diagnosing} onClick={() => void runDiagnose()}>
+                  Kiểm tra kết nối cổng {port}
                 </Button>
               </div>
+
+              {diag && (
+                <div className="space-y-2 rounded-xl border border-slate-700/70 bg-ink-900/90 p-3 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                    <span className="font-semibold text-white">Kết quả chẩn đoán cổng {port}:</span>
+                    <div className="flex items-center gap-2">
+                      <Badge tone={diag.localListening ? 'green' : 'red'}>
+                        {diag.localListening ? `Đang Listen (${diag.latencyMs}ms)` : 'Chưa lắng nghe'}
+                      </Badge>
+                      {diag.bindAddress && <span className="mono text-slate-400">Bind: {diag.bindAddress}</span>}
+                    </div>
+                  </div>
+                  <p className="text-slate-300">{diag.suggestion}</p>
+                  {diag.cloudWarning && (
+                    <div className="rounded-lg border border-amber-500/40 bg-amber-950/40 p-2.5 text-amber-200">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="size-4 shrink-0 text-amber-400 mt-0.5" />
+                        <div>
+                          <p className="font-semibold text-amber-300">Lưu ý quan trọng cho Cloud VPS:</p>
+                          <p className="mt-1 text-[11px] leading-relaxed text-amber-100">{diag.cloudWarning}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <ul className="list-disc space-y-1.5 pl-5 text-xs text-slate-400">
                 <li>
                   {isTunnel ? 'Bạn đang mở panel qua Cloudflare Tunnel (trycloudflare.com) nên đường link trực tiếp trên đã tự chuyển sang IP Public thực tế của VPS.' : source === 'custom' ? 'Đang dùng domain/IP bạn đặt' : source === 'ip' ? 'Đang dùng IP public tự phát hiện' : 'Đang dùng IP máy chủ'} — bạn có thể đặt domain cố định trong{' '}
@@ -348,7 +414,7 @@ function AccessModal({ app, onClose, onChanged, onWizard }: { app: AppView; onCl
                   .
                 </li>
                 <li className="text-amber-300 font-medium">
-                  ⚠️ Lưu ý quan trọng: Sau khi bấm "Mở cổng trên tường lửa" ở trên, nếu dùng VPS Cloud (như AWS, Google Cloud, Oracle Cloud, Azure, Vultr...), bạn <b>bắt buộc phải mở thêm cổng {port} trong Security Group / Ingress Rules</b> trên console nhà cung cấp VPS để cho phép truy cập từ internet.
+                  ⚠️ Lưu ý: Khi bấm "Mở cổng trên tường lửa", ZenPanel sẽ mở cổng trong iptables, UFW và Docker. Nhưng nếu bạn dùng VPS Cloud (AWS, Google Cloud, Oracle Cloud, Azure...), bạn <b>bắt buộc phải mở thêm cổng {port} trong Ingress Rules / Security Group</b> trên trang quản lý của nhà mạng.
                 </li>
               </ul>
             </section>

@@ -194,4 +194,24 @@ export async function systemRoutes(app: FastifyInstance, ctx: AppContext, servic
     const { domain, port, timeoutMs } = req.body as { domain: string; port?: number; timeoutMs?: number };
     return tools.checkSsl(domain, port ? Number(port) : 443, timeoutMs);
   });
+
+  app.post('/api/system/tools/diagnose-port', async (req) => {
+    const { port } = req.body as { port: number };
+    return tools.diagnosePort(Number(port));
+  });
+
+  app.post('/api/system/tools/disk-benchmark', async (req) => {
+    const { testPath } = (req.body as { testPath?: string }) || {};
+    return tools.diskBenchmark(testPath);
+  });
+
+  app.post('/api/system/tools/fix-permissions', async (req) => {
+    const { targetPath } = (req.body as { targetPath?: string }) || {};
+    return tools.fixWebPermissions(targetPath);
+  });
+
+  app.post('/api/system/tools/ai-latency', async (req) => {
+    const { provider } = req.body as { provider: string };
+    return tools.testAiLatency(provider);
+  });
 }

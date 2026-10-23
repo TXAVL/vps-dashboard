@@ -162,17 +162,29 @@ export function usePublicHost(): { host: string; source: 'custom' | 'ip' | 'brow
   const { prefs } = usePanel();
   const [ip, setIp] = useState<string | null>(null);
   useEffect(() => {
-    get<{ publicIpv4: string | null }>('/api/system/network')
-      .then((n) => {
-        if (n.publicIpv4) setIp(n.publicIpv4);
+    get<{ publicIp: string | null }>('/api/system/public-ip')
+      .then((res) => {
+        if (res.publicIp) {
+          setIp(res.publicIp);
+        } else {
+          void get<{ publicIpv4: string | null }>('/api/system/network').then((n) => {
+            if (n.publicIpv4) setIp(n.publicIpv4);
+          });
+        }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        void get<{ publicIpv4: string | null }>('/api/system/network')
+          .then((n) => {
+            if (n.publicIpv4) setIp(n.publicIpv4);
+          })
+          .catch(() => undefined);
+      });
   }, []);
 
   const isTunnel = window.location.hostname.includes('trycloudflare.com');
   if (prefs.publicHost) return { host: prefs.publicHost, source: 'custom', rawIp: ip, isTunnel };
   if (ip) return { host: ip, source: 'ip', rawIp: ip, isTunnel };
   // Domain trycloudflare chỉ chuyển tiếp cổng của panel, không thể dùng làm host cho các cổng TCP/Docker khác
-  if (isTunnel) return { host: '<IP_VPS_CỦA_BẠN>', source: 'browser', rawIp: ip, isTunnel };
+  if (isTunnel) return { host: ip || '<IP_VPS_CỦA_BẠN>', source: 'browser', rawIp: ip, isTunnel };
   return { host: window.location.hostname, source: 'browser', rawIp: ip, isTunnel };
 }
