@@ -52,6 +52,10 @@ export default function CleanupView() {
     cleanPackageCache: true,
     cleanTempFiles: true,
     cleanRamCache: true,
+    cleanDockerLogs: true,
+    cleanDevCaches: false,
+    cleanOldPackages: false,
+    cleanCrashDumps: true,
   });
 
   const { confirm, toast } = useFeedback();
@@ -95,12 +99,10 @@ export default function CleanupView() {
             setTimeout(() => void poll(), 800);
           } else {
             // Dọn xong -> quét lại để tính dung lượng đã giải phóng
-            const after = await loadScan();
-            if (after && data) {
-              const freedRam = Math.max(0, data.ram.used - after.ram.used);
-              const freedDisk = Math.max(0, (data.disks[0]?.used ?? 0) - (after.disks[0]?.used ?? 0));
-              setFreedStats({ ram: freedRam, disk: freedDisk });
-            }
+            await loadScan();
+            // Số đo thật do agent đo trước / sau khi dọn
+            const result = next.result as { ramFreed?: number; diskFreed?: number } | undefined;
+            if (result) setFreedStats({ ram: result.ramFreed ?? 0, disk: result.diskFreed ?? 0 });
             if (next.status === 'success') {
               toast('Đã dọn dẹp hệ thống thành công!', 'success');
             } else {
@@ -647,6 +649,46 @@ export default function CleanupView() {
               onChange={(e) => setOpts({ ...opts, cleanDockerVolumes: e.target.checked })}
             />
             <span className="text-slate-200">Volume mồ côi</span>
+          </label>
+
+          <label className="flex items-center gap-2 rounded-xl border border-slate-700/40 bg-ink-950/40 p-3 cursor-pointer hover:border-zen-blue/50">
+            <input
+              type="checkbox"
+              className="accent-zen-blue size-4"
+              checked={Boolean(opts.cleanDockerLogs)}
+              onChange={(e) => setOpts({ ...opts, cleanDockerLogs: e.target.checked })}
+            />
+            <span className="text-slate-200">Cắt log container Docker &gt; 10 MB</span>
+          </label>
+
+          <label className="flex items-center gap-2 rounded-xl border border-slate-700/40 bg-ink-950/40 p-3 cursor-pointer hover:border-zen-blue/50">
+            <input
+              type="checkbox"
+              className="accent-zen-blue size-4"
+              checked={Boolean(opts.cleanCrashDumps)}
+              onChange={(e) => setOpts({ ...opts, cleanCrashDumps: e.target.checked })}
+            />
+            <span className="text-slate-200">Core dump / crash report</span>
+          </label>
+
+          <label className="flex items-center gap-2 rounded-xl border border-slate-700/40 bg-ink-950/40 p-3 cursor-pointer hover:border-zen-blue/50">
+            <input
+              type="checkbox"
+              className="accent-zen-blue size-4"
+              checked={Boolean(opts.cleanDevCaches)}
+              onChange={(e) => setOpts({ ...opts, cleanDevCaches: e.target.checked })}
+            />
+            <span className="text-slate-200">Cache npm / pip / yarn / composer</span>
+          </label>
+
+          <label className="flex items-center gap-2 rounded-xl border border-slate-700/40 bg-ink-950/40 p-3 cursor-pointer hover:border-zen-blue/50">
+            <input
+              type="checkbox"
+              className="accent-zen-blue size-4"
+              checked={Boolean(opts.cleanOldPackages)}
+              onChange={(e) => setOpts({ ...opts, cleanOldPackages: e.target.checked })}
+            />
+            <span className="text-slate-200">Gói & kernel cũ, snap cũ / WinSxS (chậm)</span>
           </label>
         </div>
 

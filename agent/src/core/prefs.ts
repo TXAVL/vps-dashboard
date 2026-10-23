@@ -25,6 +25,11 @@ export interface PanelPrefs {
   updateCheckMinutes: number;
   /** Domain / IP public của VPS để hiển thị địa chỉ truy cập app & database (trống = tự lấy IP public) */
   publicHost: string;
+  /** Tự tối ưu RAM khi % RAM dùng vượt ngưỡng */
+  autoRamOptimize: boolean;
+  autoRamThreshold: number;
+  /** Khoảng cách tối thiểu giữa 2 lần tự tối ưu (phút) */
+  autoRamIntervalMin: number;
 }
 
 const FILE = 'prefs.json';
@@ -39,9 +44,12 @@ export const DEFAULT_PREFS: PanelPrefs = {
   vpsPrice: '',
   expiryWarnDays: 7,
   autoCheckUpdate: true,
-  autoDownloadUpdate: true,
+  autoDownloadUpdate: false,
   updateCheckMinutes: 360,
   publicHost: '',
+  autoRamOptimize: false,
+  autoRamThreshold: 85,
+  autoRamIntervalMin: 15,
 };
 
 export function getPrefs(): PanelPrefs {
@@ -78,6 +86,9 @@ export function updatePrefs(input: Partial<PanelPrefs>): PanelPrefs {
   if (input.expiryWarnDays !== undefined) next.expiryWarnDays = Math.min(90, Math.max(1, Math.round(Number(input.expiryWarnDays) || 7)));
   if (input.autoCheckUpdate !== undefined) next.autoCheckUpdate = Boolean(input.autoCheckUpdate);
   if (input.autoDownloadUpdate !== undefined) next.autoDownloadUpdate = Boolean(input.autoDownloadUpdate);
+  if (input.autoRamOptimize !== undefined) next.autoRamOptimize = Boolean(input.autoRamOptimize);
+  if (input.autoRamThreshold !== undefined) next.autoRamThreshold = Math.min(98, Math.max(50, Math.round(Number(input.autoRamThreshold) || 85)));
+  if (input.autoRamIntervalMin !== undefined) next.autoRamIntervalMin = Math.min(1440, Math.max(5, Math.round(Number(input.autoRamIntervalMin) || 15)));
   if (input.updateCheckMinutes !== undefined) {
     const minutes = Number(input.updateCheckMinutes);
     if (!(UPDATE_INTERVALS as readonly number[]).includes(minutes)) throw badRequest('Tần suất kiểm tra không hợp lệ');

@@ -22,7 +22,6 @@ import {
   History,
   Info,
   KeyRound,
-  Loader2,
   Lock,
   LogOut,
   Monitor,
@@ -40,16 +39,15 @@ import {
   Tablet,
   Terminal,
   Trash2,
-  Copy,
   Cpu,
   Wrench,
 } from 'lucide-react';
-import { useJobs } from '../components/jobs';
+import { PanelUpdateModal, type UpdateTarget } from '../components/modals/PanelUpdateModal';
+import { ToolUpgradeModal } from '../components/modals/ToolUpgradeModal';
 import { useFeedback } from '../components/feedback';
-import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Select, Spinner, StatusDot, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
-import { del, get, post, setToken, getToken, logout } from '../lib/api';
+import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Notice, PageHeader, Select, Spinner, StatusDot, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
+import { del, post, setToken, logout } from '../lib/api';
 import { formatBytes, formatDate, formatDuration, formatRate, formatRelative } from '../lib/format';
-import { txaformat } from '../lib/txaformat';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
 import { PASSWORD_RULES, RANDOM_DEFAULT_LENGTH, RANDOM_MAX_LENGTH, RANDOM_MIN_LENGTH } from '../lib/password';
@@ -423,8 +421,7 @@ function NodeRuntimeCard() {
   const nodeApi = useApi<NodeStatusResponse>('/api/system/node');
   const [checking, setChecking] = useState(false);
   const [selectedVer, setSelectedVer] = useState('');
-  const { runJob } = useJobs();
-  const { confirm, toast } = useFeedback();
+  const { toast } = useFeedback();
 
   const check = async () => {
     setChecking(true);
@@ -439,27 +436,8 @@ function NodeRuntimeCard() {
     }
   };
 
-  const upgradeNode = async (ver?: string) => {
-    const target = ver || selectedVer || nodeApi.data?.latestLts?.version || 'lts';
-    const ok = await confirm({
-      title: `Nâng cấp Node.js lên ${target}`,
-      message: `Hệ thống sẽ tải và cài đặt Node.js ${target} từ trang chủ nodejs.org. Tiến trình sẽ được thực hiện tự động và an toàn. Bạn có muốn tiếp tục?`,
-      confirmLabel: 'Nâng cấp ngay',
-    });
-    if (!ok) return;
-
-    try {
-      await runJob(
-        () => post<Job>('/api/system/node/upgrade', { version: target }),
-        () => {
-          void nodeApi.reload();
-          toast(`Đã hoàn tất nâng cấp Node.js lên ${target}`, 'success');
-        },
-      );
-    } catch (err: any) {
-      toast(err?.message || 'Không thể bắt đầu nâng cấp Node.js', 'error');
-    }
-  };
+  const [upgrading, setUpgrading] = useState<string | null>(null);
+  const upgradeNode = (ver?: string) => setUpgrading(ver || selectedVer || nodeApi.data?.latestLts?.version || 'lts');
 
   if (!nodeApi.data) return null;
   const data = nodeApi.data;
@@ -683,6 +661,25 @@ function NodeRuntimeCard() {
           </div>
         )}
       </div>
+      {upgrading && (
+        <ToolUpgradeModal
+          tool={{
+            name: 'Node.js',
+            icon: <Cpu className="size-6" />,
+            currentVersion: installed.version,
+            targetVersion: upgrading,
+            changelogUrl: 'https://nodejs.org/en/blog/release',
+            restartNote: 'Sau khi cài, khởi động lại ZenPanel (zenpanel restart) để agent chạy bằng Node.js mới.',
+          }}
+          start={() => post<Job>('/api/system/node/upgrade', { version: upgrading })}
+          verify={async () => {
+            const res = await post<NodeStatusResponse>('/api/system/node/check');
+            nodeApi.setData(res);
+            return res.installed.systemVersion ?? res.installed.version;
+          }}
+          onClose={() => setUpgrading(null)}
+        />
+      )}
     </Card>
   );
 }
@@ -690,8 +687,7 @@ function NodeRuntimeCard() {
 function SystemToolsCard() {
   const toolsApi = useApi<SystemToolsStatusResponse>('/api/system/tools');
   const [checking, setChecking] = useState(false);
-  const { runJob } = useJobs();
-  const { confirm, toast } = useFeedback();
+  const { toast } = useFeedback();
 
   const check = async () => {
     setChecking(true);
@@ -706,35 +702,9 @@ function SystemToolsCard() {
     }
   };
 
-  const upgradeTool = async (tool: SystemToolItem) => {
-    if (!tool.latestVersion) return;
-    const ok = await confirm({
-      title: `Nâng cấp ${tool.name}`,
-      message: `Hệ thống sẽ tự động tải và cài đặt ${tool.name} phiên bản ${tool.latestVersion} mới nhất. Bạn có muốn tiếp tục?`,
-      confirmLabel: `Nâng cấp ngay`,
-    });
-    if (!ok) return;
-
-    try {
-      await runJob(
-        () => post<Job>(`/api/system/tools/${tool.id}/upgrade`),
-        async () => {
-          try {
-            const res = await post<SystemToolsStatusResponse>('/api/system/tools/check');
-            if (res) toolsApi.setData(res);
-          } catch {
-            void toolsApi.reload();
-          }
-          if (tool.id === 'node') {
-            toast(`Đã nâng cấp Node.js lên ${tool.latestVersion}! Vui lòng khởi động lại ZenPanel để runtime mới có hiệu lực.`, 'success');
-          } else {
-            toast(`Đã hoàn tất nâng cấp ${tool.name} lên ${tool.latestVersion}`, 'success');
-          }
-        },
-      );
-    } catch (err: any) {
-      toast(err?.message || `Không thể bắt đầu nâng cấp ${tool.name}`, 'error');
-    }
+  const [upgrading, setUpgrading] = useState<SystemToolItem | null>(null);
+  const upgradeTool = (tool: SystemToolItem) => {
+    if (tool.latestVersion) setUpgrading(tool);
   };
 
   const getToolIcon = (id: SystemToolItem['id']) => {
@@ -895,6 +865,30 @@ function SystemToolsCard() {
           })
         )}
       </div>
+      {upgrading && (
+        <ToolUpgradeModal
+          tool={{
+            name: upgrading.name,
+            icon: (() => {
+              const Icon = getToolIcon(upgrading.id);
+              return <Icon className="size-6" />;
+            })(),
+            currentVersion: upgrading.currentVersion,
+            targetVersion: upgrading.latestVersion ?? '',
+            description: upgrading.description,
+            changelogUrl: upgrading.changelogUrl,
+            securityNotes: upgrading.securityNotes,
+            restartNote: upgrading.id === 'node' ? 'Sau khi cài, khởi động lại ZenPanel để agent chạy bằng Node.js mới.' : undefined,
+          }}
+          start={() => post<Job>(`/api/system/tools/${upgrading.id}/upgrade`)}
+          verify={async () => {
+            const res = await post<SystemToolsStatusResponse>('/api/system/tools/check');
+            toolsApi.setData(res);
+            return res.tools.find((t) => t.id === upgrading.id)?.currentVersion ?? null;
+          }}
+          onClose={() => setUpgrading(null)}
+        />
+      )}
     </Card>
   );
 }
@@ -904,30 +898,9 @@ function UpdateCard() {
   const packages = useApi<VersionPackage[]>('/api/update/packages');
   const remote = useApi<RemoteVersion[]>('/api/update/remote');
   const [checking, setChecking] = useState(false);
-
-  // Trạng thái khoá màn hình cập nhật
-  const [updating, setUpdating] = useState<{
-    version: string;
-    targetSha: string;
-    startedAt: number;
-    log: string;
-    percent: number;
-    stage: string;
-    etaSec: number;
-  } | null>(null);
-
-  // Modal thông báo thành công kèm URL truy cập mới và nút mở tab mới
-  const [successModal, setSuccessModal] = useState<{
-    version: string;
-    tunnelUrl: string | null;
-    targetUrl: string;
-    autoLoginUrl: string;
-    isDifferent: boolean;
-  } | null>(null);
-
-  const [copiedLog, setCopiedLog] = useState(false);
-  const { confirm, run, toast } = useFeedback();
-  const { runJob } = useJobs();
+  const [target, setTarget] = useState<{ target: UpdateTarget; pkg?: VersionPackage } | null>(null);
+  const [showAll, setShowAll] = useState(false);
+  const { confirm, run } = useFeedback();
 
   const check = async () => {
     setChecking(true);
@@ -939,449 +912,173 @@ function UpdateCard() {
     setChecking(false);
   };
 
-  const download = async (ref: string) => {
-    await runJob(() => post<Job>('/api/update/download', { ref }), () => {
-      void packages.reload();
-      void refreshUpdate();
-    });
-  };
+  const pkgFor = (sha: string, version: string) => packages.data?.find((p) => p.sha === sha) ?? packages.data?.find((p) => p.version === version && !p.current);
 
-  const install = async (pkg: VersionPackage) => {
-    const older = update && pkg.version < update.current;
-    const ok = await confirm({
-      title: older ? `Quay lại phiên bản ${pkg.version}` : `Nâng cấp lên phiên bản ${pkg.version}`,
-      message: (
-        <>
-          ZenPanel sẽ tự động khóa giao diện để cập nhật mã nguồn, cài đặt dependencies và khởi động lại dịch vụ. Toàn bộ dữ liệu, website, database và cài đặt được bảo toàn nguyên vẹn.
-        </>
-      ),
-      confirmLabel: older ? 'Quay lại bản này' : 'Bắt đầu nâng cấp',
-    });
-    if (!ok) return;
-
-    // Kích hoạt khoá giao diện bảo trì
-    const startTime = Date.now();
-    setUpdating({
-      version: pkg.version,
-      targetSha: pkg.sha,
-      startedAt: startTime,
-      log: 'Khởi tạo quy trình nâng cấp ZenPanel...\n',
-      percent: 15,
-      stage: 'Đang chuẩn bị gói cập nhật và script installer...',
-      etaSec: 75,
-    });
-
-    const result = await post<{ logFile: string }>(`/api/update/packages/${pkg.id}/install`).catch((err: Error) => {
-      toast(`Khởi chạy cài đặt thất bại: ${err.message}`, 'error');
-      setUpdating(null);
-      return null;
-    });
-    if (!result) return;
-
-    // Vòng lặp giám sát tiến trình và chờ agent khởi động lại
-    let newTunnelUrl: string | null = null;
-    const isTryCloudflare = typeof window !== 'undefined' && window.location.hostname.endsWith('trycloudflare.com');
-
-    for (let i = 0; i < 90; i++) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      const remaining = Math.max(5, 75 - elapsed);
-
-      // Đọc log nếu agent còn phản hồi hoặc đọc sau khi online
-      try {
-        const res = await get<{ log: string }>('/api/update/log');
-        if (res?.log) {
-          setUpdating((prev) => (prev ? { ...prev, log: res.log } : null));
-        }
-      } catch {}
-
-      // Tiến trình tăng dần tiệm cận 85% trong lúc build
-      const simulatedPct = Math.min(88, Math.max(20, Math.round(15 + (elapsed / 75) * 70)));
-      const currentStage =
-        elapsed < 15
-          ? 'Đang giải nén gói mã nguồn mới...'
-          : elapsed < 40
-            ? 'Đang cập nhật dependencies và build hệ thống...'
-            : elapsed < 65
-              ? 'Đang khởi động lại tiến trình ZenPanel Agent...'
-              : 'Đang kết nối lại và thiết lập Cloudflare Tunnel...';
-
-      setUpdating((prev) => (prev ? { ...prev, percent: simulatedPct, stage: currentStage, etaSec: remaining } : null));
-
-      // Sau 15 giây, bắt đầu kiểm tra trạng thái online qua /api/update/status
-      if (elapsed >= 15) {
-        try {
-          const statusRes = await get<{ version: string; tunnelUrl: string | null; tunnelStatus?: string; startedAt: number }>('/api/update/status');
-          if (statusRes && statusRes.startedAt > startTime - 5000) {
-            if (statusRes.tunnelUrl) {
-              newTunnelUrl = statusRes.tunnelUrl;
-              break;
-            }
-            // Nếu tab hiện tại đang dùng trycloudflare hoặc tunnel đang connecting, tiếp tục đợi thêm để bắt URL mới
-            if ((isTryCloudflare || statusRes.tunnelStatus === 'starting' || statusRes.tunnelStatus === 'idle') && elapsed < 80) {
-              continue;
-            }
-            break;
-          }
-        } catch {
-          // Agent đang trong khoảng 5-10s restart
-        }
-      }
-    }
-
-    // Hoàn tất 100%
-    setUpdating((prev) => (prev ? { ...prev, percent: 100, stage: 'Nâng cấp thành công!', etaSec: 0 } : null));
-    await new Promise((r) => setTimeout(r, 1000));
-
-    // Mở khoá giao diện
-    setUpdating(null);
-
-    // Chuẩn bị URL truy cập & auto-login
-    const currentToken = getToken();
-    const baseFinal = (newTunnelUrl || window.location.origin).replace(/\/+$/, '');
-    const autoLoginUrl = currentToken ? `${baseFinal}/?token=${encodeURIComponent(currentToken)}&auto_login=1` : baseFinal;
-    const isDifferent = Boolean(newTunnelUrl && !window.location.origin.includes(new URL(newTunnelUrl).hostname));
-
-    setSuccessModal({
-      version: pkg.version,
-      tunnelUrl: newTunnelUrl,
-      targetUrl: baseFinal,
-      autoLoginUrl,
-      isDifferent,
-    });
-
-    void refreshUpdate();
-    void packages.reload();
-  };
+  const open = (v: { ref: string; sha: string; version: string; label?: string }) => setTarget({ target: v, pkg: pkgFor(v.sha, v.version) });
 
   const remove = async (pkg: VersionPackage) => {
-    if (!(await confirm({ title: 'Xoá gói phiên bản', message: <>Xoá gói <b className="mono">{pkg.id}</b> ({formatBytes(pkg.size)}) khỏi ổ đĩa?</>, danger: true, confirmLabel: 'Xoá' }))) return;
+    if (!(await confirm({ title: 'Xoá gói phiên bản', message: <>Xoá gói <b className="mono">v{pkg.version}</b> ({formatBytes(pkg.size)}) khỏi ổ đĩa?</>, danger: true, confirmLabel: 'Xoá' }))) return;
     await run(() => del(`/api/update/packages/${encodeURIComponent(pkg.id)}`), 'Đã xoá gói phiên bản');
     await packages.reload();
   };
 
-  const copyUpdatingLog = async () => {
-    if (!updating?.log) return;
-    try {
-      await navigator.clipboard.writeText(updating.log);
-      setCopiedLog(true);
-      setTimeout(() => setCopiedLog(false), 2000);
-    } catch {}
-  };
+  const latest = update?.latest;
+  const available = Boolean(update?.available && latest);
+  const history = (remote.data ?? []).filter((v) => v.version !== update?.current || v.sha !== latest?.sha);
+  const visible = showAll ? history : history.slice(0, 5);
+  const spare = (packages.data ?? []).filter((p) => !p.current);
 
   return (
     <div className="space-y-4">
-      <Card
-        title="Cập nhật ZenPanel"
-        icon={Sparkles}
-        actions={
-          <Button size="sm" icon={RefreshCw} loading={checking} onClick={() => void check()}>
-            Kiểm tra ngay
-          </Button>
-        }
+      {/* Trạng thái chính: 1 nút cập nhật */}
+      <div
+        className={cn(
+          'overflow-hidden rounded-2xl border p-5 sm:p-6',
+          available ? 'border-sky-500/40 bg-gradient-to-br from-sky-950/60 via-ink-950 to-indigo-950/40' : 'border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 via-ink-950 to-ink-950',
+        )}
       >
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-500">Phiên bản đang chạy:</span>
-              <Badge tone="blue">v{update?.current ?? '...'}</Badge>
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+          <div className={cn('flex size-14 shrink-0 items-center justify-center rounded-2xl ring-1', available ? 'bg-sky-500/15 text-sky-300 ring-sky-400/40' : 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/40')}>
+            {available ? <Rocket className="size-7" /> : <CheckCircle2 className="size-7" />}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-lg font-bold text-white">{available ? `Có bản mới v${latest!.version}` : 'ZenPanel đang ở bản mới nhất'}</div>
+            <div className="mt-0.5 text-sm text-slate-400">
+              Đang dùng <b className="mono text-slate-200">v{update?.current ?? '...'}</b>
+              {update?.checkedAt && <> · kiểm tra {formatRelative(update.checkedAt)}</>}
+              {available && latest?.date && <> · phát hành {formatRelative(latest.date)}</>}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-slate-500">Mới nhất trên GitHub:</span>
-              {update?.latest ? <Badge tone={update.available ? 'green' : 'slate'}>v{update.latest.version}</Badge> : <span className="text-slate-400">—</span>}
-              {update?.available && <Badge tone="amber">Có bản mới</Badge>}
-            </div>
-            {update?.latest && (
-              <p className="text-xs text-slate-500">
-                <span className="mono">{update.latest.sha.slice(0, 7)}</span> · {update.latest.message} · {formatRelative(update.latest.date)}
-              </p>
-            )}
-            {update?.checkedAt && <p className="text-xs text-slate-500">Kiểm tra lần cuối {formatRelative(update.checkedAt)}</p>}
-            {update?.error && <p className="text-xs text-red-300">{update.error}</p>}
-            {update?.available && update.latest && !update.downloadedLatest && (
-              <Button size="sm" variant="primary" icon={Download} onClick={() => void download(update.latest!.sha)}>
-                Tải bản v{update.latest.version}
+            {update?.error && <div className="mt-1 text-xs text-red-300">{update.error}</div>}
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button size="sm" variant="ghost" icon={RefreshCw} loading={checking} onClick={() => void check()}>
+              Kiểm tra
+            </Button>
+            {available && (
+              <Button size="sm" variant="primary" icon={Sparkles} onClick={() => open(latest!)}>
+                Xem có gì mới & cập nhật
               </Button>
             )}
           </div>
-          <div className="space-y-3">
-            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-700/50 bg-ink-950/50 px-4 py-3 text-sm">
-              <span>
-                <span className="block font-semibold text-slate-100">Tự kiểm tra cập nhật</span>
-                <span className="block text-xs text-slate-500">Tự hỏi GitHub có bản mới theo tần suất bên dưới</span>
-              </span>
-              <Toggle checked={prefs.autoCheckUpdate} onChange={(v) => void run(() => savePrefs({ autoCheckUpdate: v }), v ? 'Đã bật tự kiểm tra' : 'Đã tắt tự kiểm tra')} />
-            </label>
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-700/50 bg-ink-950/50 px-4 py-3 text-sm">
-              <span>
-                <span className="block font-semibold text-slate-100">Tần suất kiểm tra</span>
-                <span className="block text-xs text-slate-500">Bao lâu hỏi GitHub một lần</span>
-              </span>
-              <Select
-                className="h-9 w-36 py-0 text-xs"
-                value={prefs.updateCheckMinutes}
-                disabled={!prefs.autoCheckUpdate}
-                onChange={(e) => void run(() => savePrefs({ updateCheckMinutes: Number(e.target.value) }), `Kiểm tra cập nhật mỗi ${e.target.selectedOptions[0].text}`)}
-              >
-                {UPDATE_INTERVALS.map(([minutes, label]) => (
-                  <option key={minutes} value={minutes}>
-                    {label}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-700/50 bg-ink-950/50 px-4 py-3 text-sm">
-              <span>
-                <span className="block font-semibold text-slate-100">Tự tải bản mới</span>
-                <span className="block text-xs text-slate-500">Tải sẵn gói, bạn chỉ cần bấm cài</span>
-              </span>
-              <Toggle checked={prefs.autoDownloadUpdate} onChange={(v) => void run(() => savePrefs({ autoDownloadUpdate: v }), v ? 'Đã bật tự tải' : 'Đã tắt tự tải')} />
-            </label>
-          </div>
         </div>
-      </Card>
+      </div>
 
-      <Card title="Phiên bản đã tải" icon={Package} bodyClassName="p-0">
-        {!packages.data ? (
-          <Spinner />
-        ) : packages.data.length === 0 ? (
-          <EmptyState icon={Package} title="Chưa tải phiên bản nào" description="Tải một phiên bản bên dưới để cài đặt hoặc giữ làm bản dự phòng để quay lại khi cần." />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr>
-                  <th className={th}>Phiên bản</th>
-                  <th className={th}>Commit</th>
-                  <th className={th}>Dung lượng</th>
-                  <th className={th}>Tải lúc</th>
-                  <th className={cn(th, 'text-right')}>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {packages.data.map((pkg) => (
-                  <tr key={pkg.id} className={tr}>
-                    <td className={td}>
-                      <span className="font-semibold text-white">v{pkg.version}</span> {pkg.current && <Badge tone="green">Đang chạy</Badge>}
-                    </td>
-                    <td className={cn(td, 'mono text-xs text-slate-400')}>{pkg.sha.slice(0, 7)}</td>
-                    <td className={cn(td, 'mono text-slate-400')}>{formatBytes(pkg.size)}</td>
-                    <td className={cn(td, 'text-xs text-slate-500')}>{formatDate(pkg.downloadedAt)}</td>
-                    <td className={cn(td, 'whitespace-nowrap text-right')}>
-                      <Button size="xs" variant="soft" icon={Rocket} disabled={pkg.current} onClick={() => void install(pkg)}>
-                        {pkg.current ? 'Đang dùng' : 'Cài bản này'}
+      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+        {/* Lịch sử phiên bản */}
+        <Card title="Lịch sử phiên bản" icon={History} bodyClassName="p-0">
+          {remote.error ? (
+            <div className="p-4">
+              <ErrorBox message={remote.error} onRetry={remote.reload} />
+            </div>
+          ) : !remote.data ? (
+            <Spinner />
+          ) : history.length === 0 ? (
+            <EmptyState icon={GitBranch} title="Chưa có phiên bản khác" description="Khi có bản phát hành mới trên GitHub, chúng sẽ hiện ở đây." />
+          ) : (
+            <div className="divide-y divide-slate-800/80">
+              {visible.map((v) => {
+                const pkg = pkgFor(v.sha, v.version);
+                const isCurrent = v.version === update?.current;
+                const newer = update ? v.version.localeCompare(update.current, undefined, { numeric: true }) > 0 : false;
+                return (
+                  <div key={`${v.ref}-${v.sha}`} className="flex items-center gap-3 px-4 py-3">
+                    <div className={cn('size-2 shrink-0 rounded-full', isCurrent ? 'bg-emerald-400' : newer ? 'bg-sky-400' : 'bg-slate-600')} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="mono text-sm font-bold text-white">v{v.version}</span>
+                        <span className="truncate text-xs text-slate-500">{v.label}</span>
+                        {isCurrent && <Badge tone="green">Đang dùng</Badge>}
+                        {pkg && !isCurrent && <Badge tone="blue">Có sẵn trên máy</Badge>}
+                      </div>
+                      {v.message && <div className="truncate text-xs text-slate-500">{v.message}</div>}
+                    </div>
+                    {!isCurrent && (
+                      <Button size="xs" variant={newer ? 'soft' : 'ghost'} icon={newer ? Rocket : History} onClick={() => open(v)}>
+                        {newer ? 'Cập nhật' : 'Quay lại'}
                       </Button>
-                      <IconButton icon={Trash2} title="Xoá gói" className="ml-1 hover:text-zen-red" onClick={() => void remove(pkg)} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
-
-      <Card title="Phiên bản trên GitHub" icon={GitBranch}>
-        {remote.error ? (
-          <ErrorBox message={remote.error} onRetry={remote.reload} />
-        ) : !remote.data ? (
-          <Spinner />
-        ) : (
-          <div className="space-y-2">
-            {remote.data.map((v) => {
-              const downloadedPkg = packages.data?.find((p) => p.sha === v.sha || p.version === v.version);
-              const isCurrent = (update && v.version === update.current) || Boolean(downloadedPkg?.current);
-              return (
-                <div key={`${v.ref}-${v.sha}`} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-700/50 bg-ink-950/50 px-4 py-3">
-                  <GitBranch className="size-4 text-zen-blue" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-slate-100">
-                        {v.label} · v{v.version}
-                      </span>
-                      {isCurrent && <Badge tone="green">Đang chạy</Badge>}
-                      {!isCurrent && downloadedPkg && <Badge tone="blue">Đã tải</Badge>}
-                    </div>
-                    <div className="mono truncate text-xs text-slate-500">
-                      {v.sha.slice(0, 7)} {v.message && `· ${v.message}`}
-                    </div>
+                    )}
                   </div>
-                  {isCurrent ? (
-                    <Button size="xs" variant="ghost" disabled>
-                      Đang dùng
-                    </Button>
-                  ) : downloadedPkg ? (
-                    <Button size="xs" variant="soft" icon={Rocket} onClick={() => void install(downloadedPkg)}>
-                      Cài bản này
-                    </Button>
-                  ) : (
-                    <Button size="xs" icon={Download} onClick={() => void download(v.sha)}>
-                      Tải về
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Card>
-
-      {/* OVERLAY KHÓA GIAO DIỆN BẢO TRÌ KHI ĐANG CẬP NHẬT */}
-      {updating && (
-        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/85 p-4 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-xl space-y-6 rounded-3xl border border-zen-purple/40 bg-gradient-to-b from-[#141829] to-[#0c0e18] p-6 shadow-2xl ring-1 ring-purple-500/20 sm:p-8">
-            <div className="flex items-center gap-4">
-              <div className="relative flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-zen-purple/40 to-zen-blue/40 ring-1 ring-white/10">
-                <Loader2 className="size-8 animate-spin text-zen-purple" />
-                <Sparkles className="absolute -bottom-1 -right-1 size-5 text-amber-400 animate-pulse" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-xl font-bold text-white">Đang nâng cấp ZenPanel v{updating.version}</h3>
-                  <Badge tone="blue" className="mono animate-pulse">Bảo trì</Badge>
-                </div>
-                <p className="mt-1 text-xs text-slate-400">
-                  Giao diện đang được khóa tạm thời để bảo vệ tiến trình nâng cấp. Vui lòng giữ nguyên cửa sổ này.
-                </p>
-              </div>
-            </div>
-
-            {/* Thanh tiến trình & ETA */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-purple-300">{updating.stage}</span>
-                <span className="mono font-bold text-white">{txaformat.percent(updating.percent, 0)}</span>
-              </div>
-              <div className="h-3 w-full overflow-hidden rounded-full bg-slate-800 p-0.5">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-zen-purple via-zen-blue to-emerald-400 transition-all duration-500"
-                  style={{ width: `${Math.min(100, Math.max(8, updating.percent))}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[11px] text-slate-500">
-                <span>Đã chạy: {txaformat.timeLeft(Math.floor((Date.now() - updating.startedAt) / 1000))}</span>
-                <span>Dự kiến còn: {txaformat.timeLeft(updating.etaSec)}</span>
-              </div>
-            </div>
-
-            {/* Các bước nâng cấp */}
-            <div className="grid grid-cols-4 gap-1.5 text-center text-[10px] text-slate-400">
-              <div className={cn("rounded-lg p-2 ring-1", updating.percent >= 15 ? "bg-purple-950/60 ring-purple-500/40 text-purple-200" : "bg-slate-900/40 ring-slate-800")}>
-                1. Chuẩn bị
-              </div>
-              <div className={cn("rounded-lg p-2 ring-1", updating.percent >= 40 ? "bg-purple-950/60 ring-purple-500/40 text-purple-200" : "bg-slate-900/40 ring-slate-800")}>
-                2. Cập nhật mã
-              </div>
-              <div className={cn("rounded-lg p-2 ring-1", updating.percent >= 70 ? "bg-purple-950/60 ring-purple-500/40 text-purple-200" : "bg-slate-900/40 ring-slate-800")}>
-                3. Tái khởi động
-              </div>
-              <div className={cn("rounded-lg p-2 ring-1", updating.percent >= 95 ? "bg-emerald-950/60 ring-emerald-500/40 text-emerald-200" : "bg-slate-900/40 ring-slate-800")}>
-                4. Sẵn sàng
-              </div>
-            </div>
-
-            {/* Log trực tiếp thu gọn */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>Nhật ký nâng cấp</span>
-                <button
-                  type="button"
-                  onClick={() => void copyUpdatingLog()}
-                  className="flex items-center gap-1 text-[11px] text-purple-300 hover:text-white"
-                >
-                  {copiedLog ? <Check className="size-3 text-emerald-400" /> : <Copy className="size-3" />}
-                  {copiedLog ? 'Đã sao chép' : 'Sao chép log'}
+                );
+              })}
+              {history.length > 5 && (
+                <button type="button" onClick={() => setShowAll(!showAll)} className="w-full py-2.5 text-xs font-semibold text-blue-300 hover:bg-slate-800/40">
+                  {showAll ? 'Thu gọn' : `Xem thêm ${history.length - 5} phiên bản`}
                 </button>
-              </div>
-              <pre className="mono max-h-32 overflow-auto whitespace-pre-wrap rounded-xl bg-black/60 p-3 text-[11px] leading-relaxed text-slate-300 ring-1 ring-slate-800">
-                {updating.log || 'Đang chờ output từ installer...'}
-              </pre>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL THÀNH CÔNG VỚI NÚT MỞ TAB MỚI & IN RÕ URL MỚI */}
-      {successModal && (
-        <Modal
-          open={true}
-          title={
-            <div className="flex items-center gap-2 text-emerald-400">
-              <CheckCircle2 className="size-5" />
-              <span>Nâng cấp ZenPanel thành công!</span>
-            </div>
-          }
-          onClose={() => setSuccessModal(null)}
-          size="lg"
-        >
-          <div className="space-y-5">
-            <div className="space-y-2 rounded-2xl border border-emerald-500/40 bg-emerald-950/30 p-5">
-              <h4 className="font-bold text-white text-base">ZenPanel đã hoạt động trở lại ở phiên bản v{successModal.version}</h4>
-              <p className="text-xs text-slate-300">
-                Hệ thống đã hoàn tất nâng cấp, tái khởi động dịch vụ thành công và bảo toàn toàn bộ dữ liệu, cấu hình.
-              </p>
-            </div>
-
-            {/* Hộp in rõ URL mới với nút sao chép */}
-            <div className="space-y-3 rounded-2xl border border-indigo-500/40 bg-indigo-950/30 p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Globe className="size-5 text-indigo-400" />
-                  <span className="text-sm font-bold text-white">Đường dẫn truy cập ZenPanel mới:</span>
-                </div>
-                {successModal.isDifferent && (
-                  <Badge tone="amber" className="text-xs font-semibold">
-                    Đã đổi đường dẫn mới
-                  </Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2 rounded-xl bg-ink-950 p-3 ring-1 ring-slate-800">
-                <code className="mono flex-1 text-sm text-emerald-300 font-bold break-all select-all">
-                  {successModal.targetUrl}
-                </code>
-                <CopyButton value={successModal.targetUrl} label="Sao chép URL" />
-              </div>
-
-              {successModal.isDifferent ? (
-                <div className="rounded-xl border border-amber-500/40 bg-amber-950/40 p-3 text-xs text-amber-200 space-y-1">
-                  <div className="font-bold flex items-center gap-1.5 text-amber-300">
-                    <span>⚠️ ĐƯỜNG DẪN TẠI TAB NÀY ĐÃ HẾT HẠN</span>
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-amber-200/90">
-                    Vì bạn đang truy cập qua Cloudflare Tunnel, mỗi lần khởi động lại máy chủ sẽ được cấp một tên miền mới. Tab cũ này không thể tải lại được nữa. Vui lòng bấm nút <strong>"Mở tab mới với URL mới"</strong> bên dưới!
-                  </p>
-                </div>
-              ) : (
-                <p className="text-[11px] text-slate-400">
-                  ⚡ Bạn có thể bấm nút bên dưới để mở tab mới và <b>tự động đăng nhập ngay lập tức</b> mà không cần nhập lại mật khẩu.
-                </p>
               )}
             </div>
+          )}
+        </Card>
 
-            <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-slate-800">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSuccessModal(null);
-                  window.location.reload();
-                }}
-              >
-                Tải lại tab hiện tại
-              </Button>
-              <Button
-                variant="primary"
-                icon={ExternalLink}
-                onClick={() => {
-                  window.open(successModal.autoLoginUrl, '_blank');
-                  setSuccessModal(null);
-                }}
-                className="bg-gradient-to-r from-zen-purple to-zen-blue text-white font-bold text-sm hover:opacity-95 shadow-lg shadow-indigo-900/40"
-              >
-                🚀 Mở tab mới với URL mới (Tự động đăng nhập)
-              </Button>
+        <div className="space-y-4">
+          <Card title="Tự động" icon={Cog}>
+            <div className="space-y-3">
+              <label className="flex items-center justify-between gap-3 text-sm">
+                <span>
+                  <span className="block font-semibold text-slate-100">Tự kiểm tra bản mới</span>
+                  <span className="block text-xs text-slate-500">Chỉ hỏi GitHub, không tải gì</span>
+                </span>
+                <Toggle checked={prefs.autoCheckUpdate} onChange={(v) => void run(() => savePrefs({ autoCheckUpdate: v }), v ? 'Đã bật tự kiểm tra' : 'Đã tắt tự kiểm tra')} />
+              </label>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-semibold text-slate-100">Tần suất</span>
+                <Select
+                  className="h-9 w-36 py-0 text-xs"
+                  value={prefs.updateCheckMinutes}
+                  disabled={!prefs.autoCheckUpdate}
+                  onChange={(e) => void run(() => savePrefs({ updateCheckMinutes: Number(e.target.value) }), `Kiểm tra cập nhật mỗi ${e.target.selectedOptions[0].text}`)}
+                >
+                  {UPDATE_INTERVALS.map(([minutes, label]) => (
+                    <option key={minutes} value={minutes}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <label className="flex items-center justify-between gap-3 text-sm">
+                <span>
+                  <span className="block font-semibold text-slate-100">Tải sẵn bản mới</span>
+                  <span className="block text-xs text-slate-500">Chỉ tải bản mới nhất, tự xoá gói cũ</span>
+                </span>
+                <Toggle checked={prefs.autoDownloadUpdate} onChange={(v) => void run(() => savePrefs({ autoDownloadUpdate: v }), v ? 'Đã bật tải sẵn' : 'Đã tắt tải sẵn')} />
+              </label>
             </div>
-          </div>
-        </Modal>
+          </Card>
+
+          <Card title="Gói dự phòng trên máy" icon={Package} bodyClassName="p-0">
+            {!packages.data ? (
+              <Spinner />
+            ) : spare.length === 0 ? (
+              <p className="px-4 py-5 text-xs text-slate-500">Không có gói nào. ZenPanel chỉ tải gói khi bạn bấm cập nhật và tự giữ tối đa 2 bản gần nhất để quay lại khi cần.</p>
+            ) : (
+              <div className="divide-y divide-slate-800/80">
+                {spare.map((pkg) => (
+                  <div key={pkg.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                    <span className="mono font-semibold text-slate-200">v{pkg.version}</span>
+                    <span className="mono text-xs text-slate-500">{pkg.sha.slice(0, 7)}</span>
+                    <span className="flex-1 text-right text-xs text-slate-500">{formatBytes(pkg.size)}</span>
+                    <IconButton icon={Trash2} title="Xoá gói" className="hover:text-zen-red" onClick={() => void remove(pkg)} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      {target && update && (
+        <PanelUpdateModal
+          target={target.target}
+          pkg={target.pkg}
+          current={update.current}
+          onClose={() => {
+            setTarget(null);
+            void packages.reload();
+          }}
+          onFinished={() => {
+            void refreshUpdate();
+            void packages.reload();
+          }}
+        />
       )}
     </div>
   );

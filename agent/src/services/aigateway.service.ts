@@ -37,6 +37,21 @@ export interface GatewaySettings {
   rtkEnabled: boolean;
   /** Chiến lược xoay vòng tài khoản: failover (hết quota/lỗi mới đổi) vs round-robin (xoay đều) */
   rotationStrategy: 'failover' | 'round-robin';
+  /** Combo kiểu 9Router: 1 tên model ảo = chuỗi model thử lần lượt (fallback) hoặc xoay vòng */
+  combos: GatewayCombo[];
+}
+
+export interface GatewayCombo {
+  name: string;
+  models: string[];
+  strategy: 'fallback' | 'round-robin';
+  description?: string;
+}
+
+/** Ngữ cảnh request: key nào gọi, để áp giới hạn theo key */
+export interface GatewayCaller {
+  keyId?: string;
+  keyName?: string;
 }
 
 export interface GatewayLog {
@@ -55,8 +70,10 @@ export interface GatewayLog {
   error: string | null;
   fallbackFrom: string | null;
   rotatedFrom?: string | null;
-  tier?: 'tier1' | 'tier2' | 'tier3' | 'custom';
+  tier?: 'tier1' | 'tier2' | 'tier3' | 'custom' | 'combo';
   rtkSavedTokens?: number;
+  keyId?: string | null;
+  combo?: string | null;
 }
 
 export interface GatewayApiKey {
@@ -68,6 +85,12 @@ export interface GatewayApiKey {
   expiresAt: string | null;
   lastUsedAt: string | null;
   enabled: boolean;
+  /** Số request tối đa mỗi phút (0/null = không giới hạn) */
+  rpmLimit?: number | null;
+  /** Tổng token tối đa mỗi ngày (0/null = không giới hạn) */
+  dailyTokenLimit?: number | null;
+  /** Chỉ cho phép các model / combo này (trống = mọi model) */
+  allowedModels?: string[];
 }
 
 export type GatewayApiKeyView = Omit<GatewayApiKey, 'key'>;
@@ -149,6 +172,7 @@ function settings(): GatewaySettings {
     rtkEnabled: current.rtkEnabled !== undefined ? Boolean(current.rtkEnabled) : true,
     rotationStrategy: current.rotationStrategy === 'round-robin' ? 'round-robin' : 'failover',
     ...current,
+    combos: Array.isArray(current.combos) ? current.combos : [],
     apiKey: valid ? current.apiKey! : newKey(),
   };
   // Lần đầu (hoặc key cũ dạng zp-): sinh API key tzp_ mới và lưu lại
@@ -169,7 +193,21 @@ function parseModel(full: string): { provider: AiProviderId; model: string } {
 }
 
 export class AiGatewayService {
+  private rpm = new Map<string, number[]>();
+  private comboCursor = new Map<string, number>();
+
   constructor(private readonly ai: AiService) {}
+
+  /** Model/combo key được phép gọi */
+  private assertAllowed(caller: GatewayCaller | undefined, model: unknown): void {
+    if (!caller?.keyId || caller.keyId === 'root') return;
+    const key = this.getRawApiKeys().find((k) => k.id === caller.keyId);
+    const allow = key?.allowedModels ?? [];
+    if (!allow.length) return;
+    const name = typeof model === 'string' && model ? model : 'auto';
+    const ok = allow.some((a) => a === name || (a.endsWith('/*') && name.startsWith(a.slice(0, -1))));
+    if (!ok) throw new HttpError(403, `API Key "${key?.name}" không được phép dùng model "${name}". Được phép: ${allow.join(', ')}`);
+  }
 
   getSettings(): GatewaySettings {
     return settings();
@@ -197,6 +235,21 @@ export class AiGatewayService {
     if (input.rtkEnabled !== undefined) next.rtkEnabled = Boolean(input.rtkEnabled);
     if (input.rotationStrategy !== undefined) {
       next.rotationStrategy = input.rotationStrategy === 'round-robin' ? 'round-robin' : 'failover';
+    }
+    if (input.combos !== undefined) {
+      if (!Array.isArray(input.combos) || input.combos.length > 30) throw badRequest('Tối đa 30 combo');
+      const names = new Set<string>();
+      next.combos = input.combos.map((c) => {
+        const name = String(c?.name ?? '').trim();
+        if (!/^[\w.\-]{1,40}$/.test(name)) throw badRequest(`Tên combo "${name}" chỉ gồm chữ, số, . - _`);
+        if (['auto', 'tier1', 'tier2', 'tier3'].includes(name) || PROVIDER_IDS.includes(name)) throw badRequest(`Tên combo "${name}" trùng tên dành riêng`);
+        if (names.has(name)) throw badRequest(`Combo "${name}" bị trùng`);
+        names.add(name);
+        const models = (Array.isArray(c.models) ? c.models : []).map(String).filter(Boolean);
+        if (!models.length || models.length > 10) throw badRequest(`Combo "${name}" cần 1-10 model`);
+        for (const m of models) parseModel(m);
+        return { name, models, strategy: c.strategy === 'round-robin' ? 'round-robin' : 'fallback', description: String(c.description ?? '').slice(0, 200) };
+      });
     }
     if (input.fallbacks !== undefined) {
       if (!Array.isArray(input.fallbacks) || input.fallbacks.length > 5) throw badRequest('Tối đa 5 model dự phòng');
@@ -367,12 +420,15 @@ export class AiGatewayService {
     return { key, info };
   }
 
-  updateApiKey(id: string, patch: { name?: string; enabled?: boolean }): GatewayApiKeyView {
+  updateApiKey(id: string, patch: { name?: string; enabled?: boolean; rpmLimit?: number | null; dailyTokenLimit?: number | null; allowedModels?: string[] }): GatewayApiKeyView {
     const current = this.getRawApiKeys();
     const target = current.find((k) => k.id === id);
     if (!target) throw badRequest('Không tìm thấy API Key');
     if (patch.name !== undefined) target.name = patch.name.trim() || target.name;
     if (patch.enabled !== undefined) target.enabled = Boolean(patch.enabled);
+    if (patch.rpmLimit !== undefined) target.rpmLimit = Math.max(0, Math.min(10_000, Math.round(Number(patch.rpmLimit) || 0))) || null;
+    if (patch.dailyTokenLimit !== undefined) target.dailyTokenLimit = Math.max(0, Math.round(Number(patch.dailyTokenLimit) || 0)) || null;
+    if (patch.allowedModels !== undefined) target.allowedModels = (Array.isArray(patch.allowedModels) ? patch.allowedModels : []).map(String).filter(Boolean).slice(0, 50);
     writeJson(KEYS_FILE, current);
     const { key: _k, ...info } = target;
     return info;
@@ -387,7 +443,7 @@ export class AiGatewayService {
     writeJson(KEYS_FILE, next);
   }
 
-  verifyKey(header: string | undefined): { ok: boolean; reason?: 'missing' | 'not_found' | 'disabled' | 'expired'; message?: string; keyId?: string; keyName?: string } {
+  verifyKey(header: string | undefined): { ok: boolean; reason?: 'missing' | 'not_found' | 'disabled' | 'expired' | 'rate_limited' | 'quota'; message?: string; keyId?: string; keyName?: string } {
     let token = header?.trim() ?? '';
     if (token.toLowerCase().startsWith('bearer ')) {
       token = token.slice(7).trim();
@@ -431,8 +487,27 @@ export class AiGatewayService {
           };
         }
 
-        k.lastUsedAt = new Date().toISOString();
-        writeJson(KEYS_FILE, keys);
+        if (k.rpmLimit) {
+          const hits = (this.rpm.get(k.id) ?? []).filter((t) => now - t < 60_000);
+          if (hits.length >= k.rpmLimit) {
+            return { ok: false, reason: 'rate_limited', message: `API Key "${k.name}" vượt giới hạn ${k.rpmLimit} request/phút. Thử lại sau ít giây.`, keyId: k.id, keyName: k.name };
+          }
+          hits.push(now);
+          this.rpm.set(k.id, hits);
+        }
+        if (k.dailyTokenLimit) {
+          const used = this.logs()
+            .filter((l) => l.keyId === k.id && now - new Date(l.at).getTime() < 86_400_000)
+            .reduce((n, l) => n + (l.promptTokens ?? 0) + (l.completionTokens ?? 0), 0);
+          if (used >= k.dailyTokenLimit) {
+            return { ok: false, reason: 'quota', message: `API Key "${k.name}" đã dùng hết ${k.dailyTokenLimit.toLocaleString('vi-VN')} token trong 24 giờ.`, keyId: k.id, keyName: k.name };
+          }
+        }
+        // Chỉ ghi lastUsedAt tối đa mỗi phút để không ghi đĩa mỗi request
+        if (!k.lastUsedAt || now - new Date(k.lastUsedAt).getTime() > 60_000) {
+          k.lastUsedAt = new Date().toISOString();
+          writeJson(KEYS_FILE, keys);
+        }
         return { ok: true, keyId: k.id, keyName: k.name };
       }
     }
@@ -725,7 +800,7 @@ export class AiGatewayService {
    * 3. Tự động đổi key khi bị 429 Rate Limit
    * 4. Model Fallback dự phòng khi toàn bộ keys của provider lỗi
    */
-  async chat(body: Record<string, unknown>, source: GatewayLog['source']): Promise<Response> {
+  async chat(body: Record<string, unknown>, source: GatewayLog['source'], caller?: GatewayCaller): Promise<Response> {
     if (!body || typeof body !== 'object') {
       throw badRequest('Yêu cầu không hợp lệ: Request body phải là một JSON object.');
     }
@@ -742,6 +817,7 @@ export class AiGatewayService {
     }
 
     const s = settings();
+    this.assertAllowed(caller, body.model);
     let subAgentName: string | null = null;
     let extraSystemPrompt: string | undefined;
 
@@ -758,7 +834,7 @@ export class AiGatewayService {
 
     // 9Router Model Alias Resolution (tier1, tier2, tier3, auto)
     let requested = body.model;
-    let currentTier: 'tier1' | 'tier2' | 'tier3' | 'custom' = 'custom';
+    let currentTier: 'tier1' | 'tier2' | 'tier3' | 'custom' | 'combo' = 'custom';
     if (requested === 'tier1') {
       requested = s.tier1Model || this.getDefaultModel();
       currentTier = 'tier1';
@@ -771,6 +847,20 @@ export class AiGatewayService {
     } else if (requested === 'auto' || !requested) {
       requested = s.tier1Model || this.getDefaultModel();
       currentTier = 'tier1';
+    }
+
+    // Combo kiểu 9Router: "coding" -> [anthropic/x, openrouter/y, gemini/z]
+    const combo = typeof requested === 'string' ? s.combos.find((c) => c.name === requested) : undefined;
+    let comboChain: string[] = [];
+    if (combo) {
+      comboChain = [...combo.models];
+      if (combo.strategy === 'round-robin') {
+        const start = (this.comboCursor.get(combo.name) ?? 0) % comboChain.length;
+        this.comboCursor.set(combo.name, start + 1);
+        comboChain = [...comboChain.slice(start), ...comboChain.slice(0, start)];
+      }
+      requested = comboChain[0];
+      currentTier = 'combo';
     }
 
     const primary = this.resolveModel(requested);
@@ -786,10 +876,10 @@ export class AiGatewayService {
     body = { ...body, messages: finalMessages };
 
     // 9Router 3-Tier Fallback Chain: Primary -> Tier 2 -> Tier 3 -> các fallback khác
-    const fallbackPool: string[] = [];
-    if (s.tier2Model && s.tier2Model !== primary && !fallbackPool.includes(s.tier2Model)) fallbackPool.push(s.tier2Model);
-    if (s.tier3Model && s.tier3Model !== primary && !fallbackPool.includes(s.tier3Model)) fallbackPool.push(s.tier3Model);
-    for (const fb of s.fallbacks) {
+    const fallbackPool: string[] = comboChain.slice(1);
+    if (!combo && s.tier2Model && s.tier2Model !== primary && !fallbackPool.includes(s.tier2Model)) fallbackPool.push(s.tier2Model);
+    if (!combo && s.tier3Model && s.tier3Model !== primary && !fallbackPool.includes(s.tier3Model)) fallbackPool.push(s.tier3Model);
+    for (const fb of combo ? [] : s.fallbacks) {
       if (fb !== primary && !fallbackPool.includes(fb)) fallbackPool.push(fb);
     }
     const candidates = [primary, ...fallbackPool];
@@ -845,6 +935,8 @@ export class AiGatewayService {
           rotatedFrom: rotatedNote,
           tier: currentTier,
           rtkSavedTokens,
+          keyId: caller?.keyId ?? null,
+          combo: combo?.name ?? null,
         };
 
         let res: Response;

@@ -53,6 +53,46 @@ export interface ServiceInfo {
   description: string;
   state: ServiceState;
   startup: ServiceStartup;
+  /** PID tiến trình chính (khi đang chạy) */
+  pid?: number | null;
+  /** RAM đang dùng (byte) */
+  memory?: number | null;
+}
+
+/** Nguồn nhật ký hệ thống: journal (Linux), Event Log (Windows) hoặc file log */
+export interface LogSource {
+  id: string;
+  label: string;
+  group: string;
+  kind: 'journal' | 'eventlog' | 'file';
+  /** kind=file: đường dẫn file */
+  path?: string;
+}
+
+/** Thông tin RAM chi tiết để tối ưu (byte) */
+export interface MemoryDetail {
+  total: number;
+  available: number;
+  used: number;
+  /** Cache có thể thu hồi: PageCache + Buffers + SReclaimable (Linux) / Standby (Windows) */
+  cache: number;
+  buffers: number;
+  shared: number;
+  swapTotal: number;
+  swapUsed: number;
+  /** Windows: Modified page list / Linux: Dirty */
+  dirty: number;
+  /** Tham số kernel liên quan (vm.swappiness...) - chỉ Linux */
+  tunables: Record<string, string>;
+}
+
+export interface RamOptimizeOptions {
+  /** Thu hồi cache (drop_caches / Standby list) */
+  dropCache?: boolean;
+  /** Thu gọn working set mọi tiến trình (Windows) / compact memory (Linux) */
+  trimWorkingSets?: boolean;
+  /** Đẩy swap về RAM (swapoff/swapon) khi đủ RAM trống */
+  resetSwap?: boolean;
 }
 
 export type FirewallBackend = 'ufw' | 'firewalld' | 'iptables' | 'windows' | 'none';
@@ -143,6 +183,14 @@ export interface CleanExecutionOptions {
   cleanPackageCache?: boolean;
   cleanTempFiles?: boolean;
   cleanRamCache?: boolean;
+  /** Cắt log container Docker (json-file) đang phình to */
+  cleanDockerLogs?: boolean;
+  /** Cache npm / pip / yarn / composer / go của người dùng */
+  cleanDevCaches?: boolean;
+  /** Bản snap cũ (Linux), WinSxS component cleanup (Windows) */
+  cleanOldPackages?: boolean;
+  /** File core dump / crash dump */
+  cleanCrashDumps?: boolean;
 }
 
 /** Gói cập nhật: chạy installer tách rời khỏi agent (installer sẽ khởi động lại agent) */
@@ -237,4 +285,17 @@ export interface OSAdapter {
   // --- Dọn dẹp hệ thống ---
   cleanScan(): Promise<SystemCleanScan>;
   cleanSystem(options: CleanExecutionOptions, onLog: (msg: string) => void): Promise<void>;
+
+  // --- Tối ưu RAM ---
+  memoryDetail(): Promise<MemoryDetail>;
+  optimizeRam(options: RamOptimizeOptions, onLog: (msg: string) => void): Promise<void>;
+  /** Thu gọn working set 1 tiến trình (Windows); Linux trả false vì không hỗ trợ */
+  trimProcessMemory(pid: number): Promise<boolean>;
+  /** Linux: đặt vm.swappiness / vm.vfs_cache_pressure (ghi cả /etc/sysctl.d để giữ sau reboot) */
+  setMemoryTunable(key: 'vm.swappiness' | 'vm.vfs_cache_pressure', value: number): Promise<void>;
+
+  // --- Nhật ký hệ thống ---
+  logSources(): Promise<LogSource[]>;
+  /** Đọc N dòng cuối của nguồn journal / eventlog (file do service tự đọc) */
+  readSystemLog(id: string, lines: number): Promise<string>;
 }

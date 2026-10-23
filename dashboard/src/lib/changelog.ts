@@ -9,6 +9,48 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.5',
+    date: '2026-10-24',
+    highlights: [
+      {
+        title: '💾 Trung Tâm Sao Lưu & Khôi Phục Toàn Diện (Backups Hub)',
+        items: [
+          'Hỗ trợ sao lưu an toàn toàn bộ Website, cơ sở dữ liệu (MySQL, MariaDB, PostgreSQL, MongoDB, Redis) và Docker Volume.',
+          'Cơ chế đặt lịch tự động theo giờ / ngày / tuần với chính sách dọn dẹp các bản sao lưu cũ (retention) tiết kiệm dung lượng ổ đĩa.',
+          'Tải file nén trực tiếp hoặc khôi phục 1-click với kiểm tra an toàn.',
+        ],
+      },
+      {
+        title: '📋 Trình Theo Dõi Nhật Ký Hệ Thống Thời Gian Thực (Live Logs)',
+        items: [
+          'Xem live log trực tiếp của Nginx, Docker container, SSH auth.log, Systemd và Syslog.',
+          'Tìm kiếm tức thì, lọc từ khóa, tải file log đầy đủ về máy tính.',
+        ],
+      },
+      {
+        title: '🦙 AI Gateway Tương Thích Chuẩn Ollama API',
+        items: [
+          'Mở rộng cổng tương thích /ollama/* để các IDE và công cụ CLI hỗ trợ Ollama kết nối trực tiếp qua ZenPanel AI Gateway.',
+          'Hỗ trợ hướng dẫn kết nối nhanh (AiConnectTab) cho Python, Node.js, cURL, LangChain và LlamaIndex.',
+        ],
+      },
+      {
+        title: '🧹 Tối Ưu RAM & Dọn Dẹp Rác Nâng Cao',
+        items: [
+          'Tự động cắt tỉa Docker log của container khi vượt quá 10MB, dọn dẹp cache gói và crash dumps.',
+          'Thu hồi bộ nhớ RAM cache thông minh, giúp máy chủ luôn duy trì hiệu năng cao nhất.',
+        ],
+      },
+      {
+        title: '📁 Tối Ưu Quản Lý File & Chuẩn Hóa ZenFile Explorer Pro',
+        items: [
+          'Sửa lỗi xung đột tài khoản admin FileBrowser và bổ sung hướng dẫn đặt lại mật khẩu chuẩn xác.',
+          'Tách biệt các Modal cài đặt và nâng cấp hệ thống độc lập, mượt mà hơn.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.6.4',
     date: '2026-10-23',
     highlights: [

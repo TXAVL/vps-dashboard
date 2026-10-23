@@ -20,6 +20,19 @@ export interface JobView {
   progress?: number;
   stage?: string;
   etaSeconds?: number | null;
+  /** Các bước thật đã/đang chạy (mỗi lần stage đổi = 1 bước), để dashboard vẽ stepper đúng thực tế */
+  steps?: JobStep[];
+  /** Dữ liệu kết quả tuỳ ý (vd dung lượng đã giải phóng) */
+  result?: unknown;
+  /** Số dòng log, để danh sách job hiển thị mà không cần tải log */
+  lines?: number;
+}
+
+export interface JobStep {
+  label: string;
+  status: 'running' | 'done' | 'error';
+  startedAt: string;
+  endedAt: string | null;
 }
 
 class Job {
@@ -31,6 +44,8 @@ class Job {
   progress: number | null = null;
   stage: string | null = null;
   etaSeconds: number | null = null;
+  steps: JobStep[] = [];
+  result: unknown = undefined;
   private log = '';
 
   constructor(
@@ -47,8 +62,32 @@ class Job {
 
   setProgress(percent: number, stage?: string, etaSeconds?: number | null): void {
     this.progress = Math.min(100, Math.max(0, Math.round(percent)));
-    if (stage !== undefined) this.stage = stage;
+    if (stage !== undefined && stage !== this.stage) {
+      this.stage = stage;
+      this.step(stage);
+    }
     if (etaSeconds !== undefined) this.etaSeconds = etaSeconds;
+  }
+
+  /** Mở bước mới, đóng bước đang chạy trước đó */
+  step(label: string): void {
+    const now = new Date().toISOString();
+    const last = this.steps.at(-1);
+    if (last?.status === 'running') {
+      if (last.label === label) return;
+      last.status = 'done';
+      last.endedAt = now;
+    }
+    this.steps.push({ label, status: 'running', startedAt: now, endedAt: null });
+    if (this.steps.length > 30) this.steps.splice(0, this.steps.length - 30);
+  }
+
+  finishSteps(ok: boolean): void {
+    const last = this.steps.at(-1);
+    if (last?.status === 'running') {
+      last.status = ok ? 'done' : 'error';
+      last.endedAt = new Date().toISOString();
+    }
   }
 
   view(withLog: boolean): JobView {
@@ -63,6 +102,9 @@ class Job {
       progress: this.progress !== null ? this.progress : undefined,
       stage: this.stage !== null ? this.stage : undefined,
       etaSeconds: this.etaSeconds,
+      steps: this.steps.map((st) => ({ ...st })),
+      result: this.result,
+      lines: this.log.split('\n').length,
       log: withLog ? this.log : '',
     };
   }
@@ -74,6 +116,20 @@ const jobs: Job[] = [];
 /** Cập nhật tiến độ %, giai đoạn hiện tại và ETA dự tính của job */
 export function jobProgress(percent: number, stage?: string, etaSeconds?: number | null): void {
   storage.getStore()?.setProgress(percent, stage, etaSeconds);
+}
+
+/** Đánh dấu bắt đầu 1 bước có tên (không đổi % tiến độ) */
+export function jobStep(label: string): void {
+  const job = storage.getStore();
+  if (!job) return;
+  job.stage = label;
+  job.step(label);
+}
+
+/** Gắn dữ liệu kết quả cho job hiện tại (dashboard đọc qua job.result) */
+export function jobResult(data: unknown): void {
+  const job = storage.getStore();
+  if (job) job.result = data;
 }
 
 /** Ghi 1 dòng vào log của job hiện tại (nếu đang chạy trong job) */
@@ -99,12 +155,14 @@ export function startJob(title: string, kind: string, fn: () => Promise<void>): 
     job.append(`▶ ${title}\n`);
     try {
       await fn();
+      job.finishSteps(true);
       job.status = 'success';
       job.progress = 100;
       job.stage = 'Hoàn tất thành công';
       job.etaSeconds = 0;
       job.append('\n✔ Hoàn tất\n');
     } catch (err) {
+      job.finishSteps(false);
       job.status = 'error';
       job.error = (err as Error).message;
       job.stage = `Thất bại: ${job.error}`;

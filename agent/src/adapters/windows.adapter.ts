@@ -4,6 +4,9 @@ import { mkdir, statfs, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import type {
+  LogSource,
+  MemoryDetail,
+  RamOptimizeOptions,
   CleanExecutionOptions,
   SystemCleanScan,
   DiskUsage,
@@ -227,10 +230,17 @@ export class WindowsAdapter implements OSAdapter {
   // ---------------------------------------------------------------- Windows Services
 
   async listServices(): Promise<ServiceInfo[]> {
-    const list = await this.psJson<{ Name: string; DisplayName: string; State: string; StartMode: string; Description: string | null }[]>(
-      'ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Service | Select-Object Name,DisplayName,State,StartMode,Description)',
+    const list = await this.psJson<{ Name: string; DisplayName: string; State: string; StartMode: string; Description: string | null; ProcessId: number; Mem: number | null }[]>(
+      [
+        '$mem=@{}; Get-Process | ForEach-Object { $mem[[int]$_.Id]=[int64]$_.WorkingSet64 };',
+        'ConvertTo-Json -Compress -InputObject @(Get-CimInstance Win32_Service | ForEach-Object {',
+        '[pscustomobject]@{ Name=$_.Name; DisplayName=$_.DisplayName; State=$_.State; StartMode=$_.StartMode; Description=$_.Description; ProcessId=[int]$_.ProcessId; Mem=$(if ($_.ProcessId -gt 0) { $mem[[int]$_.ProcessId] } else { $null }) } })',
+      ].join(' '),
     );
-    return list.map((s) => this.toServiceInfo(s)).sort((a, b) => a.displayName.localeCompare(b.displayName));
+    // Nhiều dịch vụ dùng chung svchost: RAM là của cả tiến trình chủ
+    return list
+      .map((s) => ({ ...this.toServiceInfo(s), pid: s.ProcessId > 0 ? s.ProcessId : null, memory: s.Mem ?? null }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
   }
 
   private toServiceInfo(s: { Name: string; DisplayName: string; State: string; StartMode: string; Description: string | null }): ServiceInfo {
@@ -640,6 +650,152 @@ public class MemoryCleaner {
       `;
       const out = (await this.ps(ramScript, 25000).catch(() => 'Đã gửi lệnh giải phóng RAM.')).trim();
       onLog(out || 'Đã giải phóng RAM hệ thống thành công.');
+      await this.optimizeRam({ dropCache: true }, onLog).catch(() => undefined);
     }
+
+    if (options.cleanDockerLogs) {
+      onLog('Docker Desktop lưu log container trong máy ảo WSL, hãy dùng "docker container prune" hoặc giới hạn log-opts.');
+    }
+
+    if (options.cleanDevCaches) {
+      onLog('Đang xoá cache npm / yarn / pip / NuGet HTTP / Composer...');
+      await this.ps(
+        [
+          '$dirs = @("$env:LOCALAPPDATA\\npm-cache", "$env:APPDATA\\npm-cache", "$env:LOCALAPPDATA\\Yarn\\Cache", "$env:LOCALAPPDATA\\pip\\cache", "$env:LOCALAPPDATA\\NuGet\\v3-cache", "$env:LOCALAPPDATA\\Composer");',
+          'Get-ChildItem C:\\Users -Directory -ErrorAction SilentlyContinue | ForEach-Object { $dirs += "$($_.FullName)\\AppData\\Local\\npm-cache"; $dirs += "$($_.FullName)\\AppData\\Local\\pip\\cache"; $dirs += "$($_.FullName)\\AppData\\Local\\Yarn\\Cache" };',
+          'foreach ($d in $dirs) { if (Test-Path $d) { Remove-Item "$d\\*" -Recurse -Force -ErrorAction SilentlyContinue } }',
+        ].join(' '),
+        120_000,
+      ).catch(() => null);
+      onLog('Đã dọn cache công cụ lập trình.');
+    }
+
+    if (options.cleanOldPackages) {
+      onLog('Đang dọn WinSxS (DISM /StartComponentCleanup) - có thể mất vài phút...');
+      const out = await this.ps('Dism.exe /Online /Cleanup-Image /StartComponentCleanup /Quiet; "Mã thoát DISM: $LASTEXITCODE"', 1_800_000).catch((e: Error) => e.message);
+      onLog(out.trim());
+    }
+
+    if (options.cleanCrashDumps) {
+      onLog('Đang xoá memory dump & minidump & báo cáo lỗi Windows...');
+      await this.ps(
+        'Remove-Item "C:\\Windows\\MEMORY.DMP","C:\\Windows\\Minidump\\*","C:\\ProgramData\\Microsoft\\Windows\\WER\\ReportArchive\\*","C:\\ProgramData\\Microsoft\\Windows\\WER\\ReportQueue\\*","$env:LOCALAPPDATA\\CrashDumps\\*" -Recurse -Force -ErrorAction SilentlyContinue',
+        60_000,
+      ).catch(() => null);
+      onLog('Đã xoá crash dump.');
+    }
+  }
+
+  // ---------------------------------------------------------------- Tối ưu RAM
+
+  async memoryDetail(): Promise<MemoryDetail> {
+    const d = await this.psJson<{ total: number; free: number; standby: number; modified: number; cache: number; swapTotal: number; swapUsed: number }>(
+      [
+        '$os = Get-CimInstance Win32_OperatingSystem;',
+        '$pm = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory -ErrorAction SilentlyContinue;',
+        '$pf = Get-CimInstance Win32_PageFileUsage -ErrorAction SilentlyContinue | Measure-Object -Property AllocatedBaseSize,CurrentUsage -Sum;',
+        '$standby = 0; if ($pm) { $standby = [int64]$pm.StandbyCacheCoreBytes + [int64]$pm.StandbyCacheNormalPriorityBytes + [int64]$pm.StandbyCacheReserveBytes };',
+        'ConvertTo-Json -Compress -InputObject @{',
+        ' total=[int64]$os.TotalVisibleMemorySize*1024; free=[int64]$os.FreePhysicalMemory*1024; standby=$standby;',
+        ' modified=$(if ($pm) { [int64]$pm.ModifiedPageListBytes } else { 0 }); cache=$(if ($pm) { [int64]$pm.CacheBytes } else { 0 });',
+        ' swapTotal=$(if ($pf) { [int64]$pf[0].Sum*1MB } else { 0 }); swapUsed=$(if ($pf) { [int64]$pf[1].Sum*1MB } else { 0 }) }',
+      ].join(' '),
+    );
+    // Windows: "Available" = Free + Standby
+    const available = d.free + d.standby;
+    return {
+      total: d.total,
+      available,
+      used: d.total - available,
+      cache: d.standby,
+      buffers: d.cache,
+      shared: 0,
+      swapTotal: d.swapTotal,
+      swapUsed: d.swapUsed,
+      dirty: d.modified,
+      tunables: {},
+    };
+  }
+
+  /** Gọi NtSetSystemInformation(SystemMemoryListInformation): purge Standby list / flush Modified list (cần quyền SYSTEM/Admin) */
+  async optimizeRam(options: RamOptimizeOptions, onLog: (msg: string) => void): Promise<void> {
+    const commands: string[] = [];
+    if (options.trimWorkingSets) commands.push('2'); // MemoryEmptyWorkingSets
+    if (options.dropCache) commands.push('3', '4'); // MemoryFlushModifiedList, MemoryPurgeStandbyList
+    if (commands.length) {
+      const script = `
+$code = @"
+using System;
+using System.Runtime.InteropServices;
+public static class ZenMem {
+  [DllImport("ntdll.dll")] static extern int NtSetSystemInformation(int cls, ref int info, int len);
+  [DllImport("advapi32.dll", SetLastError=true)] static extern bool OpenProcessToken(IntPtr h, int acc, out IntPtr tok);
+  [DllImport("advapi32.dll", SetLastError=true)] static extern bool LookupPrivilegeValue(string s, string n, out long luid);
+  [DllImport("advapi32.dll", SetLastError=true)] static extern bool AdjustTokenPrivileges(IntPtr tok, bool dis, ref TP nw, int len, IntPtr p, IntPtr r);
+  [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
+  [StructLayout(LayoutKind.Sequential, Pack=1)] struct TP { public int Count; public long Luid; public int Attr; }
+  static void Enable(string name) { IntPtr t; OpenProcessToken(GetCurrentProcess(), 0x28, out t); TP tp = new TP(); tp.Count = 1; tp.Attr = 2; LookupPrivilegeValue(null, name, out tp.Luid); AdjustTokenPrivileges(t, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero); }
+  public static int Run(int cmd) { Enable("SeProfileSingleProcessPrivilege"); Enable("SeIncreaseQuotaPrivilege"); return NtSetSystemInformation(80, ref cmd, 4); }
+}
+"@
+Add-Type -TypeDefinition $code -ErrorAction SilentlyContinue
+foreach ($c in @(${commands.join(',')})) { $r = [ZenMem]::Run([int]$c); "cmd $c => 0x{0:X}" -f $r }
+`;
+      const names: Record<string, string> = { '2': 'Thu gọn working set mọi tiến trình', '3': 'Ghi Modified list xuống đĩa', '4': 'Xả Standby list (cache)' };
+      const out = await this.ps(script, 60_000);
+      for (const line of out.split('\n')) {
+        const m = /cmd (\d) => 0x([0-9A-F]+)/.exec(line);
+        if (m) onLog(`${names[m[1]]}: ${m[2] === '0' ? 'thành công' : `mã NTSTATUS 0x${m[2]} (cần chạy ZenPanel bằng quyền SYSTEM/Administrator)`}`);
+      }
+    }
+    if (options.resetSwap) onLog('Windows tự quản lý pagefile, bỏ qua làm mới swap.');
+  }
+
+  async trimProcessMemory(pid: number): Promise<boolean> {
+    const out = await this.ps(
+      `Add-Type -Name ZenTrim -Namespace Zp -MemberDefinition '[DllImport("psapi.dll")] public static extern bool EmptyWorkingSet(IntPtr h);' -ErrorAction SilentlyContinue; $p = Get-Process -Id ${Math.trunc(pid)} -ErrorAction Stop; [Zp.ZenTrim]::EmptyWorkingSet($p.Handle)`,
+      20_000,
+    );
+    return /true/i.test(out);
+  }
+
+  async setMemoryTunable(): Promise<void> {
+    throw new Error('Windows không có tham số swappiness / vfs_cache_pressure');
+  }
+
+  // ---------------------------------------------------------------- Nhật ký hệ thống
+
+  async logSources(): Promise<LogSource[]> {
+    const list: LogSource[] = [
+      { id: 'eventlog:System', label: 'System', group: 'Hệ thống', kind: 'eventlog' },
+      { id: 'eventlog:Application', label: 'Application', group: 'Hệ thống', kind: 'eventlog' },
+      { id: 'eventlog:Errors', label: 'Chỉ lỗi & cảnh báo (System + Application)', group: 'Hệ thống', kind: 'eventlog' },
+      { id: 'eventlog:Security', label: 'Security (đăng nhập)', group: 'Bảo mật', kind: 'eventlog' },
+      { id: 'eventlog:OpenSSH', label: 'OpenSSH', group: 'Bảo mật', kind: 'eventlog' },
+    ];
+    const iis = await this.ps(
+      "Get-ChildItem 'C:\\inetpub\\logs\\LogFiles' -Recurse -Filter *.log -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 5 | ForEach-Object { $_.FullName }",
+      15_000,
+    ).catch(() => '');
+    for (const file of iis.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
+      list.push({ id: `file:${file}`, label: `IIS ${path.basename(path.dirname(file))}/${path.basename(file)}`, group: 'Web server', kind: 'file', path: file });
+    }
+    return list;
+  }
+
+  async readSystemLog(id: string, lines: number): Promise<string> {
+    const n = Math.min(2000, Math.max(10, Math.trunc(lines)));
+    const logName: Record<string, string> = {
+      'eventlog:System': "@{LogName='System'}",
+      'eventlog:Application': "@{LogName='Application'}",
+      'eventlog:Errors': "@{LogName='System','Application'; Level=1,2,3}",
+      'eventlog:Security': "@{LogName='Security'}",
+      'eventlog:OpenSSH': "@{LogName='OpenSSH/Operational'}",
+    };
+    if (!logName[id]) throw new Error('Nguồn log không hợp lệ');
+    return this.ps(
+      `$ev = Get-WinEvent -FilterHashtable ${logName[id]} -MaxEvents ${n} -ErrorAction SilentlyContinue; if (-not $ev) { 'Không có sự kiện nào (hoặc thiếu quyền đọc log này).' } else { [array]::Reverse($ev); $ev | ForEach-Object { '{0:yyyy-MM-dd HH:mm:ss} [{1}] {2}: {3}' -f $_.TimeCreated, $_.LevelDisplayName, $_.ProviderName, (($_.Message -split "\\r?\\n")[0]) } }`,
+      60_000,
+    );
   }
 }

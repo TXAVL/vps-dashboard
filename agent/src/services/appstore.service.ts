@@ -2,7 +2,8 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { generatePassword } from '../core/auth.js';
-import { jobLog } from '../core/jobs.js';
+import net from 'node:net';
+import { jobLog, jobResult, jobStep } from '../core/jobs.js';
 import { dataPath, JsonCollection, readJson, writeJson } from '../core/store.js';
 import { badRequest, HttpError, isPort } from '../core/validate.js';
 import type { OSAdapter } from '../adapters/base.adapter.js';
@@ -12,6 +13,23 @@ import { APP_GUIDES, type AppGuide } from './appstore.guides.js';
 import type { AppTunnelService } from './apptunnel.service.js';
 import type { DockerContainer, DockerService } from './docker.service.js';
 import type { TunnelState } from './tunnel.service.js';
+
+/** Đợi tới khi cổng TCP trên máy nhận kết nối (app khởi động xong) */
+async function waitForPort(port: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const ok = await new Promise<boolean>((resolve) => {
+      const socket = net.connect({ host: '127.0.0.1', port });
+      socket.setTimeout(2000);
+      socket.once('connect', () => (socket.destroy(), resolve(true)));
+      socket.once('timeout', () => (socket.destroy(), resolve(false)));
+      socket.once('error', () => resolve(false));
+    });
+    if (ok) return true;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  return false;
+}
 
 export interface InstalledApp {
   id: string;
@@ -705,6 +723,7 @@ export class AppStoreService {
 
   async install(id: string, params: Record<string, string>): Promise<void> {
     const app = findApp(id);
+    jobStep('Kiểm tra máy chủ');
     jobLog(`Ứng dụng: ${app.name}`);
     try {
       const disk = await this.assertSufficientDiskSpace(app);
@@ -717,24 +736,41 @@ export class AppStoreService {
     }
 
     if (app.appType === 'native') {
+      jobStep('Tải & cài đặt bộ cài');
       const dir = appDir(app.id);
       await this.installNativeApp(app, dir);
       installed.upsert({ id, params, installedAt: new Date().toISOString() });
-      jobLog(`\n🎉 Cài đặt hoàn tất ${app.name}!`);
+      jobLog(`
+🎉 Cài đặt hoàn tất ${app.name}!`);
+      jobResult({ appId: id, native: true });
       return;
     }
 
+    jobStep('Tạo cấu hình docker-compose');
     const dir = await this.writeFiles(app, params);
-    jobLog('Đang tải image và khởi động container (lần đầu có thể mất vài phút)...');
+    const project = ['-p', projectName(id)];
     try {
-      await this.docker.compose(['-p', projectName(id), 'up', '-d'], dir);
+      jobStep('Tải image từ Docker Hub');
+      jobLog('Đang tải image (lần đầu có thể mất vài phút)...');
+      await this.docker.compose([...project, 'pull'], dir);
+      jobStep('Khởi động container');
+      await this.docker.compose([...project, 'up', '-d', '--remove-orphans'], dir);
     } catch (err) {
       // Dọn dẹp nếu cài thất bại để có thể cài lại
-      await this.docker.compose(['-p', projectName(id), 'down'], dir).catch(() => undefined);
+      await this.docker.compose([...project, 'down'], dir).catch(() => undefined);
       throw err;
     }
     installed.upsert({ id, params, installedAt: new Date().toISOString() });
-    if (app.webPort) jobLog(`\n➜ Mở app: bấm "Truy cập" trên thẻ ${app.name} → "Bật link public", hoặc http://<IP máy chủ>:${params[app.webPort]}`);
+
+    let ready = true;
+    if (app.webPort && params[app.webPort]) {
+      jobStep('Chờ ứng dụng sẵn sàng');
+      ready = await waitForPort(Number(params[app.webPort]), 45_000);
+      jobLog(ready ? `✔ Cổng web ${params[app.webPort]} đã phản hồi` : `⚠ Cổng ${params[app.webPort]} chưa phản hồi sau 45 giây — app có thể vẫn đang khởi tạo lần đầu, hãy thử mở lại sau ít phút.`);
+      jobLog(`
+➜ Mở app: bấm "Truy cập" trên thẻ ${app.name} → "Bật link public", hoặc http://<IP máy chủ>:${params[app.webPort]}`);
+    }
+    jobResult({ appId: id, webPort: app.webPort ? Number(params[app.webPort]) : null, ready });
   }
 
   /** Đổi tham số / nạp lại API key AI rồi tạo lại container (dữ liệu trong volume giữ nguyên) */
@@ -812,8 +848,10 @@ export class AppStoreService {
     }
 
     if (action === 'update') {
+      jobStep('Tải image mới nhất');
       jobLog(`Đang cập nhật image mới nhất cho ứng dụng ${app.name}...`);
       await this.docker.compose([...project, 'pull'], dir);
+      jobStep('Tạo lại container');
       const out = await this.docker.compose([...project, 'up', '-d', '--remove-orphans'], dir);
       jobLog(out || `✓ Cập nhật ${app.name} thành công!`);
     } else if (action === 'start') {

@@ -18,11 +18,14 @@ import { dockerRoutes } from './routes/docker.routes.js';
 import { fileDownloadRoute, fileRoutes } from './routes/files.routes.js';
 import { panelRoutes } from './routes/panel.routes.js';
 import { procRoutes } from './routes/procs.routes.js';
-import { aiGatewayRoutes, aiPanelRoutes, GATEWAY_PREFIXES } from './routes/ai.routes.js';
+import { aiGatewayRoutes, aiPanelRoutes, GATEWAY_PREFIXES, ollamaRoutes } from './routes/ai.routes.js';
 import { httpRoutes } from './routes/http.routes.js';
 import { phpRoutes } from './routes/php.routes.js';
 import { siteRoutes } from './routes/sites.routes.js';
 import { systemRoutes } from './routes/system.routes.js';
+import { opsRoutes } from './routes/ops.routes.js';
+import { BackupService } from './services/backup.service.js';
+import { LogService } from './services/logs.service.js';
 import { AiService } from './services/ai.service.js';
 import { AiGatewayService } from './services/aigateway.service.js';
 import { AiCompanyService } from './services/aicompany.service.js';
@@ -67,13 +70,15 @@ async function main() {
   const hub = new DockerHubService();
   const procs = new ProcessManager(adapter);
   const speedtest = new SpeedtestService();
-  const databases = new DatabaseService(docker, apps);
+  const databases = new DatabaseService(docker, apps, adapter);
   const sites = new SiteService(adapter);
   const tasks = new TaskService(adapter);
   const updates = new UpdateService(adapter, pkg.version);
   const cloudflare = new CloudflareService();
   const clean = new CleanService(adapter, docker);
   const php = new PhpService(adapter);
+  const backups = new BackupService(adapter, sites, databases, docker);
+  const logs = new LogService(adapter, sites);
 
   const app = Fastify({ logger: { level: process.env.ZENPANEL_LOG_LEVEL ?? 'warn' }, bodyLimit: 10 * 1024 * 1024 });
 
@@ -111,6 +116,8 @@ async function main() {
   await app.register(fileDownloadRoute);
   // AI Gateway chuẩn OpenAI, xác thực bằng API key riêng của gateway
   for (const prefix of GATEWAY_PREFIXES) await app.register(async (scope) => aiGatewayRoutes(scope, { gateway }), { prefix });
+  // API chuẩn Anthropic dưới /zen (ANTHROPIC_BASE_URL=https://<host>/zen -> /zen/v1/messages đã có ở trên)
+  for (const prefix of ['/ollama', '/ollama/k/:key']) await app.register(async (scope) => ollamaRoutes(scope, { gateway }), { prefix });
 
   // Mọi API còn lại bắt buộc đăng nhập
   await app.register(async (secured) => {
@@ -124,6 +131,7 @@ async function main() {
     await phpRoutes(secured, { php });
     await siteRoutes(secured, ctx, { sites, cloudflare });
     await panelRoutes(secured, ctx, { updates, tasks, ai, speedtest });
+    await opsRoutes(secured, { backups, logs, clean, databases });
   });
   // WebSocket tự xác thực bằng ?token= (trình duyệt không gửi được header Authorization)
   await app.register(async (wsScope) => realtimeRoutes(wsScope, ctx));
@@ -139,7 +147,7 @@ async function main() {
     // SPA: mọi đường dẫn không phải API trả về index.html; các đường dẫn gateway trả về lỗi JSON chuẩn OpenAI
     app.setNotFoundHandler((req, reply) => {
       const url = req.url;
-      const isGateway = url.startsWith('/zen/') || url.startsWith('/ai/') || url.startsWith('/v1/') || url === '/v1' || url === '/zen/v1' || url === '/ai/v1';
+      const isGateway = url.startsWith('/ollama') || url.startsWith('/zen/') || url.startsWith('/ai/') || url.startsWith('/v1/') || url === '/v1' || url === '/zen/v1' || url === '/ai/v1';
       if (isGateway) {
         return reply
           .code(404)
@@ -166,6 +174,8 @@ async function main() {
   await app.listen({ host: config.host, port: config.port });
   void sites.bootstrap();
   updates.startAuto();
+  clean.startAuto();
+  backups.startScheduler();
   appTunnels.bootstrap();
   void procs.bootstrap();
 

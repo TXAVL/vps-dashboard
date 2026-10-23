@@ -30,9 +30,12 @@ export const DEFAULT_PREFS: PanelPrefs = {
   vpsPrice: '',
   expiryWarnDays: 7,
   autoCheckUpdate: true,
-  autoDownloadUpdate: true,
+  autoDownloadUpdate: false,
   updateCheckMinutes: 360,
   publicHost: '',
+  autoRamOptimize: false,
+  autoRamThreshold: 85,
+  autoRamIntervalMin: 15,
 };
 
 /** Áp dụng giao diện lên <html data-theme data-base> (CSS biến màu nằm trong index.css) */

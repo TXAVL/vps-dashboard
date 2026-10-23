@@ -30,6 +30,8 @@ const ProcManager = lazy(() => import('./views/ProcManager'));
 const AiGateway = lazy(() => import('./views/AiGateway'));
 const ApiTester = lazy(() => import('./views/ApiTester'));
 const Cleanup = lazy(() => import('./views/Cleanup'));
+const Backups = lazy(() => import('./views/Backups'));
+const Logs = lazy(() => import('./views/Logs'));
 
 export function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -50,6 +52,8 @@ export function App() {
               <Routes>
                 <Route path="/" element={<Overview />} />
                 <Route path="/cleanup" element={<Cleanup />} />
+                <Route path="/backups" element={<Backups />} />
+                <Route path="/logs" element={<Logs />} />
                 <Route path="/processes" element={<Processes />} />
                 <Route path="/services" element={<Services />} />
                 <Route path="/firewall" element={<Firewall />} />

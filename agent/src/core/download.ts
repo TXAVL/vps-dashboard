@@ -12,12 +12,26 @@ export function binDir(): string {
   return dataPath('bin');
 }
 
-export async function downloadFile(url: string, target: string): Promise<void> {
+export async function downloadFile(url: string, target: string, onProgress?: (received: number, total: number | null) => void): Promise<void> {
   await mkdir(path.dirname(target), { recursive: true });
   const res = await fetch(url, { redirect: 'follow' });
   if (!res.ok || !res.body) throw new Error(`Không tải được ${url} (HTTP ${res.status})`);
   const tmp = `${target}.download`;
-  await pipeline(Readable.fromWeb(res.body as ReadableStream), createWriteStream(tmp));
+  const total = Number(res.headers.get('content-length')) || null;
+  let received = 0;
+  let lastReport = 0;
+  const source = Readable.fromWeb(res.body as ReadableStream);
+  if (onProgress) {
+    source.on('data', (chunk: Buffer) => {
+      received += chunk.length;
+      if (Date.now() - lastReport > 300) {
+        lastReport = Date.now();
+        onProgress(received, total);
+      }
+    });
+  }
+  await pipeline(source, createWriteStream(tmp));
+  onProgress?.(received, total);
   await rename(tmp, target);
 }
 

@@ -1,4 +1,5 @@
 import { useState, useMemo, type FormEvent } from 'react';
+import { useSearchParams } from 'react-router';
 import {
   Boxes,
   Store,
@@ -186,7 +187,9 @@ function RunContainerModal({
 export default function Docker() {
   const info = useApi<DockerInfo>('/api/docker/info');
   const ready = Boolean(info.data?.running);
-  const [tab, setTab] = useState<Tab>('containers');
+  const [params, setParams] = useSearchParams();
+  const tab = (params.get('tab') as Tab | null) ?? 'containers';
+  const setTab = (next: Tab) => setParams(next === 'containers' ? {} : { tab: next }, { replace: true });
   const containers = useApi<DockerContainer[]>(ready ? '/api/docker/containers' : null, 10000);
   const stats = useApi<Stats>(ready && tab === 'containers' ? '/api/docker/stats' : null, 15000);
   const images = useApi<DockerImage[]>(ready && tab === 'images' ? '/api/docker/images' : null);

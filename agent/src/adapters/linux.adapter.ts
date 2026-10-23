@@ -7,6 +7,9 @@ import { chmod, readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import type {
   CleanExecutionOptions,
+  LogSource,
+  MemoryDetail,
+  RamOptimizeOptions,
   SystemCleanScan,
   DiskUsage,
   FirewallPersistence,
@@ -319,6 +322,23 @@ export class LinuxAdapter implements OSAdapter {
       if (services.has(unit) || unit.includes('@')) continue;
       const name = unit.replace(/\.service$/, '');
       services.set(unit, { name, displayName: name, description: '', state: 'stopped', startup });
+    }
+    // PID + RAM của dịch vụ đang chạy (systemctl show theo lô để không gọi từng cái)
+    const runningUnits = [...services.entries()].filter(([, s]) => s.state === 'running').map(([unit]) => unit);
+    for (let i = 0; i < runningUnits.length; i += 80) {
+      const chunk = runningUnits.slice(i, i + 80);
+      const shown = await exec('systemctl', ['show', ...chunk, '--property=Id,MainPID,MemoryCurrent', '--no-pager']).catch(() => null);
+      if (!shown || shown.code !== 0) continue;
+      for (const block of shown.stdout.split(/\n\s*\n/)) {
+        const prop = (key: string) => new RegExp(`^${key}=(.*)$`, 'm').exec(block)?.[1]?.trim();
+        const id = prop('Id');
+        const service = id ? services.get(id) : undefined;
+        if (!service) continue;
+        const pid = Number(prop('MainPID'));
+        const mem = Number(prop('MemoryCurrent'));
+        service.pid = pid > 0 ? pid : null;
+        service.memory = Number.isFinite(mem) && mem > 0 && mem < 2 ** 60 ? mem : null;
+      }
     }
     return [...services.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -923,5 +943,151 @@ export class LinuxAdapter implements OSAdapter {
       await exec('sh', ['-c', 'sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true']);
       onLog('Đã gửi tín hiệu giải phóng RAM cache thành công.');
     }
+
+    if (options.cleanDockerLogs) {
+      onLog('Đang cắt log container Docker (*-json.log) lớn hơn 10 MB...');
+      const res = await exec('sh', ['-c', 'n=0; for f in /var/lib/docker/containers/*/*-json.log; do [ -f "$f" ] || continue; s=$(stat -c%s "$f"); if [ "$s" -gt 10485760 ]; then truncate -s 0 "$f"; n=$((n+1)); fi; done; echo $n']);
+      onLog(`Đã cắt ${res.stdout.trim() || 0} file log container.`);
+    }
+
+    if (options.cleanDevCaches) {
+      onLog('Đang xoá cache npm / yarn / pip / composer / go build của mọi user...');
+      await exec('sh', ['-c', 'for h in /root /home/*; do rm -rf "$h/.npm/_cacache" "$h/.cache/yarn" "$h/.cache/pip" "$h/.cache/composer" "$h/.cache/go-build" "$h/.cache/node-gyp" 2>/dev/null; done; command -v npm >/dev/null && npm cache clean --force >/dev/null 2>&1; true']);
+      onLog('Đã dọn cache công cụ lập trình.');
+    }
+
+    if (options.cleanOldPackages) {
+      if (await this.findExecutable('snap')) {
+        onLog('Đang gỡ các bản snap cũ (disabled revisions)...');
+        await exec('sh', ['-c', `snap list --all | awk '/disabled/{print $1, $3}' | while read name rev; do snap remove "$name" --revision="$rev"; done`]);
+      }
+      if (await this.findExecutable('apt-get')) {
+        onLog('Đang gỡ kernel cũ & gói mồ côi (apt-get autoremove --purge)...');
+        await exec('apt-get', ['autoremove', '--purge', '-y', '-q'], { timeout: 600_000 });
+      }
+      onLog('Đã dọn gói cũ.');
+    }
+
+    if (options.cleanCrashDumps) {
+      onLog('Đang xoá core dump / crash report...');
+      await exec('sh', ['-c', 'rm -rf /var/crash/* /var/lib/systemd/coredump/* /var/lib/apport/coredump/* 2>/dev/null; find / -xdev -maxdepth 3 -name "core.[0-9]*" -type f -delete 2>/dev/null; true']);
+      onLog('Đã xoá crash dump.');
+    }
+  }
+
+  // ---------------------------------------------------------------- Tối ưu RAM
+
+  private async meminfo(): Promise<Record<string, number>> {
+    const text = await readFile('/proc/meminfo', 'utf8');
+    const out: Record<string, number> = {};
+    for (const line of text.split('\n')) {
+      const m = /^(\w+(?:\(\w+\))?):\s+(\d+)/.exec(line);
+      if (m) out[m[1]] = Number(m[2]) * 1024;
+    }
+    return out;
+  }
+
+  async memoryDetail(): Promise<MemoryDetail> {
+    const m = await this.meminfo();
+    const tunables: Record<string, string> = {};
+    for (const key of ['swappiness', 'vfs_cache_pressure', 'overcommit_memory', 'min_free_kbytes']) {
+      tunables[`vm.${key}`] = (await readFile(`/proc/sys/vm/${key}`, 'utf8').catch(() => '')).trim();
+    }
+    const total = m.MemTotal ?? os.totalmem();
+    const available = m.MemAvailable ?? os.freemem();
+    return {
+      total,
+      available,
+      used: total - available,
+      cache: (m.Cached ?? 0) + (m.SReclaimable ?? 0),
+      buffers: m.Buffers ?? 0,
+      shared: m.Shmem ?? 0,
+      swapTotal: m.SwapTotal ?? 0,
+      swapUsed: (m.SwapTotal ?? 0) - (m.SwapFree ?? 0),
+      dirty: m.Dirty ?? 0,
+      tunables,
+    };
+  }
+
+  async optimizeRam(options: RamOptimizeOptions, onLog: (msg: string) => void): Promise<void> {
+    if (options.dropCache) {
+      onLog('sync + drop_caches=3: thu hồi PageCache, dentries, inodes...');
+      await exec('sh', ['-c', 'sync; echo 3 > /proc/sys/vm/drop_caches']);
+    }
+    if (options.trimWorkingSets) {
+      onLog('compact_memory: gom vùng nhớ phân mảnh để kernel cấp phát trang lớn tốt hơn...');
+      await exec('sh', ['-c', 'echo 1 > /proc/sys/vm/compact_memory 2>/dev/null || true']);
+    }
+    if (options.resetSwap) {
+      const m = await this.meminfo();
+      const swapUsed = (m.SwapTotal ?? 0) - (m.SwapFree ?? 0);
+      if (!swapUsed) onLog('Swap đang trống, bỏ qua.');
+      else if ((m.MemAvailable ?? 0) < swapUsed * 1.3) onLog(`Bỏ qua làm mới swap: RAM trống (${Math.round((m.MemAvailable ?? 0) / 1048576)} MB) không đủ chứa ${Math.round(swapUsed / 1048576)} MB đang nằm trong swap.`);
+      else {
+        onLog(`Đưa ${Math.round(swapUsed / 1048576)} MB từ swap về RAM (swapoff -a && swapon -a)...`);
+        await execOk('sh', ['-c', 'swapoff -a && swapon -a'], { timeout: 600_000 });
+      }
+    }
+  }
+
+  async trimProcessMemory(): Promise<boolean> {
+    return false;
+  }
+
+  async setMemoryTunable(key: 'vm.swappiness' | 'vm.vfs_cache_pressure', value: number): Promise<void> {
+    const v = Math.round(value);
+    if (key === 'vm.swappiness' && (v < 0 || v > 200)) throw new Error('swappiness phải trong khoảng 0-200');
+    if (key === 'vm.vfs_cache_pressure' && (v < 1 || v > 1000)) throw new Error('vfs_cache_pressure phải trong khoảng 1-1000');
+    await execOk('sysctl', ['-w', `${key}=${v}`]);
+    const file = '/etc/sysctl.d/99-zenpanel.conf';
+    const current = await readFile(file, 'utf8').catch(() => '');
+    const lines = current.split('\n').filter((l) => l.trim() && !l.startsWith(`${key}`));
+    await writeFile(file, `${['# ZenPanel - tối ưu bộ nhớ', ...lines.filter((l) => !l.startsWith('#')), `${key} = ${v}`].join('\n')}\n`);
+  }
+
+  // ---------------------------------------------------------------- Nhật ký hệ thống
+
+  async logSources(): Promise<LogSource[]> {
+    const list: LogSource[] = [];
+    if (await this.findExecutable('journalctl')) {
+      list.push(
+        { id: 'journal:all', label: 'Toàn bộ hệ thống (journal)', group: 'Hệ thống', kind: 'journal' },
+        { id: 'journal:kernel', label: 'Kernel (dmesg)', group: 'Hệ thống', kind: 'journal' },
+        { id: 'journal:ssh', label: 'SSH đăng nhập', group: 'Bảo mật', kind: 'journal' },
+        { id: 'journal:errors', label: 'Chỉ lỗi (priority ≤ err)', group: 'Hệ thống', kind: 'journal' },
+      );
+    }
+    const files: [string, string, string][] = [
+      ['/var/log/syslog', 'Syslog', 'Hệ thống'],
+      ['/var/log/messages', 'Messages', 'Hệ thống'],
+      ['/var/log/kern.log', 'Kernel log', 'Hệ thống'],
+      ['/var/log/auth.log', 'Xác thực (auth.log)', 'Bảo mật'],
+      ['/var/log/secure', 'Xác thực (secure)', 'Bảo mật'],
+      ['/var/log/fail2ban.log', 'Fail2ban', 'Bảo mật'],
+      ['/var/log/ufw.log', 'UFW firewall', 'Bảo mật'],
+      ['/var/log/nginx/access.log', 'Nginx access', 'Web server'],
+      ['/var/log/nginx/error.log', 'Nginx error', 'Web server'],
+      ['/var/log/apache2/error.log', 'Apache error', 'Web server'],
+      ['/var/log/caddy/caddy.log', 'Caddy', 'Web server'],
+      ['/var/log/mysql/error.log', 'MySQL error', 'Database'],
+      ['/var/log/dpkg.log', 'Cài gói (dpkg)', 'Hệ thống'],
+      ['/var/log/cloud-init-output.log', 'Cloud-init', 'Hệ thống'],
+    ];
+    for (const [file, label, group] of files) if (existsSync(file)) list.push({ id: `file:${file}`, label, group, kind: 'file', path: file });
+    return list;
+  }
+
+  async readSystemLog(id: string, lines: number): Promise<string> {
+    const n = String(Math.min(5000, Math.max(10, lines)));
+    const base = ['--no-pager', '-n', n, '--output=short-iso'];
+    const args: Record<string, string[]> = {
+      'journal:all': base,
+      'journal:kernel': ['-k', ...base],
+      'journal:ssh': ['-u', 'ssh', '-u', 'sshd', ...base],
+      'journal:errors': ['-p', 'err', ...base],
+    };
+    if (!args[id]) throw new Error('Nguồn log không hợp lệ');
+    const { stdout, stderr } = await exec('journalctl', args[id], { timeout: 30_000 });
+    return stdout || stderr;
   }
 }

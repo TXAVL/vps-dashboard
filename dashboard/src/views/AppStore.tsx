@@ -59,13 +59,13 @@ import { useFeedback } from '../components/feedback';
 import { useJobs } from '../components/jobs';
 import { Badge, Button, CopyButton, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, SearchInput, Spinner, StatusDot, Tabs, Toggle, cn, type Tone } from '../components/ui';
 import { del, get, post } from '../lib/api';
-import { formatBytes } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { usePanel, usePublicHost } from '../lib/panel';
 import type { AppView, DockerInfo, Job, TunnelState } from '../lib/types';
 import { DockerMissing } from './Docker';
 import { CustomAppModal } from './CustomAppModal';
 import { AppRepoModal } from './AppRepoModal';
+import { AppInstallModal } from '../components/modals/AppInstallModal';
 
 const ICONS: Record<string, LucideIcon> = {
   Globe, Newspaper, Database, Zap, Leaf, Table, Table2, Container, Activity, Workflow, GitBranch, HardDrive, FolderOpen, Code, KeyRound, Cloud,
@@ -150,109 +150,6 @@ function ParamFields({ app, values, onChange, editing }: { app: AppView; values:
         </Field>
       ))}
     </>
-  );
-}
-
-function InstallModal({ app, onClose, onInstalled }: { app: AppView; onClose: () => void; onInstalled: () => void }) {
-  const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(app.params.map((p) => [p.key, p.default !== undefined ? String(p.default) : ''])));
-  const [installing, setInstalling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { runJob } = useJobs();
-  const { latest } = usePanel();
-
-  const mainDisk = latest?.disks?.[0];
-  const freeBytes = mainDisk ? mainDisk.total - mainDisk.used : 0;
-  const freeGb = freeBytes > 0 ? (freeBytes / (1024 * 1024 * 1024)).toFixed(1) : '0';
-  const requiredBytes = (app.appType === 'native' ? 0.5 : app.category === 'ai' ? 4.0 : 2.5) * 1024 * 1024 * 1024;
-  const requiredGb = (requiredBytes / (1024 * 1024 * 1024)).toFixed(1);
-  const isInsufficient = freeBytes > 0 && freeBytes < requiredBytes;
-  const isCritical = freeBytes > 0 && freeBytes < 1.5 * 1024 * 1024 * 1024;
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setInstalling(true);
-    setError(null);
-    try {
-      // Lỗi nhập liệu và kiểm tra ổ đĩa trả về ngay; cài đặt thật chạy nền và mở cửa sổ log
-      const job = await post<Job>(`/api/apps/${app.id}/install`, values);
-      onClose();
-      void runJob(() => Promise.resolve(job), (done) => done.status === 'success' && onInstalled());
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setInstalling(false);
-    }
-  };
-
-  return (
-    <Modal open onClose={installing ? () => undefined : onClose} title={`Cài đặt ${app.name}`}>
-      <form onSubmit={submit} className="space-y-4">
-        <div className="flex items-start gap-3">
-          <AppIcon app={app} />
-          <div>
-            <p className="text-sm text-slate-300">{app.description}</p>
-            {app.isCompatible === false && (
-              <p className="mt-1 text-xs text-amber-300">
-                ⚠️ Chú ý: Ứng dụng này yêu cầu {app.platform === 'windows' ? 'Windows' : 'Linux'}{app.requiresGui ? ' có giao diện Desktop (GUI)' : ''}.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Cảnh báo kiểm tra dung lượng ổ đĩa tránh full disk */}
-        {mainDisk && (
-          <div
-            className={cn(
-              'flex flex-col gap-1.5 rounded-xl border p-3 text-xs',
-              isCritical
-                ? 'border-zen-red/50 bg-zen-red/10 text-red-200'
-                : isInsufficient
-                  ? 'border-zen-amber/50 bg-zen-amber/10 text-amber-200'
-                  : 'border-slate-700/50 bg-ink-950/40 text-slate-300',
-            )}
-          >
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 font-semibold">
-                <HardDrive className="size-3.5" />
-                Ổ đĩa {mainDisk.mount}
-              </span>
-              <span className="mono font-bold">
-                {formatBytes(freeBytes)} còn trống / {formatBytes(mainDisk.total)}
-              </span>
-            </div>
-            {isInsufficient && (
-              <p className="mt-1 leading-relaxed">
-                ⚠️ {app.name} yêu cầu an toàn tối thiểu <b className="text-white">{requiredGb} GB</b> trống để tránh làm đầy ổ đĩa (full disk) gây treo máy chủ. Hiện chỉ còn {freeGb} GB.{' '}
-                <Link to="/cleanup" className="font-bold underline text-blue-300 hover:text-white" onClick={onClose}>
-                  Vào tab Dọn dẹp để giải phóng ngay →
-                </Link>
-              </p>
-            )}
-          </div>
-        )}
-
-        {app.usesAiKeys && (
-          <Notice icon={Sparkles}>
-            App này dùng các API key AI đã lưu trong{' '}
-            <Link to="/ai" className="font-semibold text-blue-300 underline">
-              AI Gateway
-            </Link>
-            . Thêm key trước khi cài, hoặc thêm sau rồi bấm "Cấu hình lại".
-          </Notice>
-        )}
-        <ParamFields app={app} values={values} onChange={setValues} />
-        {error && <ErrorBox message={error} />}
-        <Notice>Sau khi bấm cài đặt, cửa sổ log sẽ hiện tiến trình tải image và khởi động container. Cài xong, ZenPanel mở hướng dẫn truy cập app.</Notice>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={installing}>
-            Huỷ
-          </Button>
-          <Button type="submit" variant="primary" icon={Download} loading={installing} disabled={isCritical}>
-            {isCritical ? 'Ổ đĩa quá đầy (hãy dọn dẹp)' : 'Cài đặt'}
-          </Button>
-        </div>
-      </form>
-    </Modal>
   );
 }
 
@@ -670,7 +567,7 @@ export default function AppStore() {
   const [kernelStore, setKernelStore] = useState<KernelStore>('all');
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]['id']>('all');
   const [query, setQuery] = useState('');
-  const [installing, setInstalling] = useState<AppView | null>(null);
+  const [installing, setInstalling] = useState<{ app: AppView; mode: 'install' | 'update' } | null>(null);
   const [access, setAccess] = useState<string | null>(null);
   const [reconfig, setReconfig] = useState<AppView | null>(null);
   const [wizard, setWizard] = useState<AppView | null>(null);
@@ -691,7 +588,7 @@ export default function AppStore() {
     if (!toInstall || !apps.data) return;
     const target = apps.data.find((a) => a.id === toInstall);
     if (target && !target.installed) {
-      setInstalling(target);
+      setInstalling({ app: target, mode: 'install' });
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, apps.data, setSearchParams]);
@@ -730,9 +627,12 @@ export default function AppStore() {
   const installedCount = (apps.data ?? []).filter((a) => a.installed).length;
 
   const act = async (app: AppView, action: string, label: string) => {
+    if (action === 'update') {
+      setInstalling({ app, mode: 'update' });
+      return;
+    }
     setBusy(app.id);
-    if (action === 'update') await runJob(() => post<Job>(`/api/apps/${app.id}/update`));
-    else await run(() => post(`/api/apps/${app.id}/${action}`), `${label}: ${app.name}`);
+    await run(() => post(`/api/apps/${app.id}/${action}`), `${label}: ${app.name}`);
     setBusy(null);
     await apps.reload();
   };
@@ -986,7 +886,7 @@ export default function AppStore() {
                               size="sm"
                               variant="primary"
                               icon={Download}
-                              onClick={() => setInstalling(app)}
+                              onClick={() => setInstalling({ app, mode: 'install' })}
                               className="flex-1"
                               disabled={app.isCompatible === false}
                               title={app.isCompatible === false ? 'Ứng dụng không tương thích với máy này' : undefined}
@@ -1005,7 +905,7 @@ export default function AppStore() {
                             size="sm"
                             variant="primary"
                             icon={Download}
-                            onClick={() => setInstalling(app)}
+                            onClick={() => setInstalling({ app, mode: 'install' })}
                             className="w-full"
                             disabled={app.isCompatible === false}
                             title={app.isCompatible === false ? 'Ứng dụng không tương thích với máy này' : undefined}
@@ -1093,11 +993,15 @@ export default function AppStore() {
       )}
 
       {installing && (
-        <InstallModal
-          app={installing}
+        <AppInstallModal
+          app={installing.app}
+          mode={installing.mode}
+          icon={<AppIcon app={installing.app} />}
           onClose={() => setInstalling(null)}
-          onInstalled={() => {
-            const id = installing.id;
+          onDone={() => void apps.reload()}
+          onOpenAccess={() => {
+            const id = installing.app.id;
+            setInstalling(null);
             void apps.reload().then(() => setAccess(id));
           }}
         />

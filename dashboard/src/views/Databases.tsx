@@ -3,11 +3,12 @@ import { Link, useNavigate } from 'react-router';
 import { Activity, AlertTriangle, Database, DoorOpen, ExternalLink, Globe, Plus, RefreshCw, Server, Table2, Trash2 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Secret, Spinner, cn, td, th, tr } from '../components/ui';
-import { del, post } from '../lib/api';
+import { del, get, post } from '../lib/api';
+import { useJobs } from '../components/jobs';
 import { formatBytes } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { usePublicHost } from '../lib/panel';
-import type { AppView, DatabaseItem, DatabaseServer, ServiceInfo, TunnelState } from '../lib/types';
+import type { AppView, DatabaseItem, DatabaseServer, Job, ServiceInfo, TunnelState } from '../lib/types';
 
 const ENGINE_LABEL: Record<DatabaseServer['engine'], string> = { mysql: 'MySQL', mariadb: 'MariaDB', postgres: 'PostgreSQL', redis: 'Redis', mongodb: 'MongoDB' };
 
@@ -103,28 +104,55 @@ function connectionUri(server: DatabaseServer, host: string, db?: string, user?:
   return `${SCHEME[server.engine]}://${u}:${pw}@${h}:${server.port}${path}`;
 }
 
+interface RemoteCheck { ok: boolean | null; detail: string }
+interface RemoteStatus { port: number; publicHost: string | null; binding: RemoteCheck; engine: RemoteCheck; firewall: RemoteCheck; local: RemoteCheck; internet: RemoteCheck; open: boolean }
+
 function ExternalAccess({ server }: { server: DatabaseServer }) {
   const { host, rawIp, isTunnel } = usePublicHost();
   const [source_, setSource] = useState('');
-  const [busy, setBusy] = useState(false);
-  const { run } = useFeedback();
+  const [status, setStatus] = useState<RemoteStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+  const { runJob } = useJobs();
+  const { toast } = useFeedback();
 
-  // Host thực tế để kết nối: nếu đang dùng trycloudflare thì bắt buộc dùng IP công khai thực tế của VPS
-  const effectiveHost = isTunnel ? (rawIp || '<IP_VPS_CỦA_BẠN>') : host;
+  const effectiveHost = status?.publicHost || (isTunnel ? rawIp || '<IP_VPS>' : host);
 
-  const open = async () => {
-    setBusy(true);
-    await run(
-      () => post('/api/firewall/rules', { action: 'allow', port: String(server.port), protocol: 'tcp', source: source_.trim() || null, description: `ZenPanel - ${server.name}` }),
-      source_.trim() ? `Đã cho phép ${source_.trim()} kết nối cổng ${server.port}` : `Đã mở cổng ${server.port} cho mọi IP`,
-    );
-    setBusy(false);
+  const check = async () => {
+    setChecking(true);
+    try {
+      setStatus(await get<RemoteStatus>(`/api/databases/${server.appId}/remote`));
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    } finally {
+      setChecking(false);
+    }
   };
+
+  const toggle = async (enabled: boolean) => {
+    await runJob(
+      () => post<Job>(`/api/databases/${server.appId}/remote`, { enabled, source: source_.trim() || null }),
+      (job) => {
+        if (job.result) setStatus(job.result as RemoteStatus);
+        else void check();
+      },
+    );
+  };
+
+  const layers: [string, RemoteCheck | undefined][] = [
+    ['Docker publish cổng', status?.binding],
+    ['Cấu hình database', status?.engine],
+    ['Tường lửa máy chủ', status?.firewall],
+    ['Lắng nghe nội bộ', status?.local],
+    ['Từ Internet vào', status?.internet],
+  ];
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-700/50 bg-ink-950/50 p-4 text-sm">
-      <div className="flex items-center gap-2 font-semibold text-white">
-        <Globe className="size-4 text-zen-blue" /> Kết nối từ máy khác / bên ngoài
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2 font-semibold text-white">
+          <Globe className="size-4 text-zen-blue" /> Truy cập từ xa
+        </span>
+        {status && <Badge tone={status.open ? 'green' : status.internet.ok === false ? 'red' : 'amber'}>{status.open ? 'Đã mở ra Internet' : 'Chưa thông'}</Badge>}
       </div>
       <ConnectionInfo rows={[['Host', effectiveHost], ['Port', String(server.port)], ['User', server.username], ['Password', server.password]]} />
       <div className="flex items-center gap-2 rounded-lg bg-ink-950/80 px-3 py-2">
@@ -132,24 +160,40 @@ function ExternalAccess({ server }: { server: DatabaseServer }) {
         <CopyButton value={connectionUri(server, effectiveHost)} />
       </div>
 
-      <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 text-xs text-amber-200 space-y-1">
-        <p className="font-semibold flex items-center gap-1.5 text-amber-300">
-          <AlertTriangle className="size-3.5 shrink-0" /> Lưu ý quan trọng khi kết nối từ bên ngoài:
-        </p>
-        <ul className="list-disc pl-4 space-y-0.5 text-slate-300">
-          <li>Database dùng giao thức TCP trực tiếp nên <b>không đi qua domain trycloudflare.com</b> được. Phải kết nối bằng IP Public của VPS hoặc domain trỏ DNS (A record) thẳng về IP VPS.</li>
-          <li>Nếu bạn dùng VPS Cloud (AWS, Google Cloud, Oracle Cloud, Azure, Vultr...), sau khi bấm "Mở cổng" bên dưới, bạn <b>bắt buộc phải mở thêm cổng {server.port} trong Security Group / Ingress Rules</b> trên trang quản lý của nhà cung cấp VPS.</li>
-        </ul>
-      </div>
+      {status ? (
+        <ol className="space-y-1.5">
+          {layers.map(([label, c]) => (
+            <li key={label} className="flex items-start gap-2 text-xs">
+              <span className={cn('mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold', c?.ok === true ? 'bg-emerald-500/20 text-emerald-300' : c?.ok === false ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-700 text-slate-400')}>
+                {c?.ok === true ? '✓' : c?.ok === false ? '✕' : '?'}
+              </span>
+              <span className="min-w-0">
+                <span className="font-semibold text-slate-200">{label}:</span> <span className="text-slate-400">{c?.detail}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="text-xs text-slate-500">Bấm "Kiểm tra" để ZenPanel thử từng lớp (Docker → database → tường lửa → Internet thật qua portchecker.io).</p>
+      )}
 
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Chỉ cho phép IP (khuyên dùng)">
-          <input className="input mono h-9 w-48 py-0" value={source_} onChange={(e) => setSource(e.target.value)} placeholder="Để trống = mọi IP" />
+          <input className="input mono h-9 w-44 py-0" value={source_} onChange={(e) => setSource(e.target.value)} placeholder="Trống = mọi IP" />
         </Field>
-        <Button size="sm" variant="soft" icon={DoorOpen} loading={busy} onClick={() => void open()}>
-          Mở cổng {server.port} trên tường lửa
+        <Button size="sm" variant="primary" icon={DoorOpen} onClick={() => void toggle(true)}>
+          Mở truy cập từ xa
+        </Button>
+        <Button size="sm" variant="ghost" icon={Activity} loading={checking} onClick={() => void check()}>
+          Kiểm tra
+        </Button>
+        <Button size="sm" variant="ghost" className="hover:text-zen-red" onClick={() => void toggle(false)}>
+          Đóng
         </Button>
       </div>
+      <p className="text-[11px] text-slate-500">
+        Database dùng TCP nên không đi qua link trycloudflare được — kết nối bằng IP public. Nếu "Từ Internet vào" vẫn ✕ khi các lớp khác ✓, hãy mở cổng {server.port}/TCP trong Security Group của nhà cung cấp VPS.
+      </p>
     </div>
   );
 }

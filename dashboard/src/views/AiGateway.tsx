@@ -48,6 +48,7 @@ import { formatRelative, txaformat } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { useNow, usePanel, usePublicHost } from '../lib/panel';
 import type { AiAccountKey, AiProvider } from '../lib/types';
+import { ConnectTab, type Combo } from './AiConnectTab';
 
 interface AiModel {
   id: string;
@@ -122,6 +123,7 @@ interface GatewaySettings {
   tier3Model?: string | null;
   rtkEnabled?: boolean;
   rotationStrategy?: 'failover' | 'round-robin';
+  combos?: Combo[];
 }
 
 export interface GatewayApiKeyView {
@@ -132,6 +134,9 @@ export interface GatewayApiKeyView {
   expiresAt: string | null;
   lastUsedAt: string | null;
   enabled: boolean;
+  rpmLimit?: number | null;
+  dailyTokenLimit?: number | null;
+  allowedModels?: string[];
 }
 
 interface GatewayLog {
@@ -4149,7 +4154,7 @@ aider --model openai/${gateway.defaultModel || 'auto'}`}
   );
 }
 
-type TabId = 'overview' | 'ninerouter' | 'apikeys' | 'company' | 'subagents' | 'providers' | 'models' | 'playground' | 'routing' | 'activity';
+type TabId = 'overview' | 'connect' | 'ninerouter' | 'apikeys' | 'company' | 'subagents' | 'providers' | 'models' | 'playground' | 'routing' | 'activity';
 
 export default function AiGateway() {
   const providers = useApi<AiProvider[]>('/api/ai/providers');
@@ -4181,7 +4186,7 @@ export default function AiGateway() {
     <>
       <PageHeader
         title="AI Gateway"
-        description="Cấp phát API Keys & 1 endpoint chuẩn OpenAI cho ChatGPT, Claude, Gemini, NVIDIA — tự định tuyến, chia Sub-Agents và AI Company"
+        description="Router AI kiểu 9Router / OpenRouter: 1 endpoint chuẩn OpenAI, Anthropic & Ollama cho mọi model — combo fallback, xoay vòng key, giới hạn theo key"
         icon={Sparkles}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -4214,6 +4219,7 @@ export default function AiGateway() {
           onChange={setTab}
           tabs={[
             { id: 'overview', label: 'Tổng quan', icon: Route },
+            { id: 'connect', label: '🔌 Combo & Kết nối', icon: Zap, count: gateway.combos?.length },
             { id: 'ninerouter', label: '🚀 9Router Presets (IDE)', icon: Zap },
             { id: 'apikeys', label: '🔑 Cấp phát API Keys', icon: KeyRound, count: keysApi.data?.length },
             { id: 'company', label: '🏢 AI Company (Sếp & Công nhân)', icon: Building2 },
@@ -4237,6 +4243,15 @@ export default function AiGateway() {
             setCreateKeyModalOpen(true);
           }}
           onSwitchToKeysTab={() => setTab('apikeys')}
+        />
+      )}
+      {tab === 'connect' && (
+        <ConnectTab
+          combos={gateway.combos ?? []}
+          onSaveCombos={(combos) => saveGateway({ combos }, 'Đã lưu combo')}
+          models={allModels.data ?? []}
+          keys={keysApi.data ?? []}
+          onKeysChanged={() => void keysApi.reload()}
         />
       )}
       {tab === 'ninerouter' && (

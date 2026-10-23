@@ -1,112 +1,20 @@
 // ZenPanel - Khung giao diện chính: Sidebar Jupiter + Header (GUI/CLI toggle) + Terminal dock ở chế độ CLI
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link, NavLink, useLocation } from 'react-router';
-import { CalendarClock, ChevronDown, Cloud, Globe, HeartPulse, LogOut, Menu, Monitor, MousePointer2, Sparkles, SquareTerminal, StickyNote, Wrench, X } from 'lucide-react';
+import { Link, useLocation } from 'react-router';
+import { CalendarClock, ChevronDown, Cloud, Globe, HeartPulse, LogOut, Menu, MousePointer2, Sparkles, SquareTerminal, StickyNote, Wrench, X } from 'lucide-react';
 import { get, logout } from '../../lib/api';
-import { formatPercent } from '../../lib/format';
 import { useLocalStorage } from '../../lib/hooks';
 import { usePanel } from '../../lib/panel';
 import { JobsButton } from '../jobs';
-import { useWhatsNew } from '../WhatsNew';
 import { TerminalPanel } from '../TerminalPanel';
 import { CopyButton, StatusDot, cn } from '../ui';
-import { ALL_NAV, NAV_SECTIONS } from './nav';
+import { ALL_NAV } from './nav';
+import { Sidebar } from './Sidebar';
 import { ThemePicker } from './ThemePicker';
 import { WindowMockup } from './WindowMockup';
 import { ServerNotepadModal } from './ServerNotepadModal';
 import { VpsDoctorModal } from '../VpsDoctorModal';
 import { RightUtilityPanel } from './RightUtilityPanel';
-
-function Logo() {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="relative flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-zen-blue to-zen-green shadow-lg shadow-zen-blue/30">
-        <span className="text-lg">🧘</span>
-      </div>
-      <div>
-        <div className="text-lg font-extrabold tracking-tight text-white">ZenPanel</div>
-        <div className="text-[11px] font-medium text-slate-500">Quản trị VPS an nhàn</div>
-      </div>
-    </div>
-  );
-}
-
-function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
-  const { info, latest } = usePanel();
-  const showWhatsNew = useWhatsNew();
-  const memPct = latest ? (latest.memory.used / latest.memory.total) * 100 : 0;
-  return (
-    <div className="flex h-full flex-col">
-      <div className="px-5 pb-4 pt-5">
-        <Logo />
-      </div>
-
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 pb-4">
-        {NAV_SECTIONS.map((section) => (
-          <div key={section.title}>
-            <div className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{section.title}</div>
-            <div className="space-y-0.5">
-              {section.items.map(({ to, label, icon: Icon }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={to === '/'}
-                  onClick={onNavigate}
-                  className={({ isActive }) =>
-                    cn(
-                      'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition',
-                      isActive
-                        ? 'bg-gradient-to-r from-zen-blue/25 to-zen-blue/5 text-white shadow-inner ring-1 ring-zen-blue/30'
-                        : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-100',
-                    )
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      <Icon className={cn('size-[18px]', isActive ? 'text-blue-300' : 'text-slate-500 group-hover:text-slate-300')} />
-                      {label}
-                    </>
-                  )}
-                </NavLink>
-              ))}
-            </div>
-          </div>
-        ))}
-      </nav>
-
-      <div className="m-3 rounded-2xl border border-slate-700/50 bg-ink-950/60 p-4">
-        <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-300">
-          <Monitor className="size-4 text-zen-blue" />
-          <span className="truncate">{info?.os.hostname ?? '...'}</span>
-        </div>
-        {latest && (
-          <div className="space-y-2 text-xs">
-            <MiniBar label="CPU" value={latest.cpu.usage} />
-            <MiniBar label="RAM" value={memPct} />
-          </div>
-        )}
-        <div className="mt-3 flex items-center justify-between gap-2 text-[11px] text-slate-500">
-          <span className="truncate">{info ? `${info.os.name} · v${info.version}` : 'Đang kết nối...'}</span>
-          <button onClick={showWhatsNew} className="shrink-0 font-semibold text-blue-300 hover:underline" data-tip="Xem các tính năng mới">
-            Có gì mới
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MiniBar({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-8 font-semibold text-slate-500">{label}</span>
-      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-800">
-        <div className={cn('h-full rounded-full transition-all duration-700', value < 60 ? 'bg-zen-green' : value < 85 ? 'bg-zen-amber' : 'bg-zen-red')} style={{ width: `${value}%` }} />
-      </div>
-      <span className="mono w-11 text-right text-slate-400">{formatPercent(value, 0)}</span>
-    </div>
-  );
-}
 
 function ModeToggle({ mode, onChange }: { mode: 'gui' | 'cli'; onChange: (m: 'gui' | 'cli') => void }) {
   return (
@@ -228,6 +136,7 @@ function ExpiryBanner() {
 
 export function Shell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [compactNav, setCompactNav] = useLocalStorage<boolean>('zenpanel.nav.compact', false);
   const [mode, setMode] = useLocalStorage<'gui' | 'cli'>('zenpanel.mode', 'gui');
   const [dockOpen, setDockOpen] = useState(true);
   const [notepadOpen, setNotepadOpen] = useState(false);
@@ -246,8 +155,8 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-full">
-      <aside className="hidden w-64 shrink-0 border-r border-slate-800/80 bg-ink-950/70 backdrop-blur-xl lg:block">
-        <Sidebar />
+      <aside className={cn('hidden shrink-0 border-r border-slate-800/80 bg-ink-950/70 backdrop-blur-xl transition-[width] duration-200 lg:block', compactNav ? 'w-[72px]' : 'w-64')}>
+        <Sidebar compact={compactNav} onToggleCompact={() => setCompactNav(!compactNav)} />
       </aside>
 
       {mobileOpen && (

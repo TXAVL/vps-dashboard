@@ -1,6 +1,7 @@
 import os from 'node:os';
-import type { CleanExecutionOptions, DiskUsage, OSAdapter } from '../adapters/base.adapter.js';
-import { jobLog, jobProgress } from '../core/jobs.js';
+import type { CleanExecutionOptions, DiskUsage, MemoryDetail, OSAdapter, RamOptimizeOptions } from '../adapters/base.adapter.js';
+import { jobLog, jobProgress, jobResult, jobStep, startJob, type JobView } from '../core/jobs.js';
+import { getPrefs } from '../core/prefs.js';
 import type { DockerService } from './docker.service.js';
 
 export interface CleanScanResult {
@@ -34,11 +35,120 @@ export interface CleanScanResult {
   estimatedTotalReclaimableBytes: number;
 }
 
+export interface CleanResult {
+  diskFreed: number;
+  ramFreed: number;
+  diskBefore: number;
+  diskAfter: number;
+  ramBefore: number;
+  ramAfter: number;
+}
+
+export interface RamOptimizeResult {
+  before: number;
+  after: number;
+  freed: number;
+  at: string;
+  auto: boolean;
+}
+
+export interface MemoryView extends MemoryDetail {
+  topProcesses: { pid: number; name: string; memory: number; cpu: number; user: string | null }[];
+  canTrimProcess: boolean;
+  lastOptimize: RamOptimizeResult | null;
+  auto: { enabled: boolean; threshold: number; intervalMin: number };
+}
+
 export class CleanService {
+  private lastOptimize: RamOptimizeResult | null = null;
+  private autoTimer: NodeJS.Timeout | null = null;
+  private optimizing = false;
+
   constructor(
     private readonly adapter: OSAdapter,
     private readonly docker: DockerService,
   ) {}
+
+  private async diskFree(): Promise<number> {
+    const disks = await this.adapter.getDisks().catch(() => [] as DiskUsage[]);
+    return disks.reduce((n, d) => n + Math.max(0, d.total - d.used), 0);
+  }
+
+  private async ramAvailable(): Promise<number> {
+    return (await this.adapter.memoryDetail().catch(() => null))?.available ?? os.freemem();
+  }
+
+  async memory(): Promise<MemoryView> {
+    const [detail, procs] = await Promise.all([this.adapter.memoryDetail(), this.adapter.listProcesses().catch(() => [])]);
+    const prefs = getPrefs();
+    return {
+      ...detail,
+      topProcesses: [...procs]
+        .sort((a, b) => b.memory - a.memory)
+        .slice(0, 12)
+        .map((p) => ({ pid: p.pid, name: p.name, memory: p.memory, cpu: p.cpu, user: p.user })),
+      canTrimProcess: this.adapter.family === 'windows',
+      lastOptimize: this.lastOptimize,
+      auto: { enabled: prefs.autoRamOptimize, threshold: prefs.autoRamThreshold, intervalMin: prefs.autoRamIntervalMin },
+    };
+  }
+
+  /** Tối ưu RAM, đo RAM khả dụng trước / sau để báo con số thật */
+  private async doOptimize(options: RamOptimizeOptions, auto: boolean): Promise<RamOptimizeResult> {
+    this.optimizing = true;
+    try {
+      const before = await this.ramAvailable();
+      jobLog(`RAM khả dụng trước: ${(before / 1048576).toFixed(0)} MB`);
+      await this.adapter.optimizeRam(options, (msg) => jobLog(`  ${msg}`));
+      await new Promise((r) => setTimeout(r, 1500));
+      const after = await this.ramAvailable();
+      const result: RamOptimizeResult = { before, after, freed: Math.max(0, after - before), at: new Date().toISOString(), auto };
+      jobLog(`RAM khả dụng sau: ${(after / 1048576).toFixed(0)} MB → giải phóng ${(result.freed / 1048576).toFixed(0)} MB`);
+      this.lastOptimize = result;
+      return result;
+    } finally {
+      this.optimizing = false;
+    }
+  }
+
+  optimizeRam(options: RamOptimizeOptions): JobView {
+    return startJob('Tối ưu RAM', 'clean', async () => {
+      jobStep('Thu hồi bộ nhớ');
+      jobResult(await this.doOptimize(options, false));
+    });
+  }
+
+  async trimProcess(pid: number): Promise<{ ok: boolean; before: number; after: number }> {
+    const find = async () => (await this.adapter.listProcesses()).find((p) => p.pid === pid)?.memory ?? 0;
+    const before = await find();
+    const ok = await this.adapter.trimProcessMemory(pid);
+    await new Promise((r) => setTimeout(r, 800));
+    return { ok, before, after: await find() };
+  }
+
+  setTunable(key: 'vm.swappiness' | 'vm.vfs_cache_pressure', value: number): Promise<void> {
+    return this.adapter.setMemoryTunable(key, value);
+  }
+
+  /** Tự tối ưu RAM khi vượt ngưỡng (bật trong trang Dọn dẹp) */
+  startAuto(): void {
+    let lastRun = 0;
+    this.autoTimer = setInterval(async () => {
+      const prefs = getPrefs();
+      if (!prefs.autoRamOptimize || this.optimizing) return;
+      if (Date.now() - lastRun < prefs.autoRamIntervalMin * 60_000) return;
+      const detail = await this.adapter.memoryDetail().catch(() => null);
+      if (!detail || (detail.used / detail.total) * 100 < prefs.autoRamThreshold) return;
+      lastRun = Date.now();
+      startJob(`Tự tối ưu RAM (vượt ${prefs.autoRamThreshold}%)`, 'clean', async () => {
+        jobResult(await this.doOptimize({ dropCache: true }, true));
+      });
+    }, 60_000);
+  }
+
+  stop(): void {
+    if (this.autoTimer) clearInterval(this.autoTimer);
+  }
 
   async scan(): Promise<CleanScanResult> {
     const [disks, processes, osCleanScan, dockerInfo] = await Promise.all([
@@ -128,6 +238,7 @@ export class CleanService {
   }
 
   async execute(options: CleanExecutionOptions): Promise<void> {
+    const [diskBefore, ramBefore] = await Promise.all([this.diskFree(), this.ramAvailable()]);
     jobProgress(5, 'Bắt đầu chuẩn bị dọn dẹp hệ thống...');
     jobLog('═══════════════════════════════════════════════════');
     jobLog('  ZENPANEL - BẮT ĐẦU DỌN DẸP HỆ THỐNG');
@@ -202,6 +313,19 @@ export class CleanService {
       jobLog(`  ${msg}`);
     });
 
+    jobProgress(95, 'Đo lại dung lượng & RAM sau khi dọn...');
+    await new Promise((r) => setTimeout(r, 1000));
+    const [diskAfter, ramAfter] = await Promise.all([this.diskFree(), this.ramAvailable()]);
+    const result: CleanResult = {
+      diskBefore,
+      diskAfter,
+      ramBefore,
+      ramAfter,
+      diskFreed: Math.max(0, diskAfter - diskBefore),
+      ramFreed: Math.max(0, ramAfter - ramBefore),
+    };
+    jobResult(result);
+    jobLog(`\n➜ Ổ đĩa trống thêm: ${(result.diskFreed / 1048576).toFixed(1)} MB · RAM khả dụng thêm: ${(result.ramFreed / 1048576).toFixed(1)} MB`);
     jobProgress(100, 'Dọn dẹp hệ thống hoàn tất thành công!');
     jobLog('\n═══════════════════════════════════════════════════');
     jobLog('  ✔ DỌN DẸP HỆ THỐNG HOÀN TẤT THÀNH CÔNG');

@@ -105,6 +105,7 @@ export async function panelRoutes(
   app.post('/api/update/check', async () => updates.check());
   app.get('/api/update/remote', async () => updates.remoteVersions());
   app.get('/api/update/packages', async () => updates.listPackages());
+  app.get('/api/update/changelog', async (req) => updates.changelog(String((req.query as { ref?: string }).ref ?? '')));
   app.post('/api/update/download', async (req) => {
     const ref = String((req.body as { ref?: string } | undefined)?.ref ?? '').trim();
     if (!ref) throw badRequest('Thiếu phiên bản cần tải');

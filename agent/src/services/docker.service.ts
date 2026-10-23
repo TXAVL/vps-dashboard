@@ -160,6 +160,22 @@ export class DockerService {
     return this.docker(['exec', ...envArgs, container, ...command], 120_000);
   }
 
+  /** Chạy script sh trong container (dùng cho dump / restore database) */
+  async execShell(container: string, script: string, env: Record<string, string> = {}, timeout = 1_800_000): Promise<string> {
+    const envArgs = Object.entries(env).flatMap(([key, value]) => ['-e', `${key}=${value}`]);
+    return this.docker(['exec', ...envArgs, container, 'sh', '-c', script], timeout);
+  }
+
+  /** docker cp container:src dest */
+  async copyFrom(container: string, src: string, dest: string): Promise<void> {
+    await this.docker(['cp', `${container}:${src}`, dest], 1_800_000);
+  }
+
+  /** docker cp src container:dest */
+  async copyTo(src: string, container: string, dest: string): Promise<void> {
+    await this.docker(['cp', src, `${container}:${dest}`], 1_800_000);
+  }
+
   async systemDf(): Promise<string> {
     return this.docker(['system', 'df']).catch(() => '');
   }

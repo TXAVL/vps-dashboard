@@ -50,6 +50,8 @@ interface JobsContextValue {
   /** Gọi API trả về job, mở cửa sổ log và resolve khi job kết thúc (true = thành công) */
   runJob: (start: () => Promise<Job>, onDone?: (job: Job) => void) => Promise<boolean>;
   openJob: (id: string) => void;
+  /** Theo dõi job ở nền (không mở cửa sổ log), báo toast khi xong */
+  trackJob: (id: string, onDone?: (job: Job) => void) => void;
 }
 
 const JobsContext = createContext<JobsContextValue | null>(null);
@@ -388,8 +390,24 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     [toast],
   );
 
+  const trackJob = useCallback(
+    (id: string, onDone?: (job: Job) => void) => {
+      void (async () => {
+        for (;;) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const current = await get<Job>(`/api/jobs/${id}`).catch(() => null);
+          if (!current || current.status === 'running') continue;
+          toast(current.status === 'success' ? `${current.title}: hoàn tất` : `${current.title}: ${current.error}`, current.status === 'success' ? 'success' : 'error');
+          if (current.status === 'success') onDone?.(current);
+          return;
+        }
+      })();
+    },
+    [toast],
+  );
+
   return (
-    <JobsContext.Provider value={{ runJob, openJob: setOpenId }}>
+    <JobsContext.Provider value={{ runJob, openJob: setOpenId, trackJob }}>
       {children}
       {openId && <JobLog id={openId} onClose={() => setOpenId(null)} />}
     </JobsContext.Provider>

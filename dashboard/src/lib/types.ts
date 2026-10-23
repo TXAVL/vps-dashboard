@@ -247,6 +247,9 @@ export interface PanelPrefs {
   autoDownloadUpdate: boolean;
   updateCheckMinutes: number;
   publicHost: string;
+  autoRamOptimize: boolean;
+  autoRamThreshold: number;
+  autoRamIntervalMin: number;
 }
 
 export interface RemoteVersion {
@@ -290,6 +293,29 @@ export interface Job {
   progress?: number;
   stage?: string;
   etaSeconds?: number | null;
+  steps?: JobStep[];
+  result?: unknown;
+  lines?: number;
+}
+
+export interface JobStep {
+  label: string;
+  status: 'running' | 'done' | 'error';
+  startedAt: string;
+  endedAt: string | null;
+}
+
+export interface ChangelogEntry {
+  version: string;
+  date: string;
+  highlights: { title: string; items: string[] }[];
+}
+
+export interface UpdateChangelog {
+  current: string;
+  target: string;
+  entries: ChangelogEntry[];
+  commits: { sha: string; message: string; date: string | null }[];
 }
 
 export interface PhpStatus {
@@ -493,6 +519,10 @@ export interface CleanExecutionOptions {
   cleanPackageCache?: boolean;
   cleanTempFiles?: boolean;
   cleanRamCache?: boolean;
+  cleanDockerLogs?: boolean;
+  cleanDevCaches?: boolean;
+  cleanOldPackages?: boolean;
+  cleanCrashDumps?: boolean;
 }
 
 export interface NodeSecurityAdvisory {

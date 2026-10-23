@@ -4,7 +4,16 @@ import type { ReadableStream } from 'node:stream/web';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { HttpError } from '../core/validate.js';
 import type { AiService } from '../services/ai.service.js';
-import type { AiGatewayService, GatewayLog } from '../services/aigateway.service.js';
+import type { AiGatewayService, GatewayCaller, GatewayLog } from '../services/aigateway.service.js';
+import {
+  anthropicError,
+  anthropicToOpenAi,
+  ollamaChatToOpenAi,
+  openAiStreamToAnthropic,
+  openAiStreamToOllama,
+  openAiToAnthropic,
+  openAiToOllama,
+} from '../services/aigateway.compat.js';
 import type { AiCompanyService } from '../services/aicompany.service.js';
 
 /** Trả nguyên response của nhà cung cấp (giữ stream SSE, chống proxy buffer, CORS mở hoàn toàn) */
@@ -434,8 +443,31 @@ export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiG
       }
       const verified = gateway.verifyKey(req.headers.authorization ?? (req.headers['x-api-key'] as string | undefined));
       if (!verified.ok) {
-        throw new HttpError(401, verified.message || 'API key của ZenPanel AI Gateway không hợp lệ (phải bắt đầu bằng tzp_).');
+        const status = verified.reason === 'rate_limited' || verified.reason === 'quota' ? 429 : 401;
+        throw new HttpError(status, verified.message || 'API key của ZenPanel AI Gateway không hợp lệ (phải bắt đầu bằng tzp_).');
       }
+      (req as unknown as { zpCaller: GatewayCaller }).zpCaller = { keyId: verified.keyId, keyName: verified.keyName };
+    });
+    const callerOf = (req: unknown) => (req as { zpCaller?: GatewayCaller }).zpCaller;
+
+    // API chuẩn Anthropic Messages: Claude Code đặt ANTHROPIC_BASE_URL=https://<host>/zen là dùng được mọi model
+    secured.post('/messages', async (req, reply) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const model = String(body.model ?? 'auto');
+      try {
+        const res = await gateway.chat(anthropicToOpenAi(body), 'api', callerOf(req));
+        if (body.stream) return pipe(reply, openAiStreamToAnthropic(res, model));
+        const json = (await res.json()) as Record<string, unknown>;
+        return reply.code(200).header('Content-Type', 'application/json').send(openAiToAnthropic(json, model));
+      } catch (err) {
+        const { status, body: errBody } = anthropicError(err);
+        return reply.code(status).send(errBody);
+      }
+    });
+    // Ước lượng token (Claude Code gọi trước khi gửi) - ~4 ký tự / token
+    secured.post('/messages/count_tokens', async (req) => {
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      return { input_tokens: Math.ceil(JSON.stringify([body.system ?? '', body.messages ?? [], body.tools ?? []]).length / 4) };
     });
 
     // Endpoint xem và set nhanh model mặc định & model dự phòng qua API Token (Postman / AI Agent)
@@ -468,10 +500,66 @@ export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiG
     secured.get('/providers', async () => gateway.providers());
     secured.get('/key', async () => gateway.keyInfo());
     secured.get('/usage', async (req) => gateway.usage(Number((req.query as { hours?: string }).hours) || 24));
-    secured.post('/chat/completions', async (req, reply) => pipe(reply, await gateway.chat((req.body ?? {}) as Record<string, unknown>, 'api')));
+    secured.post('/chat/completions', async (req, reply) => pipe(reply, await gateway.chat((req.body ?? {}) as Record<string, unknown>, 'api', callerOf(req))));
     secured.post('/completions', async (req, reply) => pipe(reply, await gateway.completions((req.body ?? {}) as Record<string, unknown>)));
     secured.post('/embeddings', async (req, reply) => pipe(reply, await gateway.embeddings((req.body ?? {}) as Record<string, unknown>)));
   });
+}
+
+
+/**
+ * API tương thích Ollama (Open WebUI, Continue, Page Assist, n8n Ollama node...):
+ * base URL https://<host>/ollama (key qua header Authorization) hoặc https://<host>/ollama/k/<API_KEY> (client không gửi được header)
+ */
+export async function ollamaRoutes(app: FastifyInstance, deps: { gateway: AiGatewayService }): Promise<void> {
+  const { gateway } = deps;
+
+  app.addHook('preHandler', async (req) => {
+    if (req.url.endsWith('/') || req.url.endsWith('/api/version')) return;
+    if (!gateway.getSettings().enabled) throw new HttpError(503, 'AI Gateway đang tạm tắt');
+    const pathKey = (req.params as { key?: string }).key;
+    const verified = gateway.verifyKey(pathKey ?? req.headers.authorization ?? (req.headers['x-api-key'] as string | undefined));
+    if (!verified.ok) throw new HttpError(verified.reason === 'rate_limited' || verified.reason === 'quota' ? 429 : 401, verified.message ?? 'API key không hợp lệ');
+    (req as unknown as { zpCaller: GatewayCaller }).zpCaller = { keyId: verified.keyId, keyName: verified.keyName };
+  });
+  const callerOf = (req: unknown) => (req as { zpCaller?: GatewayCaller }).zpCaller;
+
+  app.get('/', async () => 'Ollama is running');
+  app.get('/api/version', async () => ({ version: '0.6.8' }));
+  app.get('/api/tags', async () => {
+    const s = gateway.getSettings();
+    const names = ['auto', 'tier1', 'tier2', 'tier3', ...s.combos.map((c) => c.name), ...(await gateway.allModels()).map((m) => m.id)];
+    const modified_at = new Date().toISOString();
+    return {
+      models: [...new Set(names)].map((name) => ({ name, model: name, modified_at, size: 0, digest: name, details: { format: 'gguf', family: name.split('/')[0], parameter_size: '', quantization_level: '' } })),
+    };
+  });
+  app.get('/api/ps', async () => ({ models: [] }));
+  app.post('/api/show', async (req) => {
+    const model = String((req.body as { model?: string; name?: string } | undefined)?.model ?? (req.body as { name?: string } | undefined)?.name ?? '');
+    return { modelfile: '', parameters: '', template: '', details: { family: model.split('/')[0], format: 'gguf' }, model_info: {}, capabilities: ['completion', 'tools'] };
+  });
+
+  const handle = (generate: boolean) => async (req: { body: unknown }, reply: FastifyReply) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const model = String(body.model ?? 'auto');
+    const res = await gateway.chat(ollamaChatToOpenAi(body, generate), 'api', callerOf(req));
+    if (body.stream !== false) return pipe(reply, openAiStreamToOllama(res, model, generate));
+    return reply.send(openAiToOllama((await res.json()) as Record<string, unknown>, model, generate));
+  };
+  app.post('/api/chat', handle(false));
+  app.post('/api/generate', handle(true));
+
+  const embed = async (req: { body: unknown }) => {
+    const body = (req.body ?? {}) as { model?: string; input?: unknown; prompt?: string };
+    const input = body.input ?? body.prompt ?? '';
+    const res = await gateway.embeddings({ model: body.model, input });
+    const json = (await res.json()) as { data?: { embedding: number[] }[] };
+    const vectors = (json.data ?? []).map((d) => d.embedding);
+    return body.prompt !== undefined ? { embedding: vectors[0] ?? [] } : { model: body.model, embeddings: vectors };
+  };
+  app.post('/api/embed', embed);
+  app.post('/api/embeddings', embed);
 }
 
 export type { GatewayLog };
