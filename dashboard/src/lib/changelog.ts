@@ -9,6 +9,35 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.3',
+    date: '2026-10-23',
+    highlights: [
+      {
+        title: '🔒 Đăng Xuất An Toàn Tuyệt Đối (Đăng Xuất Thật)',
+        items: [
+          'Vô hiệu hóa ngay lập tức: Khi bạn bấm Đăng xuất, hệ thống sẽ ngắt phiên làm việc trực tiếp trên máy chủ. Bất kỳ ai cầm chìa khóa hay token cũ đều bị khóa lại ngay lập tức.',
+          'An tâm tuyệt đối: Tránh tình trạng chỉ tắt màn hình ở máy mà tài khoản vẫn mở ở máy chủ.',
+        ],
+      },
+      {
+        title: '💻 Quản Lý Thiết Bị Đang Dùng & Xóa Nút Đăng Xuất Nhầm',
+        items: [
+          'Đánh dấu thiết bị bạn đang cầm: Thiết bị hiện tại luôn được làm nổi bật với huy hiệu xanh lá "Phiên hiện tại" để bạn không bao giờ bị nhầm lẫn.',
+          'Không lo lỡ tay bấm nhầm: Nút Đăng xuất ở dòng thiết bị hiện tại đã được gỡ bỏ hoàn toàn, tránh việc bạn tự bấm ngắt phiên của chính mình trong danh sách. Muốn đăng xuất bạn chỉ cần dùng nút Đăng xuất trên thanh điều hướng.',
+          'Ngắt kết nối thiết bị lạ từ xa: Bạn có thể thấy rõ máy tính hay điện thoại nào khác đang đăng nhập và bấm "Đăng xuất" riêng thiết bị đó chỉ với 1 chạm.',
+        ],
+      },
+      {
+        title: '🔍 Nhật Ký Đăng Nhập Chi Tiết & Kĩ Tính',
+        items: [
+          'Hiển thị thiết bị rõ ràng: Biết chính xác người đăng nhập dùng điện thoại (iPhone, Android) hay máy tính (Windows, Mac) cùng trình duyệt (Chrome, Safari, Edge...).',
+          'Vị trí & Cờ quốc gia: Đi kèm địa chỉ IP là cờ và tên quốc gia (hoặc nhãn Mạng nội bộ) giúp bạn dễ dàng nhận diện nguồn truy cập.',
+          'Ghi nhận minh bạch: Mọi lần đăng nhập đúng hay sai mật khẩu đều được lưu lại kèm lý do rõ ràng.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.6.2',
     date: '2026-10-23',
     highlights: [

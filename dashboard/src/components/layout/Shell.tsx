@@ -2,7 +2,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import { CalendarClock, ChevronDown, Cloud, LogOut, Menu, Monitor, MousePointer2, Sparkles, SquareTerminal, StickyNote, X } from 'lucide-react';
-import { setToken } from '../../lib/api';
+import { logout } from '../../lib/api';
 import { formatPercent } from '../../lib/format';
 import { useLocalStorage } from '../../lib/hooks';
 import { usePanel } from '../../lib/panel';
@@ -261,7 +261,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <ThemePicker />
           <JobsButton />
           <button
-            onClick={() => setToken(null)}
+            onClick={() => void logout()}
             className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-zen-red"
             data-tip="Đăng xuất"
             aria-label="Đăng xuất"

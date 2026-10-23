@@ -341,10 +341,34 @@ export interface NetworkInfo {
 }
 
 export interface LoginRecord {
+  id?: string;
   at: string;
   ip: string;
+  country?: string;
   ok: boolean;
+  reason?: string;
   userAgent: string;
+  browser?: string;
+  os?: string;
+  device?: string;
+  deviceType?: 'desktop' | 'mobile' | 'tablet' | 'bot' | 'other';
+}
+
+export interface UserSessionView {
+  id: string;
+  username: string;
+  ip: string;
+  country?: string;
+  browser: string;
+  os: string;
+  device: string;
+  deviceType: 'desktop' | 'mobile' | 'tablet' | 'bot' | 'other';
+  userAgent: string;
+  createdAt: string;
+  lastActiveAt: string;
+  expiresAt: number;
+  revoked: boolean;
+  isCurrent: boolean;
 }
 
 export interface FirewallPersistence {

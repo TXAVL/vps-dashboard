@@ -40,6 +40,26 @@ export function setToken(value: string | null): void {
   listeners.forEach((fn) => fn(Boolean(value)));
 }
 
+/** Đăng xuất phiên hiện tại thật sự (vô hiệu hóa token trên server trước khi xóa local storage) */
+export async function logout(): Promise<void> {
+  const currentToken = token;
+  try {
+    if (currentToken) {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${currentToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+    }
+  } catch {
+    // Bỏ qua lỗi mạng
+  } finally {
+    setToken(null);
+  }
+}
+
 export function onAuthChange(fn: (authed: boolean) => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);

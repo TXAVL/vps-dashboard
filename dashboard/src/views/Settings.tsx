@@ -25,6 +25,7 @@ import {
   Loader2,
   Lock,
   LogOut,
+  Monitor,
   Moon,
   Package,
   Palette,
@@ -32,23 +33,27 @@ import {
   RefreshCw,
   Rocket,
   Save,
+  ShieldAlert,
+  ShieldCheck,
+  Smartphone,
   Sparkles,
+  Tablet,
+  Terminal,
   Trash2,
   Copy,
   Cpu,
-  ShieldAlert,
   Wrench,
 } from 'lucide-react';
 import { useJobs } from '../components/jobs';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, Notice, PageHeader, Select, Spinner, StatusDot, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
-import { del, get, post, setToken, getToken } from '../lib/api';
+import { del, get, post, setToken, getToken, logout } from '../lib/api';
 import { formatBytes, formatDate, formatDuration, formatRate, formatRelative } from '../lib/format';
 import { txaformat } from '../lib/txaformat';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
 import { PASSWORD_RULES, RANDOM_DEFAULT_LENGTH, RANDOM_MAX_LENGTH, RANDOM_MIN_LENGTH } from '../lib/password';
-import type { Job, LoginRecord, NetworkInfo, NodeStatusResponse, PanelPrefs, RemoteVersion, SystemToolItem, SystemToolsStatusResponse, VersionPackage } from '../lib/types';
+import type { Job, LoginRecord, NetworkInfo, NodeStatusResponse, PanelPrefs, RemoteVersion, SystemToolItem, SystemToolsStatusResponse, UserSessionView, VersionPackage } from '../lib/types';
 
 type Mode = 'random' | 'custom';
 
@@ -228,7 +233,7 @@ function AccountCard() {
         )}
 
         <div className="flex flex-wrap justify-between gap-2">
-          <Button type="button" variant="ghost" icon={LogOut} onClick={() => setToken(null)}>
+          <Button type="button" variant="ghost" icon={LogOut} onClick={() => void logout()}>
             Đăng xuất
           </Button>
           <Button type="submit" variant="primary" icon={mode === 'random' ? Dices : Save} loading={saving} disabled={!ready}>
@@ -1370,60 +1375,280 @@ function UpdateCard() {
   );
 }
 
+function getCountryName(code?: string): string {
+  if (!code) return '';
+  const names: Record<string, string> = {
+    VN: 'Việt Nam',
+    US: 'Hoa Kỳ',
+    SG: 'Singapore',
+    JP: 'Nhật Bản',
+    KR: 'Hàn Quốc',
+    DE: 'Đức',
+    GB: 'Vương quốc Anh',
+    FR: 'Pháp',
+    NL: 'Hà Lan',
+    AU: 'Úc',
+    HK: 'Hồng Kông',
+    TW: 'Đài Loan',
+    CA: 'Canada',
+    TH: 'Thái Lan',
+  };
+  return names[code.toUpperCase()] || code.toUpperCase();
+}
+
+function getCountryFlag(code?: string): string {
+  if (!code || code.length !== 2) return '🌐';
+  const upper = code.toUpperCase();
+  return String.fromCodePoint(...[...upper].map((c) => 127397 + c.charCodeAt(0)));
+}
+
+function getDeviceIcon(type?: string) {
+  switch (type) {
+    case 'mobile':
+      return Smartphone;
+    case 'tablet':
+      return Tablet;
+    case 'bot':
+      return Terminal;
+    case 'desktop':
+    default:
+      return Monitor;
+  }
+}
+
 function SessionsCard() {
+  const sessions = useApi<UserSessionView[]>('/api/auth/sessions');
   const history = useApi<LoginRecord[]>('/api/auth/history');
   const { confirm, run } = useFeedback();
 
+  const otherSessionsCount = (sessions.data ?? []).filter((s) => !s.isCurrent).length;
+
   const logoutAll = async () => {
-    if (!(await confirm({ title: 'Đăng xuất mọi thiết bị', message: 'Tất cả phiên đăng nhập trên các thiết bị khác sẽ bị đăng xuất ngay. Phiên hiện tại được giữ lại.', confirmLabel: 'Đăng xuất tất cả' }))) return;
-    const result = await run(() => post<{ token: string }>('/api/auth/logout-all'), 'Đã đăng xuất mọi thiết bị khác');
-    if (result) setToken(result.token);
+    if (
+      !(await confirm({
+        title: 'Đăng xuất mọi thiết bị khác',
+        message: `Tất cả ${otherSessionsCount} phiên đăng nhập trên các thiết bị khác sẽ bị đăng xuất ngay lập tức. Phiên trên thiết bị hiện tại của bạn vẫn được giữ nguyên.`,
+        confirmLabel: 'Đăng xuất tất cả thiết bị khác',
+      }))
+    )
+      return;
+    const result = await run(() => post<{ ok: boolean; token?: string }>('/api/auth/logout-all'), 'Đã đăng xuất mọi thiết bị khác');
+    if (result) {
+      if (result.token) setToken(result.token);
+      void sessions.reload();
+      void history.reload();
+    }
+  };
+
+  const revoke = async (session: UserSessionView) => {
+    if (session.isCurrent) return;
+    const ok = await confirm({
+      title: 'Đăng xuất thiết bị',
+      message: `Bạn có chắc muốn đăng xuất thiết bị ${session.browser || 'này'} (${session.os || 'Hệ điều hành khác'}) từ IP ${session.ip}? Thiết bị này sẽ bị ngắt kết nối ngay lập tức.`,
+      confirmLabel: 'Đăng xuất thiết bị',
+    });
+    if (!ok) return;
+    await run(() => post(`/api/auth/sessions/${session.id}/revoke`), 'Đã thu hồi phiên đăng nhập thiết bị');
+    void sessions.reload();
+    void history.reload();
   };
 
   return (
-    <Card
-      title="Lịch sử đăng nhập"
-      icon={History}
-      bodyClassName="p-0"
-      actions={
-        <Button size="sm" variant="danger" icon={LogOut} onClick={() => void logoutAll()}>
-          Đăng xuất mọi thiết bị
-        </Button>
-      }
-    >
-      {!history.data ? (
-        <Spinner />
-      ) : history.data.length === 0 ? (
-        <EmptyState icon={History} title="Chưa có lần đăng nhập nào được ghi lại" />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr>
-                <th className={th}>Thời gian</th>
-                <th className={th}>IP</th>
-                <th className={th}>Kết quả</th>
-                <th className={th}>Trình duyệt</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.data.map((h, i) => (
-                <tr key={`${h.at}-${i}`} className={tr}>
-                  <td className={cn(td, 'text-xs text-slate-400')}>{formatDate(h.at)}</td>
-                  <td className={cn(td, 'mono text-slate-200')}>{h.ip}</td>
-                  <td className={td}>
-                    <Badge tone={h.ok ? 'green' : 'red'}>{h.ok ? 'Thành công' : 'Sai mật khẩu'}</Badge>
-                  </td>
-                  <td className={cn(td, 'max-w-[320px] truncate text-xs text-slate-500')} data-tip={h.userAgent}>
-                    {h.userAgent || '—'}
-                  </td>
+    <div className="space-y-6">
+      {/* Khối 1: Các phiên đang hoạt động */}
+      <Card
+        title="Thiết bị & Phiên đang hoạt động"
+        icon={ShieldCheck}
+        actions={
+          otherSessionsCount > 0 ? (
+            <Button size="sm" variant="danger" icon={LogOut} onClick={() => void logoutAll()}>
+              Đăng xuất các thiết bị khác ({otherSessionsCount})
+            </Button>
+          ) : undefined
+        }
+      >
+        <p className="mb-4 text-xs text-slate-400">
+          Danh sách các trình duyệt và thiết bị đang duy trì phiên đăng nhập vào ZenPanel. Bạn có thể thu hồi quyền truy cập từ xa cho bất kỳ thiết bị nào.
+        </p>
+
+        {!sessions.data ? (
+          <Spinner />
+        ) : sessions.data.length === 0 ? (
+          <EmptyState icon={ShieldCheck} title="Không tìm thấy phiên đăng nhập nào" />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {sessions.data.map((s) => {
+              const DevIcon = getDeviceIcon(s.deviceType);
+              const isLocal = s.ip === '127.0.0.1' || s.ip === '::1' || s.ip.startsWith('192.168.') || s.ip.startsWith('10.');
+              return (
+                <div
+                  key={s.id}
+                  className={cn(
+                    'relative flex flex-col justify-between rounded-xl border p-4 transition-all',
+                    s.isCurrent
+                      ? 'border-emerald-500/50 bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent shadow-lg shadow-emerald-500/5'
+                      : 'border-slate-800 bg-ink-950/60 hover:border-slate-700/80',
+                  )}
+                >
+                  <div>
+                    {/* Header: Icon + Trình duyệt + Badge phiên hiện tại */}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className={cn(
+                            'flex size-9 shrink-0 items-center justify-center rounded-lg border',
+                            s.isCurrent ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-400' : 'border-slate-800 bg-slate-900 text-slate-400',
+                          )}
+                        >
+                          <DevIcon className="size-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="truncate text-sm font-semibold text-slate-100" title={`${s.browser} · ${s.os}`}>
+                            {s.browser || 'Trình duyệt Web'}
+                          </h4>
+                          <p className="truncate text-xs text-slate-400">{s.os || 'Hệ điều hành'}</p>
+                        </div>
+                      </div>
+
+                      {s.isCurrent ? (
+                        <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-500/40">
+                          <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Phiên hiện tại
+                        </span>
+                      ) : (
+                        <span className="shrink-0 rounded-full bg-slate-800/80 px-2 py-0.5 text-[11px] text-slate-400">
+                          Thiết bị khác
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Thông tin IP, vị trí và thời gian */}
+                    <div className="mt-3 space-y-1.5 text-xs text-slate-400">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Địa chỉ IP:</span>
+                        <span className="mono font-semibold text-slate-200">
+                          {s.ip}{' '}
+                          {s.country && <span className="ml-1 text-slate-300">{getCountryFlag(s.country)} {getCountryName(s.country)}</span>}
+                          {isLocal && <span className="ml-1 text-[11px] text-slate-400">(Nội bộ)</span>}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Đăng nhập:</span>
+                        <span className="text-slate-300">{formatDate(s.createdAt)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">Hoạt động cuối:</span>
+                        <span className="text-emerald-400/90 font-medium">{formatRelative(s.lastActiveAt || s.createdAt)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hành động dưới cùng: Nút Đăng xuất ở phiên khác, còn phiên hiện tại XÓA HOÀN TOÀN nút Đăng xuất */}
+                  <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs">
+                    {s.isCurrent ? (
+                      <span className="inline-flex items-center gap-1.5 font-medium text-emerald-400">
+                        <CircleCheck className="size-3.5" /> Thiết bị này đang được sử dụng
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-slate-500">Phiên từ xa</span>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          className="text-rose-400 hover:bg-rose-500/15 hover:text-rose-300"
+                          icon={LogOut}
+                          onClick={() => void revoke(s)}
+                        >
+                          Đăng xuất
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* Khối 2: Nhật ký đăng nhập chi tiết */}
+      <Card
+        title="Nhật ký đăng nhập chi tiết (Audit Log)"
+        icon={History}
+        bodyClassName="p-0"
+        actions={
+          history.data && history.data.length > 0 ? (
+            <span className="text-xs text-slate-400 font-medium">Ghi nhận {history.data.length} lần</span>
+          ) : undefined
+        }
+      >
+        {!history.data ? (
+          <Spinner />
+        ) : history.data.length === 0 ? (
+          <EmptyState icon={History} title="Chưa có lần đăng nhập nào được ghi lại" />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead>
+                <tr>
+                  <th className={th}>Thời gian</th>
+                  <th className={th}>Thiết bị / Trình duyệt</th>
+                  <th className={th}>Địa chỉ IP & Vị trí</th>
+                  <th className={th}>Trạng thái</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Card>
+              </thead>
+              <tbody>
+                {history.data.map((h, i) => {
+                  const DevIcon = getDeviceIcon(h.deviceType);
+                  const isLocal = h.ip === '127.0.0.1' || h.ip === '::1' || h.ip.startsWith('192.168.') || h.ip.startsWith('10.');
+                  return (
+                    <tr key={`${h.at}-${i}`} className={tr}>
+                      <td className={td}>
+                        <div className="text-xs font-semibold text-slate-200">{formatDate(h.at)}</div>
+                        <div className="text-[11px] text-slate-500">{formatRelative(h.at)}</div>
+                      </td>
+                      <td className={td}>
+                        <div className="flex items-center gap-2.5" data-tip={h.userAgent}>
+                          <DevIcon className="size-4 shrink-0 text-slate-400" />
+                          <div>
+                            <div className="text-xs font-semibold text-slate-200">{h.browser || 'Trình duyệt khác'}</div>
+                            <div className="text-[11px] text-slate-500">{h.os || 'Hệ điều hành khác'}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className={td}>
+                        <div className="mono text-xs font-semibold text-slate-200">{h.ip}</div>
+                        <div className="text-[11px] text-slate-400">
+                          {h.country ? (
+                            <span>{getCountryFlag(h.country)} {getCountryName(h.country)}</span>
+                          ) : isLocal ? (
+                            <span>🏠 Mạng nội bộ / Localhost</span>
+                          ) : (
+                            <span>Mạng ngoài</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className={td}>
+                        <div className="space-y-0.5">
+                          <Badge tone={h.ok ? 'green' : 'red'}>
+                            {h.ok ? 'Thành công' : 'Thất bại'}
+                          </Badge>
+                          {h.reason && (
+                            <span className={cn('block text-[11px]', h.ok ? 'text-slate-400' : 'text-rose-400 font-medium')}>
+                              {h.reason}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -1570,7 +1795,7 @@ export default function Settings() {
             { id: 'vps', label: 'Hạn VPS', icon: CalendarClock },
             { id: 'tools', label: 'Công cụ hệ thống', icon: Wrench },
             { id: 'update', label: update?.available ? 'Cập nhật •' : 'Cập nhật', icon: Sparkles },
-            { id: 'sessions', label: 'Đăng nhập', icon: History },
+            { id: 'sessions', label: 'Phiên & Đăng nhập', icon: ShieldCheck },
             { id: 'system', label: 'Hệ thống', icon: Info },
           ]}
         />
