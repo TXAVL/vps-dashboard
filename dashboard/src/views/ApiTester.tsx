@@ -19,7 +19,7 @@ import {
   Minimize2,
   PanelLeft,
   Pencil,
-  Plus,
+  RotateCcw,
   Save,
   Send,
   Settings2,
@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { Button, CopyButton, EmptyState, IconButton, Modal, Select, Spinner, cn } from '../components/ui';
-import { get, post, put } from '../lib/api';
+import { get, getToken, post, put } from '../lib/api';
 import { formatBytes, formatRelative } from '../lib/format';
 import { usePanel } from '../lib/panel';
 
@@ -540,6 +540,7 @@ export default function ApiTester() {
       { key: 'baseUrl', value: `${tunnel?.status === 'online' && tunnel.url ? tunnel.url : window.location.origin}/zen/v1`, enabled: true },
       { key: 'apiKey', value: gatewayKey, enabled: true },
       { key: 'panelUrl', value: window.location.origin, enabled: true },
+      { key: 'panelToken', value: getToken() || '', enabled: true },
     ],
     [tunnel, gatewayKey],
   );
@@ -751,6 +752,12 @@ export default function ApiTester() {
           {side === 'collections' ? (
             <div className="min-h-0 flex-1 overflow-y-auto p-2">
               <div className="mb-2 flex flex-wrap gap-1">
+                <Button size="xs" variant="primary" icon={Sparkles} onClick={async () => {
+                  const updated = await run(() => post<Workspace>('/api/http/workspace/import-templates'), 'Đã nạp đầy đủ các bộ API mẫu của ZenPanel!');
+                  if (updated) setWs(updated);
+                }} title="Nạp đầy đủ bộ API mẫu (AI Gateway OpenAI, Anthropic, Ollama, Quản trị VPS)">
+                  Mẫu API
+                </Button>
                 <Button size="xs" variant="ghost" icon={FolderPlus} onClick={async () => {
                   const name = await prompt({ title: 'Tạo collection', label: 'Tên collection', confirmLabel: 'Tạo' });
                   if (name) persist({ ...ws, collections: [...ws.collections, { id: uid(), name, requests: [] }] });
@@ -823,14 +830,30 @@ export default function ApiTester() {
                   </div>
                 );
               })}
-              <button className="mt-3 text-[11px] text-slate-600 hover:text-slate-400" onClick={async () => {
-                if (await confirm({ title: 'Khôi phục mặc định', message: 'Xoá toàn bộ collections, môi trường, lịch sử và nạp lại collection mẫu?', danger: true, confirmLabel: 'Khôi phục' })) {
-                  const fresh = await run(() => post<Workspace>('/api/http/workspace/reset'));
-                  if (fresh) setWs(fresh);
-                }
-              }}>
-                Khôi phục collection mẫu
-              </button>
+              <div className="mt-4 border-t border-slate-800/80 pt-3 space-y-2">
+                <button
+                  className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-semibold transition"
+                  onClick={async () => {
+                    const updated = await run(() => post<Workspace>('/api/http/workspace/import-templates'), 'Đã nạp đầy đủ các bộ API mẫu của ZenPanel!');
+                    if (updated) setWs(updated);
+                  }}
+                >
+                  <Sparkles className="size-3.5" />
+                  Nạp / Cập nhật bộ API mẫu (Đầy đủ)
+                </button>
+                <button
+                  className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-rose-400 transition"
+                  onClick={async () => {
+                    if (await confirm({ title: 'Khôi phục mặc định', message: 'Xoá toàn bộ collections, môi trường, lịch sử và nạp lại collection mẫu?', danger: true, confirmLabel: 'Khôi phục' })) {
+                      const fresh = await run(() => post<Workspace>('/api/http/workspace/reset'));
+                      if (fresh) setWs(fresh);
+                    }
+                  }}
+                >
+                  <RotateCcw className="size-3" />
+                  Khôi phục toàn bộ mặc định
+                </button>
+              </div>
             </div>
           ) : (
             <div className="min-h-0 flex-1 overflow-y-auto p-2">

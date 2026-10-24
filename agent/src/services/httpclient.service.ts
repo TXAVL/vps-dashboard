@@ -67,29 +67,157 @@ const blankRequest = (name: string, method: string, url: string, extra: Partial<
   ...extra,
 });
 
-/** Collection mẫu cho ZenPanel AI Gateway ({{baseUrl}}, {{apiKey}} lấy từ môi trường "ZenPanel AI Gateway") */
+/** Collection mẫu toàn diện: ZenPanel AI Gateway (OpenAI, Anthropic, Ollama) & ZenPanel Quản Trị Hệ Thống */
 function defaultWorkspace(): Workspace {
   const json = (raw: unknown) => ({ mode: 'json' as const, raw: JSON.stringify(raw, null, 2), form: [] });
   return {
     collections: [
       {
-        id: 'zen-gateway',
-        name: 'ZenPanel AI Gateway',
+        id: 'zen-gateway-openai',
+        name: 'ZenPanel AI Gateway (OpenAI Format)',
         requests: [
-          blankRequest('Health', 'GET', '{{baseUrl}}/health', { auth: { type: 'none' } }),
-          blankRequest('Danh sách model', 'GET', '{{baseUrl}}/models'),
-          blankRequest('Chi tiết 1 model', 'GET', '{{baseUrl}}/models/{{model}}'),
-          blankRequest('Nhà cung cấp đã kết nối', 'GET', '{{baseUrl}}/providers'),
-          blankRequest('Thông tin API key', 'GET', '{{baseUrl}}/key'),
-          blankRequest('Thống kê sử dụng', 'GET', '{{baseUrl}}/usage', { params: [{ key: 'hours', value: '24', enabled: true }] }),
-          blankRequest('Chat completions', 'POST', '{{baseUrl}}/chat/completions', {
-            body: json({ model: '{{model}}', messages: [{ role: 'user', content: 'Bạn là ai?' }], temperature: 0.7 }),
+          blankRequest('01. [Public] Kiểm tra sức khỏe (Health)', 'GET', '{{baseUrl}}/health', { auth: { type: 'none' } }),
+          blankRequest('02. [Public] Xem hướng dẫn & Endpoints', 'GET', '{{baseUrl}}/guide', { auth: { type: 'none' } }),
+          blankRequest('03. [Models] Danh sách Models & Tiers', 'GET', '{{baseUrl}}/models'),
+          blankRequest('04. [Models] Chi tiết 1 Model', 'GET', '{{baseUrl}}/models/{{model}}'),
+          blankRequest('05. [Providers] Nhà cung cấp & Keys', 'GET', '{{baseUrl}}/providers'),
+          blankRequest('06. [Key] Thông tin API Key hiện tại', 'GET', '{{baseUrl}}/key'),
+          blankRequest('07. [Config] Xem cấu hình Gateway', 'GET', '{{baseUrl}}/config'),
+          blankRequest('08. [Config] Set Model Default & Fallback', 'POST', '{{baseUrl}}/config', {
+            body: json({ model: 'auto', tier1Model: 'auto', tier2Model: 'auto', fallbacks: [] }),
           }),
-          blankRequest('Chat (stream)', 'POST', '{{baseUrl}}/chat/completions', {
-            body: json({ model: '{{model}}', stream: true, messages: [{ role: 'user', content: 'Viết 1 câu chào ngắn' }] }),
+          blankRequest('09. [Usage] Thống kê tiêu thụ Token 24h', 'GET', '{{baseUrl}}/usage', { params: [{ key: 'hours', value: '24', enabled: true }] }),
+          blankRequest('10. [Chat] Chat Completions (Auto 3-Tier)', 'POST', '{{baseUrl}}/chat/completions', {
+            body: json({
+              model: 'auto',
+              messages: [{ role: 'user', content: 'Xin chào! Bạn là mô hình AI nào?' }],
+              temperature: 0.7,
+            }),
           }),
-          blankRequest('Completions (prompt)', 'POST', '{{baseUrl}}/completions', { body: json({ model: '{{model}}', prompt: 'Thủ đô của Việt Nam là' }) }),
-          blankRequest('Embeddings', 'POST', '{{baseUrl}}/embeddings', { body: json({ model: 'openai/text-embedding-3-small', input: 'Xin chào ZenPanel' }) }),
+          blankRequest('11. [Chat] Chat Streaming (SSE)', 'POST', '{{baseUrl}}/chat/completions', {
+            body: json({
+              model: 'auto',
+              stream: true,
+              messages: [{ role: 'user', content: 'Đếm từ 1 đến 5 và phản hồi ngắn gọn.' }],
+            }),
+          }),
+          blankRequest('12. [Completions] Prompt Completions', 'POST', '{{baseUrl}}/completions', {
+            body: json({ model: 'auto', prompt: 'Thủ đô của Việt Nam là' }),
+          }),
+          blankRequest('13. [Embeddings] Vector Embeddings', 'POST', '{{baseUrl}}/embeddings', {
+            body: json({ model: 'openai/text-embedding-3-small', input: 'Xin chào ZenPanel AI Gateway' }),
+          }),
+        ],
+      },
+      {
+        id: 'zen-gateway-anthropic-ollama',
+        name: 'ZenPanel AI Gateway (Anthropic & Ollama)',
+        requests: [
+          blankRequest('01. [Anthropic] Messages (Claude Code / Cline)', 'POST', '{{baseUrl}}/v1/messages', {
+            auth: { type: 'none' },
+            headers: [
+              { key: 'x-api-key', value: '{{apiKey}}', enabled: true },
+              { key: 'anthropic-version', value: '2023-06-01', enabled: true },
+              { key: 'Content-Type', value: 'application/json', enabled: true },
+            ],
+            body: json({
+              model: '{{model}}',
+              max_tokens: 1024,
+              messages: [{ role: 'user', content: 'Xin chào Claude! Bạn hỗ trợ những gì?' }],
+            }),
+          }),
+          blankRequest('02. [Anthropic] Messages Streaming (SSE)', 'POST', '{{baseUrl}}/v1/messages', {
+            auth: { type: 'none' },
+            headers: [
+              { key: 'x-api-key', value: '{{apiKey}}', enabled: true },
+              { key: 'anthropic-version', value: '2023-06-01', enabled: true },
+              { key: 'Content-Type', value: 'application/json', enabled: true },
+            ],
+            body: json({
+              model: '{{model}}',
+              max_tokens: 1024,
+              stream: true,
+              messages: [{ role: 'user', content: 'Viết 1 đoạn code Python ngắn tính giai thừa.' }],
+            }),
+          }),
+          blankRequest('03. [Ollama] Danh sách Models (Tags)', 'GET', '{{baseUrl}}/api/tags', { auth: { type: 'none' } }),
+          blankRequest('04. [Ollama] Kiểm tra Version', 'GET', '{{baseUrl}}/api/version', { auth: { type: 'none' } }),
+          blankRequest('05. [Ollama] Chat Completions', 'POST', '{{baseUrl}}/api/chat', {
+            auth: { type: 'none' },
+            headers: [{ key: 'Content-Type', value: 'application/json', enabled: true }],
+            body: json({
+              model: '{{model}}',
+              messages: [{ role: 'user', content: 'Chào Ollama từ ZenPanel AI Gateway!' }],
+              stream: false,
+            }),
+          }),
+          blankRequest('06. [Ollama] Chat Streaming (NDJSON)', 'POST', '{{baseUrl}}/api/chat', {
+            auth: { type: 'none' },
+            headers: [{ key: 'Content-Type', value: 'application/json', enabled: true }],
+            body: json({
+              model: '{{model}}',
+              messages: [{ role: 'user', content: 'Đếm từ 1 đến 5.' }],
+              stream: true,
+            }),
+          }),
+          blankRequest('07. [Ollama] Generate (Prompt)', 'POST', '{{baseUrl}}/api/generate', {
+            auth: { type: 'none' },
+            headers: [{ key: 'Content-Type', value: 'application/json', enabled: true }],
+            body: json({
+              model: '{{model}}',
+              prompt: 'Tại sao bầu trời màu xanh?',
+              stream: false,
+            }),
+          }),
+          blankRequest('08. [Ollama] Models Đang Chạy (ps)', 'GET', '{{baseUrl}}/api/ps', { auth: { type: 'none' } }),
+        ],
+      },
+      {
+        id: 'zenpanel-system',
+        name: 'ZenPanel Quản Trị VPS (System APIs)',
+        requests: [
+          blankRequest('01. [System] Thông tin phần cứng & Uptime', 'GET', '{{panelUrl}}/api/system/info', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('02. [Metrics] Chỉ số Realtime (CPU/RAM/Disk)', 'GET', '{{panelUrl}}/api/metrics', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('03. [Docker] Danh sách Containers', 'GET', '{{panelUrl}}/api/docker/containers', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('04. [Docker] Thống kê CPU/RAM Containers', 'GET', '{{panelUrl}}/api/docker/stats', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('05. [Sites] Danh sách Websites & Vhosts', 'GET', '{{panelUrl}}/api/sites', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('06. [Speedtest] Đo tốc độ mạng VPS', 'GET', '{{panelUrl}}/api/speedtest', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('07. [Clean] Quét rác hệ thống & Logs', 'GET', '{{panelUrl}}/api/system/clean/scan', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('08. [Clean] Tối ưu giải phóng RAM tức thì', 'POST', '{{panelUrl}}/api/system/clean/ram', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('09. [Backups] Danh sách bản sao lưu VPS', 'GET', '{{panelUrl}}/api/backups', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('10. [Apps] Danh sách ứng dụng App Store', 'GET', '{{panelUrl}}/api/apps', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('11. [Processes] Tiến trình đang chạy', 'GET', '{{panelUrl}}/api/processes', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('12. [Ports] Cổng mạng đang mở (Listening)', 'GET', '{{panelUrl}}/api/ports', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('13. [Tools] Kiểm tra công cụ hệ thống đã cài', 'GET', '{{panelUrl}}/api/system/tools', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
+          blankRequest('14. [Logs] Danh sách nguồn nhật ký (Logs)', 'GET', '{{panelUrl}}/api/logs/sources', {
+            auth: { type: 'bearer', token: '{{panelToken}}' },
+          }),
         ],
       },
       {
@@ -112,7 +240,46 @@ const isText = (type: string) => /json|text|xml|html|javascript|x-www-form-urlen
 
 export class HttpClientService {
   workspace(): Workspace {
-    return readJson<Workspace | null>(FILE, null) ?? defaultWorkspace();
+    const saved = readJson<Workspace | null>(FILE, null);
+    if (!saved) return defaultWorkspace();
+
+    // Tự động nâng cấp bộ API nếu thiếu các collection mới của ZenPanel
+    const defaults = defaultWorkspace().collections;
+    const existingIds = new Set((saved.collections || []).map((c) => c.id));
+    let modified = false;
+
+    // Chuyển đổi legacy 'zen-gateway' thành 'zen-gateway-openai'
+    const legacyIdx = saved.collections.findIndex((c) => c.id === 'zen-gateway');
+    if (legacyIdx >= 0) {
+      saved.collections.splice(legacyIdx, 1);
+      modified = true;
+    }
+
+    for (const d of defaults) {
+      if (!existingIds.has(d.id) && !saved.collections.some((c) => c.name === d.name)) {
+        saved.collections.push(d);
+        modified = true;
+      }
+    }
+
+    if (modified) {
+      writeJson(FILE, saved);
+    }
+    return saved;
+  }
+
+  importTemplates(): Workspace {
+    const ws = this.workspace();
+    const defaults = defaultWorkspace().collections;
+    const map = new Map(ws.collections.map((c) => [c.id, c]));
+    map.delete('zen-gateway');
+
+    for (const d of defaults) {
+      map.set(d.id, d);
+    }
+    ws.collections = Array.from(map.values());
+    writeJson(FILE, ws);
+    return ws;
   }
 
   save(input: Partial<Workspace>): Workspace {

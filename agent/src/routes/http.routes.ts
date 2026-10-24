@@ -7,5 +7,6 @@ export async function httpRoutes(app: FastifyInstance, deps: { http: HttpClientS
   app.get('/api/http/workspace', async () => http.workspace());
   app.put('/api/http/workspace', async (req) => http.save((req.body ?? {}) as Partial<Workspace>));
   app.post('/api/http/workspace/reset', async () => http.reset());
+  app.post('/api/http/workspace/import-templates', async () => http.importTemplates());
   app.post('/api/http/send', async (req) => http.send((req.body ?? {}) as SendInput));
 }
