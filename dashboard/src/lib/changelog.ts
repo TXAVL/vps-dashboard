@@ -9,6 +9,50 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.6',
+    date: '2026-10-24',
+    highlights: [
+      {
+        title: '🚀 Trình Quản Lý Tệp ZenFile Ultra Thế Hệ Mới (Dual-Pane & Web Terminal)',
+        items: [
+          'Ra mắt ZenFile Ultra (Cloud Commander Pro): Giao diện 2 cửa sổ song song (Dual-Pane) giúp sao chép (F5) và di chuyển (F6) tệp tin giữa 2 thư mục siêu tốc.',
+          'Tích hợp Web Terminal tương tác trực tiếp: Mở shell (bash, sh, PowerShell) ngay tại thư mục đang duyệt bằng phím tắt Ctrl + ` mà không cần rời trang File Manager.',
+          'Monaco Code Editor chuyên nghiệp: Hỗ trợ highlight cú pháp đa ngôn ngữ, tìm kiếm regex, phím tắt VS Code, xem diff so sánh nội dung tệp tin.',
+          'Nén & Giải nén đa định dạng: Đóng gói và giải nén trực tiếp các file .zip, .tar, .tar.gz, .tgz siêu nhẹ và mượt mà.',
+          'Xem trước hình ảnh lightbox, phát video và phát nhạc trực tuyến.',
+          'Toàn quyền Root VPS: Truy cập và quản trị toàn bộ filesystem hệ thống không bị giới hạn permission.',
+          'Linh hoạt chuyển đổi: Hỗ trợ chuyển đổi nhanh giữa 3 chế độ (Duyệt tiêu chuẩn OS, ZenFile Ultra kiểu mới và FileBrowser truyền thống).',
+        ],
+      },
+      {
+        title: '📦 Hệ Thống Kho Repos Mở Rộng Cho App Store (Community Repos)',
+        items: [
+          'Kho ứng dụng chính thức ZenPanel Community & Pro Apps được đẩy trực tiếp lên GitHub repo TXAVL/vps-dashboard.',
+          'Tính năng Tự Động Thêm Kho 1-Click: Thêm kho repo và mở ngay trình cài đặt ứng dụng chỉ bằng 1 nút bấm từ File Manager hoặc App Store.',
+          'Chuẩn hóa liên kết GitHub: Tự động chuyển đổi link GitHub web (blob) sang dạng Raw JSON, người dùng copy link nào cũng hoạt động ổn định.',
+          'Tích hợp thẻ gợi ý kho chính thức kèm nút sao chép và hướng dẫn từng bước trực quan trong App Store.',
+        ],
+      },
+      {
+        title: '🎯 Phân Loại Nhật Ký Thông Minh: Khắc Phục Nhận Diện Nhầm Log Của Bot',
+        items: [
+          'Sửa lỗi các log bot (Telegram, Discord, AI Crawler, Googlebot, Ping monitor) chưa phát sinh lỗi nhưng bị hệ thống tính là lỗi và tô đỏ.',
+          'Tự động nhận diện chuẩn HTTP Access Log: Các request có mã HTTP 2xx (200, 201...) và 3xx (301, 304...) được nhận diện chính xác là thành công, không tính là lỗi dù đường dẫn có chứa từ khóa nhạy cảm.',
+          'Bỏ qua các cờ phủ định: Nhận diện chính xác error: null, failed: 0, 0 errors, status: ok, without error...',
+          'Bảo vệ tiền tố cấp độ [INFO], [DEBUG], level=info: Không bị đánh đồng thành lỗi nghiêm trọng khi bot xử lý tin nhắn hoặc trạng thái kiểm tra.',
+        ],
+      },
+      {
+        title: '📱 Tối Ưu Giao Diện & Trải Nghiệm Mobile Toàn Diện (Responsive Design)',
+        items: [
+          'Tối ưu hóa Trang Tổng Quan (Overview): Bố cục co giãn thông minh, tương thích hoàn hảo với màn hình điện thoại di động và máy tính bảng.',
+          'Tinh chỉnh các vòng tròn đo tài nguyên CPU/RAM/Ổ đĩa, biểu đồ thời gian thực và các nút thao tác nhanh không bị tràn khung.',
+          'Nâng cấp thanh điều hướng Shell và các modal chẩn đoán hệ thống (VpsDoctorModal) để thao tác chạm mượt mà trên mobile.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.6.5',
     date: '2026-10-24',
     highlights: [
