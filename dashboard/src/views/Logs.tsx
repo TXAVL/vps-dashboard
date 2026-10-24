@@ -10,14 +10,100 @@ import { useApi } from '../lib/hooks';
 interface LogSource { id: string; label: string; group: string; kind: string; path?: string }
 interface LogRead { content: string; size: number | null; matched: number | null }
 
-const tone = (line: string) =>
-  /\b(error|err|fatal|crit|fail(ed)?|emerg|alert|lỗi)\b|\[Error\]|\[Critical\]/i.test(line)
-    ? 'text-rose-300'
-    : /\b(warn(ing)?)\b|\[Warning\]/i.test(line)
-      ? 'text-amber-300'
-      : /\b(accepted|success|started)\b/i.test(line)
-        ? 'text-emerald-300'
-        : 'text-slate-300';
+const isNegativeError = (line: string): boolean =>
+  /\b(no|0|zero|without|false)\s+(errors?|errs?|failures?|fails?|faults?|exceptions?)\b/i.test(line) ||
+  /\b(errors?|errs?|failed|fail|faults?)\s*[:=]\s*(null|none|nil|false|undefined|0|\[\]|\{\}|""|'')\b/i.test(line) ||
+  /"(errors?|errs?|failed|fail)":\s*(null|false|0|""|\[\]|\{\})/i.test(line) ||
+  /\bstatus\s*[:=]\s*(ok|success|true)\b/i.test(line);
+
+const tone = (line: string): string => {
+  if (!line || !line.trim()) return 'text-slate-300';
+
+  // 1. Web server access logs (Nginx / Apache / Caddy / Traefik / Node.js)
+  // Match standard HTTP status code in access logs: "METHOD /path HTTP/1.x" 200 ...
+  const httpAccessMatch = line.match(/"(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|CONNECT)\s+[^"]+\s+HTTP\/[0-9.]+"\s+([0-9]{3})\b/i);
+  if (httpAccessMatch) {
+    const status = parseInt(httpAccessMatch[1], 10);
+    if (status >= 200 && status < 300) return 'text-emerald-300';
+    if (status >= 300 && status < 400) return 'text-slate-300';
+    if (status >= 400 && status < 500) return 'text-amber-300'; // 4xx client warning / 404
+    if (status >= 500) return 'text-rose-300'; // 5xx server error
+  }
+
+  // Common Log Format: IP - - [time] "..." STATUS BYTES
+  const clfMatch = line.match(/\s+([2-5]\d{2})\s+\d+(?:\s+"[^"]*")?(?:\s+"[^"]*")?\s*$/);
+  if (clfMatch) {
+    const status = parseInt(clfMatch[1], 10);
+    if (status >= 200 && status < 300) return 'text-emerald-300';
+    if (status >= 300 && status < 400) return 'text-slate-300';
+    if (status >= 400 && status < 500) return 'text-amber-300';
+    if (status >= 500) return 'text-rose-300';
+  }
+
+  // 2. Unambiguous crashes, fatal exceptions, unhandled rejections & stack traces
+  if (
+    /\b(UnhandledPromiseRejection|Traceback \(most recent call last\)|PanicException|NullPointerException|Segmentation fault|SIGSEGV|SIGKILL)\b/i.test(line) ||
+    /\b(Fatal error|syntaxerror|typeerror|referenceerror)\b/i.test(line)
+  ) {
+    return 'text-rose-300';
+  }
+
+  // 3. Explicit error log levels
+  if (
+    /\[(ERROR|CRITICAL|FATAL|EMERG|EMERGENCY)\]/i.test(line) ||
+    /\b(?:level|lvl)=(?:error|fatal|crit|emerg)\b/i.test(line) ||
+    /"(?:level|lvl)":\s*"(?:error|fatal|crit|emerg)"/i.test(line)
+  ) {
+    return 'text-rose-300';
+  }
+
+  // 4. Explicit warning log levels
+  if (
+    /\[(WARN|WARNING)\]/i.test(line) ||
+    /\b(?:level|lvl)=(?:warn|warning)\b/i.test(line) ||
+    /"(?:level|lvl)":\s*"(?:warn|warning)"/i.test(line)
+  ) {
+    return 'text-amber-300';
+  }
+
+  // 5. Explicit informational / debug log levels (bot logs, daemons, workers, stdout)
+  const isExplicitInfo =
+    /\[(INFO|DEBUG|TRACE|NOTICE|VERBOSE)\]/i.test(line) ||
+    /\b(?:level|lvl)=(?:info|debug|trace|notice|verbose)\b/i.test(line) ||
+    /"(?:level|lvl)":\s*"(?:info|debug|trace|notice|verbose)"/i.test(line);
+
+  // Check if error indicators are zero / null / false / negated
+  const hasNegativeError = isNegativeError(line);
+
+  // If marked INFO/DEBUG and has zero/null errors or no explicit error, it's not an error
+  if (isExplicitInfo && hasNegativeError) {
+    return 'text-slate-300';
+  }
+
+  // 6. Genuine error keywords (excluding negated patterns and innocent identifiers)
+  if (!hasNegativeError && !isExplicitInfo) {
+    if (/\b(fatal|critical|lỗi|emerg(ency)?)\b/i.test(line)) {
+      return 'text-rose-300';
+    }
+    if (/\b(error|err|failed)\b/i.test(line)) {
+      if (!/\b(error_page|error_log|onerror|err_handler|noerror)\b/i.test(line)) {
+        return 'text-rose-300';
+      }
+    }
+  }
+
+  // 7. Warning keywords
+  if (/\b(warn(ing)?|cảnh báo)\b/i.test(line)) {
+    return 'text-amber-300';
+  }
+
+  // 8. Success keywords
+  if (/\b(accepted|success(ful|fully)?|started|listening on|connected|healthy|hoàn tất|thành công)\b/i.test(line)) {
+    return 'text-emerald-300';
+  }
+
+  return 'text-slate-300';
+};
 
 export default function Logs() {
   const sources = useApi<LogSource[]>('/api/logs/sources');

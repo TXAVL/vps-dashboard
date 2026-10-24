@@ -407,28 +407,28 @@ export function VpsDoctorModal({ open, onClose }: Props) {
                 </div>
 
                 <div className="mt-3 space-y-2.5 text-xs">
-                  <div className="flex items-center justify-between rounded-xl bg-ink-900/60 p-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl bg-ink-900/60 p-2.5">
                     <div>
                       <div className="font-semibold text-slate-200">Google TCP BBR</div>
                       <div className="text-[11px] text-slate-400">Giảm packet loss & tăng tốc độ tải mạng 20-50%</div>
                     </div>
                     {report.kernelOptimizations.bbrEnabled ? (
-                      <span className="text-emerald-400 font-bold flex items-center gap-1">
+                      <span className="text-emerald-400 font-bold flex items-center gap-1 shrink-0">
                         <CheckCircle2 className="size-4" /> Đã bật
                       </span>
                     ) : report.kernelOptimizations.canEnableBbr ? (
                       <button
                         onClick={() => void handleEnableBbr()}
-                        className="rounded-lg bg-blue-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-blue-400"
+                        className="rounded-lg bg-blue-500 px-2.5 py-1 text-[11px] font-bold text-white hover:bg-blue-400 shrink-0 w-full sm:w-auto"
                       >
                         Bật ngay
                       </button>
                     ) : (
-                      <span className="text-slate-500">Không hỗ trợ</span>
+                      <span className="text-slate-500 shrink-0">Không hỗ trợ</span>
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between rounded-xl bg-ink-900/60 p-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl bg-ink-900/60 p-2.5">
                     <div>
                       <div className="font-semibold text-slate-200">Tường lửa (Firewall): {report.firewall.backend}</div>
                       <div className="text-[11px] text-slate-400">
@@ -437,7 +437,7 @@ export function VpsDoctorModal({ open, onClose }: Props) {
                     </div>
                     <button
                       onClick={() => void handleFixFirewall()}
-                      className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700"
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700 shrink-0 w-full sm:w-auto"
                     >
                       Mở cổng an toàn
                     </button>
@@ -461,19 +461,19 @@ export function VpsDoctorModal({ open, onClose }: Props) {
                       key={ep.name}
                       className="flex items-center justify-between rounded-xl bg-ink-900/60 px-3 py-2"
                     >
-                      <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
                         <span
                           className={cn(
-                            'size-2 rounded-full',
+                            'size-2 shrink-0 rounded-full',
                             ep.ok ? 'bg-emerald-400 shadow-sm shadow-emerald-400/50' : 'bg-rose-500',
                           )}
                         />
-                        <span className="font-medium text-slate-200">{ep.name}</span>
-                        <span className="mono text-[11px] text-slate-500">({ep.host})</span>
+                        <span className="font-medium text-slate-200 truncate">{ep.name}</span>
+                        <span className="mono text-[11px] text-slate-500 hidden sm:inline">({ep.host})</span>
                       </div>
                       <span
                         className={cn(
-                          'mono font-bold',
+                          'mono font-bold shrink-0 ml-2',
                           !ep.ok
                             ? 'text-rose-400'
                             : ep.latencyMs < 60

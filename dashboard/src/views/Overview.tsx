@@ -36,22 +36,24 @@ import type { NetworkInfo, ProcessInfo } from '../lib/types';
 
 function StatTile({ title, icon: Icon, children, footer }: { title: string; icon: typeof Cpu; children: ReactNode; footer: ReactNode }) {
   return (
-    <div className="glass flex min-w-0 flex-col items-center gap-3 p-4 sm:p-5">
-      <div className="flex w-full items-center gap-2 text-sm font-bold text-slate-300">
-        <Icon className="size-4 text-zen-blue" />
-        {title}
+    <div className="glass flex min-w-0 flex-col items-center justify-between gap-2.5 sm:gap-3 p-3 sm:p-5">
+      <div className="flex w-full items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold text-slate-300">
+        <Icon className="size-3.5 sm:size-4 text-zen-blue shrink-0" />
+        <span className="truncate">{title}</span>
       </div>
-      {children}
-      <div className="mono w-full truncate text-center text-[11px] text-slate-400 sm:text-xs">{footer}</div>
+      <div className="flex items-center justify-center w-full min-h-[80px] xs:min-h-[96px] sm:min-h-[104px]">
+        {children}
+      </div>
+      <div className="mono w-full truncate text-center text-[10px] sm:text-xs text-slate-400" title={typeof footer === 'string' ? footer : undefined}>{footer}</div>
     </div>
   );
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-2">
-      <dt className="shrink-0 text-slate-500">{label}</dt>
-      <dd className="min-w-0 break-words text-right font-medium text-slate-200">{children}</dd>
+    <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-0.5 sm:gap-4 py-1.5 sm:py-2 text-xs sm:text-sm">
+      <dt className="shrink-0 text-slate-400 sm:text-slate-500 font-medium">{label}</dt>
+      <dd className="min-w-0 break-words sm:text-right font-medium text-slate-200">{children}</dd>
     </div>
   );
 }
@@ -59,7 +61,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 function Legend({ items }: { items: [string, string][] }) {
   const colors: Record<string, string> = { blue: 'bg-zen-blue', green: 'bg-zen-green', amber: 'bg-zen-amber' };
   return (
-    <div className="flex gap-3 text-xs text-slate-400">
+    <div className="flex flex-wrap gap-2 sm:gap-3 text-[11px] sm:text-xs text-slate-400">
       {items.map(([color, label]) => (
         <span key={label} className="flex items-center gap-1.5">
           <span className={`size-2 rounded-full ${colors[color]}`} />
@@ -77,9 +79,11 @@ function ExpiryCard() {
   if (!prefs.vpsExpiry) {
     return (
       <Card title="Hạn sử dụng VPS" icon={CalendarClock}>
-        <p className="text-sm text-slate-400">Chưa đặt ngày hết hạn. Nhà cung cấp VPS không công khai thông tin này cho hệ điều hành, hãy nhập ngày theo hoá đơn để ZenPanel đếm ngược và nhắc gia hạn.</p>
-        <Link to="/settings?tab=vps" className="mt-3 inline-block">
-          <Button size="sm" variant="soft" icon={CalendarClock}>
+        <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+          Chưa đặt ngày hết hạn. Nhà cung cấp VPS không công khai thông tin này cho hệ điều hành, hãy nhập ngày theo hoá đơn để ZenPanel đếm ngược và nhắc gia hạn.
+        </p>
+        <Link to="/settings?tab=vps" className="mt-3 block sm:inline-block">
+          <Button size="sm" variant="soft" icon={CalendarClock} className="w-full sm:w-auto">
             Đặt ngày hết hạn
           </Button>
         </Link>
@@ -108,7 +112,7 @@ function ExpiryCard() {
       icon={CalendarClock}
       actions={
         <div data-tip={fullCountdown} className="inline-block cursor-default">
-          <Badge tone={tone} className="transition hover:scale-105">
+          <Badge tone={tone} className="transition hover:scale-105 text-[10px] sm:text-xs">
             {isExpired ? 'Đã hết hạn' : `${days} ngày (${txaformat.pad2(hours)}h${txaformat.pad2(minutes)}p)`}
           </Badge>
         </div>
@@ -121,7 +125,7 @@ function ExpiryCard() {
         )}
         data-tip={fullCountdown}
       >
-        <div className="mono text-2xl sm:text-3xl tracking-tight">
+        <div className="mono text-xl sm:text-3xl tracking-tight">
           {isExpired ? (
             `Quá hạn ${days} ngày`
           ) : (
@@ -141,8 +145,8 @@ function ExpiryCard() {
         {prefs.vpsPrice && <Row label="Chi phí">{prefs.vpsPrice}</Row>}
       </dl>
       {prefs.vpsRenewUrl && (
-        <a href={prefs.vpsRenewUrl} target="_blank" rel="noreferrer" className="mt-3 inline-block">
-          <Button size="sm" variant={tone === 'green' ? 'soft' : 'primary'} icon={ExternalLink}>
+        <a href={prefs.vpsRenewUrl} target="_blank" rel="noreferrer" className="mt-3 block sm:inline-block">
+          <Button size="sm" variant={tone === 'green' ? 'soft' : 'primary'} icon={ExternalLink} className="w-full sm:w-auto">
             Gia hạn
           </Button>
         </a>
@@ -175,12 +179,14 @@ function PowerCard() {
 
   return (
     <Card title="Nguồn máy chủ" icon={Power}>
-      <p className="mb-3 text-sm text-slate-400">Thao tác ảnh hưởng toàn bộ máy chủ, cần gõ lại hostname để xác nhận.</p>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="soft" icon={RotateCcw} loading={busy} onClick={() => void act('reboot')}>
+      <p className="mb-3 text-xs sm:text-sm text-slate-400 leading-relaxed">
+        Thao tác ảnh hưởng toàn bộ máy chủ, cần gõ lại hostname để xác nhận.
+      </p>
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+        <Button variant="soft" icon={RotateCcw} loading={busy} onClick={() => void act('reboot')} className="w-full sm:w-auto">
           Khởi động lại
         </Button>
-        <Button variant="danger" icon={Power} disabled={busy} onClick={() => void act('shutdown')}>
+        <Button variant="danger" icon={Power} disabled={busy} onClick={() => void act('shutdown')} className="w-full sm:w-auto">
           Tắt máy
         </Button>
       </div>
@@ -222,11 +228,11 @@ export default function Overview() {
         description={`${info.os.hostname} · ${info.os.name} · ${info.os.arch}`}
         icon={Gauge}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" variant="soft" icon={HeartPulse} onClick={() => setDoctorOpen(true)}>
               Bác sĩ VPS
             </Button>
-            <Badge tone="green" className="mono text-[11px] sm:text-xs">
+            <Badge tone="green" className="mono text-[10px] sm:text-xs">
               <Clock className="size-3.5" /> Uptime {uptime !== null ? formatDuration(uptime) : '—'}
             </Badge>
           </div>
@@ -244,7 +250,7 @@ export default function Overview() {
       )}
 
       {(latest.cpu.usage >= 70 || diskPct >= 85) && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zen-amber/40 bg-zen-amber/10 px-4 py-3 text-sm text-amber-200">
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 rounded-2xl border border-zen-amber/40 bg-zen-amber/10 p-3 sm:px-4 sm:py-3 text-xs sm:text-sm text-amber-200">
           <div className="flex items-center gap-2.5">
             <Sparkles className="size-5 shrink-0 text-zen-amber" />
             <span>
@@ -255,47 +261,51 @@ export default function Overview() {
                   : `Ổ đĩa máy chủ đang sắp đầy (${txaformat.percent(diskPct, 1)}). Cần dọn dẹp để tránh đầy ổ đĩa (full disk).`}
             </span>
           </div>
-          <Link to="/cleanup">
-            <Button size="xs" variant="secondary" className="border-amber-400/40 text-amber-100 hover:bg-amber-400/20">
+          <Link to="/cleanup" className="w-full sm:w-auto">
+            <Button size="xs" variant="secondary" className="w-full sm:w-auto border-amber-400/40 text-amber-100 hover:bg-amber-400/20">
               Vào tab Dọn dẹp ngay →
             </Button>
           </Link>
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-4">
         <StatTile title="CPU" icon={Cpu} footer={`${info.os.cpuCores} nhân${latest.load ? ` · load ${latest.load.map((l) => l.toFixed(2)).join(' ')}` : ''}`}>
-          <RingGauge value={latest.cpu.usage} label={formatPercent(latest.cpu.usage, 0)} sublabel="đang dùng" size={104} />
+          <RingGauge value={latest.cpu.usage} label={formatPercent(latest.cpu.usage, 0)} sublabel="đang dùng" />
         </StatTile>
         <StatTile title="RAM" icon={MemoryStick} footer={`${formatBytes(latest.memory.used)} / ${formatBytes(latest.memory.total)}`}>
-          <RingGauge value={memPct} label={formatPercent(memPct, 0)} sublabel="đang dùng" size={104} />
+          <RingGauge value={memPct} label={formatPercent(memPct, 0)} sublabel="đang dùng" />
         </StatTile>
         <StatTile title="Ổ đĩa" icon={HardDrive} footer={mainDisk ? `${mainDisk.mount} · ${formatBytes(mainDisk.used)} / ${formatBytes(mainDisk.total)}` : '—'}>
-          <RingGauge value={diskPct} label={formatPercent(diskPct, 0)} sublabel="đã dùng" size={104} />
+          <RingGauge value={diskPct} label={formatPercent(diskPct, 0)} sublabel="đã dùng" />
         </StatTile>
         <StatTile title="Mạng" icon={Network} footer={`Tổng ↓ ${formatBytes(latest.network.rxTotal)} · ↑ ${formatBytes(latest.network.txTotal)}`}>
-          <div className="flex h-[104px] w-full flex-col justify-center gap-2.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
-                <ArrowDown className="size-4 text-zen-green" /><span className="hidden 2xl:inline">Tải xuống</span>
+          <div className="flex h-20 xs:h-24 sm:h-[104px] w-full flex-col justify-center gap-2 sm:gap-2.5">
+            <div className="flex items-center justify-between gap-1 sm:gap-2">
+              <span className="flex items-center gap-1 text-[11px] sm:text-xs font-semibold text-slate-400 shrink-0">
+                <ArrowDown className="size-3.5 text-zen-green" /><span className="hidden 2xl:inline">Tải xuống</span>
               </span>
-              <span className="mono text-sm font-extrabold text-white sm:text-base">{formatRate(latest.network.rxRate, unit)}</span>
+              <span className="mono text-[11px] xs:text-xs sm:text-sm lg:text-base font-extrabold text-white truncate text-right">
+                {formatRate(latest.network.rxRate, unit)}
+              </span>
             </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
-                <ArrowUp className="size-4 text-zen-blue" /><span className="hidden 2xl:inline">Tải lên</span>
+            <div className="flex items-center justify-between gap-1 sm:gap-2">
+              <span className="flex items-center gap-1 text-[11px] sm:text-xs font-semibold text-slate-400 shrink-0">
+                <ArrowUp className="size-3.5 text-zen-blue" /><span className="hidden 2xl:inline">Tải lên</span>
               </span>
-              <span className="mono text-sm font-extrabold text-white sm:text-base">{formatRate(latest.network.txRate, unit)}</span>
+              <span className="mono text-[11px] xs:text-xs sm:text-sm lg:text-base font-extrabold text-white truncate text-right">
+                {formatRate(latest.network.txRate, unit)}
+              </span>
             </div>
           </div>
         </StatTile>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <div className="mt-4 grid gap-3 sm:gap-4 xl:grid-cols-2">
         <Card title="CPU & RAM (3 phút gần nhất)" icon={Activity} actions={<Legend items={[['blue', 'CPU'], ['green', 'RAM']]} />}>
           <AreaChart
             max={100}
-            height={160}
+            height={150}
             series={[
               { values: history.map((h) => h.cpu.usage), color: 'blue' },
               { values: history.map((h) => (h.memory.used / h.memory.total) * 100), color: 'green' },
@@ -304,20 +314,20 @@ export default function Overview() {
         </Card>
         <Card title="Lưu lượng mạng" icon={Network} actions={<Legend items={[['green', 'Download'], ['amber', 'Upload']]} />}>
           <AreaChart
-            height={160}
+            height={150}
             series={[
               { values: history.map((h) => h.network.rxRate), color: 'green' },
               { values: history.map((h) => h.network.txRate), color: 'amber' },
             ]}
           />
-          <div className="mono mt-3 grid grid-cols-2 gap-2 text-xs text-slate-400">
-            <span>Đỉnh ↓ {formatRate(peaks.rx, unit)}</span>
-            <span className="text-right">Đỉnh ↑ {formatRate(peaks.tx, unit)}</span>
+          <div className="mono mt-2.5 sm:mt-3 grid grid-cols-2 gap-2 text-[11px] sm:text-xs text-slate-400">
+            <span className="truncate">Đỉnh ↓ {formatRate(peaks.rx, unit)}</span>
+            <span className="truncate text-right">Đỉnh ↑ {formatRate(peaks.tx, unit)}</span>
           </div>
         </Card>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+      <div className="mt-4 grid gap-3 sm:gap-4 xl:grid-cols-3">
         <Card title="Thông tin chi tiết" icon={Info}>
           <dl className="divide-y divide-slate-700/40 text-sm">
             <Row label="Uptime">
@@ -338,19 +348,19 @@ export default function Overview() {
         </Card>
 
         <Card title="Mạng & truy cập" icon={Globe}>
-          <div className="space-y-3 text-sm">
+          <div className="space-y-2.5 sm:space-y-3 text-sm">
             <AccessRow label="IP public (IPv4)" value={network.data?.publicIpv4 ?? null} fallback={network.loading ? 'Đang lấy...' : 'Không xác định'} />
             {network.data?.publicIpv6 && <AccessRow label="IP public (IPv6)" value={network.data.publicIpv6} />}
             <AccessRow label="Cloudflare Tunnel" value={tunnel?.status === 'online' ? tunnel.url : null} fallback={tunnel?.status === 'starting' ? 'Đang mở...' : 'Không hoạt động'} />
             <AccessRow label="Cổng panel" value={`${window.location.hostname}:${info.port}`} />
             {externalIfaces.length > 0 && (
-              <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3 py-2">
-                <div className="mb-1 text-xs text-slate-500">Card mạng</div>
+              <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 p-2.5 sm:p-3">
+                <div className="mb-1 text-[11px] sm:text-xs text-slate-400 sm:text-slate-500">Card mạng</div>
                 {externalIfaces.map((iface) => (
                   <div key={iface.name} className="py-1">
                     <div className="truncate text-xs font-semibold text-slate-300">{iface.name}</div>
                     {iface.addresses.map((a) => (
-                      <div key={a.address} className="mono truncate text-xs text-slate-400">
+                      <div key={a.address} className="mono truncate text-[11px] sm:text-xs text-slate-400">
                         {a.cidr ?? a.address}
                       </div>
                     ))}
@@ -361,24 +371,24 @@ export default function Overview() {
           </div>
         </Card>
 
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4">
           <ExpiryCard />
           <PowerCard />
         </div>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <div className="mt-4 grid gap-3 sm:gap-4 xl:grid-cols-2">
         <TopProcesses title="Top CPU" icon={Zap} rows={top.cpu} metric={(p) => `${p.cpu.toFixed(1)}%`} />
         <TopProcesses title="Top RAM" icon={MemoryStick} rows={top.mem} metric={(p) => formatBytes(p.memory)} />
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+      <div className="mt-4 grid gap-3 sm:gap-4 xl:grid-cols-3">
         <Card title="Tải từng nhân CPU" icon={Cpu} className="xl:col-span-1">
           <CoreGrid cores={latest.cpu.perCore} />
           <p className="mt-3 truncate text-xs text-slate-500">{info.os.cpuModel}</p>
         </Card>
         <Card title="Phân vùng ổ đĩa" icon={HardDrive} className="xl:col-span-2">
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {latest.disks.map((disk) => (
               <ResourceBar
                 key={disk.mount}
@@ -391,15 +401,15 @@ export default function Overview() {
         </Card>
       </div>
 
-      <h2 className="mb-3 mt-8 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-500">
-        <Cloud className="size-4" /> Truy cập nhanh
+      <h2 className="mb-3 mt-6 sm:mt-8 flex items-center gap-2 text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-400 sm:text-slate-500">
+        <Cloud className="size-4 text-zen-blue" /> Truy cập nhanh
       </h2>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {ALL_NAV.filter((n) => n.to !== '/').map(({ to, label, icon: Icon, description }) => (
-          <Link key={to} to={to} className="glass group min-w-0 p-4 transition hover:-translate-y-0.5 hover:border-zen-blue/50">
-            <Icon className="mb-2 size-5 text-zen-blue transition group-hover:scale-110" />
-            <div className="truncate text-sm font-bold text-white">{label}</div>
-            <div className="mt-0.5 line-clamp-2 text-xs text-slate-500">{description}</div>
+          <Link key={to} to={to} className="glass group min-w-0 p-3 sm:p-4 transition hover:-translate-y-0.5 hover:border-zen-blue/50 active:scale-[0.98]">
+            <Icon className="mb-2 size-4 sm:size-5 text-zen-blue transition group-hover:scale-110" />
+            <div className="truncate text-xs sm:text-sm font-bold text-white">{label}</div>
+            <div className="mt-0.5 line-clamp-2 text-[11px] sm:text-xs text-slate-500">{description}</div>
           </Link>
         ))}
       </div>
@@ -423,7 +433,7 @@ function TopProcesses({ title, icon, rows, metric }: { title: string; icon: type
         <Spinner />
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs sm:text-sm">
             <thead>
               <tr>
                 <th className={th}>Tiến trình</th>
@@ -434,9 +444,9 @@ function TopProcesses({ title, icon, rows, metric }: { title: string; icon: type
             <tbody>
               {rows.map((p) => (
                 <tr key={p.pid} className={tr}>
-                  <td className={cn(td, 'max-w-[220px] truncate font-semibold text-slate-100')}>{p.name}</td>
-                  <td className={cn(td, 'mono text-right text-slate-500')}>{p.pid}</td>
-                  <td className={cn(td, 'mono text-right text-slate-200')}>{metric(p)}</td>
+                  <td className={cn(td, 'max-w-[130px] sm:max-w-[220px] truncate font-semibold text-slate-100')} title={p.name}>{p.name}</td>
+                  <td className={cn(td, 'mono text-right text-slate-400 sm:text-slate-500')}>{p.pid}</td>
+                  <td className={cn(td, 'mono text-right font-semibold text-slate-200')}>{metric(p)}</td>
                 </tr>
               ))}
             </tbody>
@@ -449,15 +459,15 @@ function TopProcesses({ title, icon, rows, metric }: { title: string; icon: type
 
 function AccessRow({ label, value, fallback }: { label: string; value: string | null; fallback?: string }) {
   return (
-    <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 px-3 py-2">
-      <div className="text-xs text-slate-500">{label}</div>
+    <div className="rounded-xl border border-slate-700/50 bg-ink-950/60 p-2.5 sm:p-3">
+      <div className="text-[11px] sm:text-xs text-slate-400 sm:text-slate-500 mb-1">{label}</div>
       {value ? (
         <div className="flex min-w-0 items-center justify-between gap-2">
-          <span className="mono truncate text-slate-200">{value}</span>
-          <CopyButton value={value} />
+          <span className="mono truncate text-xs sm:text-sm text-slate-200" title={value}>{value}</span>
+          <CopyButton value={value} className="shrink-0" />
         </div>
       ) : (
-        <div className="text-slate-400">{fallback}</div>
+        <div className="text-xs sm:text-sm text-slate-500">{fallback}</div>
       )}
     </div>
   );

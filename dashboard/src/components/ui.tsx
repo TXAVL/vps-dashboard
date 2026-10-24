@@ -73,32 +73,32 @@ export function Card({ title, icon: Icon, actions, children, className, bodyClas
   return (
     <section className={cn('glass flex flex-col', className)}>
       {(title || actions) && (
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700/40 px-5 py-3.5">
-          <h3 className="flex min-w-0 max-w-full items-center gap-2 text-sm font-bold text-slate-100">
-            {Icon && <Icon className="size-4 text-zen-blue" />}
-            {title}
+        <header className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 border-b border-slate-700/40 px-3.5 py-3 sm:px-5 sm:py-3.5">
+          <h3 className="flex min-w-0 max-w-full items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-bold text-slate-100">
+            {Icon && <Icon className="size-3.5 sm:size-4 text-zen-blue shrink-0" />}
+            <span className="truncate">{title}</span>
           </h3>
-          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+          {actions && <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">{actions}</div>}
         </header>
       )}
-      <div className={cn('flex-1 p-5', bodyClassName)}>{children}</div>
+      <div className={cn('flex-1 p-3.5 sm:p-5', bodyClassName)}>{children}</div>
     </section>
   );
 }
 
 export function PageHeader({ title, description, icon: Icon, actions }: { title: string; description?: string; icon: IconType; actions?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div className="flex items-center gap-4">
-        <div className="flex size-12 items-center justify-center rounded-2xl border border-zen-blue/30 bg-gradient-to-br from-zen-blue/25 to-zen-green/10 text-blue-300">
-          <Icon className="size-6" />
+    <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-3 sm:gap-4">
+      <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+        <div className="flex size-10 sm:size-12 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl border border-zen-blue/30 bg-gradient-to-br from-zen-blue/25 to-zen-green/10 text-blue-300">
+          <Icon className="size-5 sm:size-6" />
         </div>
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-white">{title}</h1>
-          {description && <p className="mt-0.5 text-sm text-slate-400">{description}</p>}
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-white truncate">{title}</h1>
+          {description && <p className="mt-0.5 text-xs sm:text-sm text-slate-400 break-words line-clamp-2 sm:line-clamp-none">{description}</p>}
         </div>
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">{actions}</div>}
     </div>
   );
 }
@@ -148,13 +148,13 @@ export function Progress({ value, tone, className }: { value: number; tone?: Ton
 
 export function ResourceBar({ label, value, detail, tone, icon: Icon }: { label: string; value: number; detail: string; tone?: Tone; icon?: IconType }) {
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2 text-sm">
-        <span className="flex items-center gap-2 font-medium text-slate-300">
-          {Icon && <Icon className="size-4 text-slate-500" />}
-          {label}
+    <div className="space-y-1.5 sm:space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 text-xs sm:text-sm">
+        <span className="flex items-center gap-1.5 sm:gap-2 font-semibold text-slate-200">
+          {Icon && <Icon className="size-3.5 sm:size-4 text-slate-500 shrink-0" />}
+          <span className="truncate max-w-[150px] sm:max-w-none">{label}</span>
         </span>
-        <span className="mono text-xs text-slate-400">{detail}</span>
+        <span className="mono text-[11px] sm:text-xs text-slate-400">{detail}</span>
       </div>
       <Progress value={value} tone={tone} />
     </div>
@@ -304,17 +304,17 @@ export function Modal({ open, onClose, title, children, size = 'md', footer }: {
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4" onMouseDown={onClose}>
       <div
-        className={cn('glass flex max-h-[92vh] w-full flex-col rounded-t-2xl rounded-b-none bg-ink-900/95 shadow-2xl sm:rounded-2xl', widths[size])}
+        className={cn('glass flex max-h-[88vh] sm:max-h-[92vh] w-full flex-col rounded-t-2xl rounded-b-none bg-ink-900/95 shadow-2xl sm:rounded-2xl', widths[size])}
         onMouseDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <header className="flex items-center justify-between gap-3 border-b border-slate-700/40 px-5 py-4">
-          <div className="min-w-0 flex-1 text-base font-bold text-white">{title}</div>
+        <header className="flex items-center justify-between gap-3 border-b border-slate-700/40 px-4 py-3 sm:px-5 sm:py-4">
+          <div className="min-w-0 flex-1 text-sm sm:text-base font-bold text-white truncate">{title}</div>
           <IconButton icon={X} title="Đóng" onClick={onClose} />
         </header>
-        <div className="flex-1 overflow-y-auto p-5">{children}</div>
-        {footer && <footer className="flex flex-wrap justify-end gap-2 border-t border-slate-700/40 px-5 py-3">{footer}</footer>}
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-5">{children}</div>
+        {footer && <footer className="flex flex-wrap justify-end gap-2 border-t border-slate-700/40 px-4 py-2.5 sm:px-5 sm:py-3">{footer}</footer>}
       </div>
     </div>,
     document.body,
@@ -367,6 +367,6 @@ export function Secret({ value }: { value: string }) {
   );
 }
 
-export const th = 'px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500';
-export const td = 'px-4 py-3 align-middle';
+export const th = 'px-3 py-2.5 sm:px-4 sm:py-3 text-left text-[11px] sm:text-xs font-semibold uppercase tracking-wide text-slate-400 sm:text-slate-500';
+export const td = 'px-3 py-2 sm:px-4 sm:py-3 align-middle text-xs sm:text-sm';
 export const tr = 'border-t border-slate-700/40 transition hover:bg-slate-800/40';

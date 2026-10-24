@@ -162,7 +162,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-72 border-r border-slate-800 bg-ink-950">
+          <aside className="absolute inset-y-0 left-0 w-[min(18rem,82vw)] border-r border-slate-800 bg-ink-950 shadow-2xl">
             <button className="absolute right-3 top-5 rounded-lg p-1.5 text-slate-400 hover:bg-slate-800" onClick={() => setMobileOpen(false)} aria-label="Đóng menu">
               <X className="size-5" />
             </button>
@@ -172,8 +172,8 @@ export function Shell({ children }: { children: ReactNode }) {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-1.5 border-b border-slate-800/80 bg-ink-950/70 px-2.5 backdrop-blur-xl sm:gap-2.5 sm:px-6">
-          <button className="rounded-lg p-1.5 text-slate-300 hover:bg-slate-800 lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Mở menu">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-1 sm:gap-2.5 border-b border-slate-800/80 bg-ink-950/70 px-2 sm:px-6 backdrop-blur-xl">
+          <button className="rounded-lg p-1.5 text-slate-300 hover:bg-slate-800 lg:hidden shrink-0" onClick={() => setMobileOpen(true)} aria-label="Mở menu">
             <Menu className="size-5" />
           </button>
           <div className="min-w-0 flex-1">
@@ -195,7 +195,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
           <button
             onClick={() => setDoctorOpen(true)}
-            className="rounded-lg p-1.5 sm:p-2 text-slate-400 transition hover:bg-slate-800 hover:text-emerald-400"
+            className="hidden xs:flex rounded-lg p-1.5 sm:p-2 text-slate-400 transition hover:bg-slate-800 hover:text-emerald-400 shrink-0"
             data-tip="Bác Sĩ VPS & Tương thích đa nền tảng (VPS Doctor)"
             aria-label="Bác Sĩ VPS"
           >
@@ -203,7 +203,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </button>
           <button
             onClick={() => setNotepadOpen(true)}
-            className="hidden sm:flex rounded-lg p-1.5 sm:p-2 text-slate-400 transition hover:bg-slate-800 hover:text-amber-400"
+            className="hidden sm:flex rounded-lg p-1.5 sm:p-2 text-slate-400 transition hover:bg-slate-800 hover:text-amber-400 shrink-0"
             data-tip="Ghi chú máy chủ (Server Notepad)"
             aria-label="Ghi chú máy chủ"
           >
@@ -212,7 +212,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <button
             onClick={() => setRightPanelOpen(!rightPanelOpen)}
             className={cn(
-              'rounded-lg p-1.5 sm:p-2 transition',
+              'rounded-lg p-1.5 sm:p-2 transition shrink-0',
               rightPanelOpen
                 ? 'bg-zen-blue/20 text-blue-300 ring-1 ring-zen-blue/40'
                 : 'text-slate-400 hover:bg-slate-800 hover:text-white',
@@ -226,7 +226,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <JobsButton />
           <button
             onClick={() => void logout()}
-            className="rounded-lg p-1.5 sm:p-2 text-slate-400 transition hover:bg-slate-800 hover:text-zen-red"
+            className="rounded-lg p-1.5 sm:p-2 text-slate-400 transition hover:bg-slate-800 hover:text-zen-red shrink-0"
             data-tip="Đăng xuất"
             aria-label="Đăng xuất"
           >
@@ -256,7 +256,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
         <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden relative">
           <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-            <div className="mx-auto w-full min-w-0 max-w-[1600px] p-3 sm:p-6">{children}</div>
+            <div className="mx-auto w-full min-w-0 max-w-[1600px] p-2.5 sm:p-6">{children}</div>
           </main>
 
           <RightUtilityPanel

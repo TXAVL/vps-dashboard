@@ -52,7 +52,7 @@ export function ThemePicker() {
       <button
         onClick={() => setOpen((prev) => !prev)}
         className={cn(
-          'relative flex items-center gap-1.5 rounded-xl border border-slate-700/60 bg-ink-950/70 px-2.5 py-1.5 text-xs font-bold transition hover:border-slate-500 hover:text-white',
+          'relative flex items-center gap-1.5 rounded-xl border border-slate-700/60 bg-ink-950/70 p-1.5 sm:px-2.5 sm:py-1.5 text-xs font-bold transition hover:border-slate-500 hover:text-white',
           open ? 'border-zen-blue text-white ring-2 ring-zen-blue/20' : 'text-slate-300',
         )}
         data-tip="Đổi giao diện & màu sắc"
@@ -69,7 +69,7 @@ export function ThemePicker() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 animate-in fade-in zoom-in-95 rounded-2xl border border-slate-700/80 bg-ink-950/95 p-4 shadow-2xl shadow-black/80 backdrop-blur-xl">
+        <div className="fixed inset-x-3 top-18 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full z-50 sm:mt-2 w-auto sm:w-80 animate-in fade-in zoom-in-95 rounded-2xl border border-slate-700/80 bg-ink-950/95 p-3.5 sm:p-4 shadow-2xl shadow-black/80 backdrop-blur-xl">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <div className="flex items-center gap-2">
               <span className="flex size-7 items-center justify-center rounded-lg bg-zen-blue/15 text-blue-300">

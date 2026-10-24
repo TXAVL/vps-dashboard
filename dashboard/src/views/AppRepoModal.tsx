@@ -1,6 +1,6 @@
 // ZenPanel - App Repo Modal (Quản lý các nguồn kho ứng dụng bên ngoài)
 import { useEffect, useState, type FormEvent } from 'react';
-import { AlertCircle, Boxes, Check, Copy, Globe, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertCircle, Boxes, Check, Copy, Globe, Loader2, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Field, IconButton, Modal } from '../components/ui';
 import { del, get, post } from '../lib/api';
@@ -21,6 +21,9 @@ const SAMPLE_REPO_JSON = `{
     }
   ]
 }`;
+
+export const OFFICIAL_REPO_URL = 'https://raw.githubusercontent.com/TXAVL/vps-dashboard/main/templates/zen-apps-repo.json';
+export const OFFICIAL_REPO_NAME = 'ZenPanel Community & Pro Apps';
 
 export function AppRepoModal({ open, onClose, onReposChanged }: { open: boolean; onClose: () => void; onReposChanged: () => void }) {
   const { toast, confirm } = useFeedback();
@@ -113,11 +116,81 @@ export function AppRepoModal({ open, onClose, onReposChanged }: { open: boolean;
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const isOfficialRepoConnected = repos.some((r) => r.url.includes('zen-apps-repo.json'));
+
+  const handleAddOfficialRepo = async () => {
+    setAdding(true);
+    try {
+      await post('/api/apps/repos', {
+        name: OFFICIAL_REPO_NAME,
+        url: OFFICIAL_REPO_URL,
+      });
+      toast('Đã thêm và đồng bộ kho ZenPanel Community Apps thành công!', 'success');
+      await fetchRepos();
+      onReposChanged();
+    } catch (err: any) {
+      toast(err?.message || 'Không thể thêm kho repo', 'error');
+    } finally {
+      setAdding(false);
+    }
+  };
+
   return (
     <Modal open={open} onClose={onClose} title="Quản lý Kho Repos Ứng Dụng (App Repositories)" size="lg">
       <div className="space-y-5">
         <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-3.5 text-xs text-indigo-200 leading-relaxed">
           📦 <b>Kho Repos Ngoài:</b> Cho phép bạn kết nối trực tiếp đến các file catalog JSON trên GitHub hoặc server riêng để tự động nhập hàng loạt ứng dụng vào App Store của ZenPanel.
+        </div>
+
+        {/* Kho chính thức ZenPanel Community Apps */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-zen-purple/40 bg-gradient-to-r from-zen-purple/15 to-zen-blue/10 p-3.5">
+          <div className="space-y-1 min-w-0">
+            <div className="flex items-center gap-2 text-xs font-bold text-white">
+              <Sparkles className="size-4 text-zen-purple animate-pulse shrink-0" />
+              <span>Kho chính thức ZenPanel Community (ZenFile Ultra, Web Terminal...)</span>
+              {isOfficialRepoConnected && <Badge tone="green" className="text-[10px]">Đã kết nối</Badge>}
+            </div>
+            <div className="mono text-[11px] text-slate-400 truncate max-w-lg">
+              {OFFICIAL_REPO_URL}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="xs"
+              variant="soft"
+              icon={Copy}
+              onClick={() => {
+                navigator.clipboard.writeText(OFFICIAL_REPO_URL);
+                toast('Đã sao chép link repo', 'success');
+              }}
+            >
+              Sao chép
+            </Button>
+            {!isOfficialRepoConnected ? (
+              <Button
+                size="xs"
+                variant="primary"
+                icon={Plus}
+                loading={adding}
+                onClick={() => void handleAddOfficialRepo()}
+              >
+                Thêm kho này
+              </Button>
+            ) : (
+              <Button
+                size="xs"
+                variant="secondary"
+                icon={RefreshCw}
+                loading={syncingId !== null}
+                onClick={() => {
+                  const r = repos.find((repo) => repo.url.includes('zen-apps-repo.json'));
+                  if (r) void handleSync(r);
+                }}
+              >
+                Đồng bộ lại
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Form thêm Repo mới */}

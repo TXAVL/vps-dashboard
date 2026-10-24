@@ -38,11 +38,14 @@ import {
   Shield,
   SlidersHorizontal,
   Sparkles,
+  Terminal,
   TextCursorInput,
   Trash2,
   Upload,
   Video,
   X,
+  Boxes,
+  Layers,
 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { useJobs } from '../components/jobs';
@@ -55,6 +58,7 @@ import { formatBytes, formatDate } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
 import type { AppView, FileEntry, Job } from '../lib/types';
+import { OFFICIAL_REPO_URL } from './AppRepoModal';
 
 export function getFileTypeLabel(name: string, isDirectory: boolean, osStyle: 'windows' | 'ubuntu' | 'macos'): string {
   if (isDirectory) {
@@ -583,168 +587,384 @@ function ProUpgradeModal({
   isInstalled,
   isRunning,
   proUrl,
+  isUltraInstalled,
+  isUltraRunning,
+  ultraUrl,
+  ultraPort = '8085',
   onClose,
   onStart,
+  onStartUltra,
   onSwitchToPro,
+  onSwitchToUltra,
 }: {
   isInstalled: boolean;
   isRunning: boolean;
   proUrl: string | null;
+  isUltraInstalled: boolean;
+  isUltraRunning: boolean;
+  ultraUrl: string | null;
+  ultraPort?: string;
   onClose: () => void;
   onStart?: () => void;
+  onStartUltra?: () => void;
   onSwitchToPro?: () => void;
+  onSwitchToUltra?: () => void;
 }) {
   const navigate = useNavigate();
-  const [copiedCompose, setCopiedCompose] = useState(false);
+  const { toast } = useFeedback();
+  const [tab, setTab] = useState<'ultra' | 'guide' | 'pro'>('ultra');
+  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [addingRepo, setAddingRepo] = useState(false);
 
-  const composeTemplate = `# ZenFile Explorer Pro - docker-compose.yml
-services:
-  app:
-    image: filebrowser/filebrowser:latest
-    container_name: zen-filebrowser
-    restart: unless-stopped
-    ports:
-      - "8084:80"
-    volumes:
-      - data:/database
-      - /:/srv
-    environment:
-      - FB_BASEURL=
-volumes:
-  data:`;
+  const copyRepoUrl = () => {
+    navigator.clipboard.writeText(OFFICIAL_REPO_URL);
+    setCopiedUrl(true);
+    toast('Đã sao chép link kho repo vào bộ nhớ tạm!', 'success');
+    setTimeout(() => setCopiedUrl(false), 2500);
+  };
 
-  const copyCompose = () => {
-    navigator.clipboard.writeText(composeTemplate);
-    setCopiedCompose(true);
-    setTimeout(() => setCopiedCompose(false), 2000);
+  const handleAutoAddAndInstall = async () => {
+    setAddingRepo(true);
+    try {
+      await post('/api/apps/repos', {
+        name: 'ZenPanel Community & Pro Apps',
+        url: OFFICIAL_REPO_URL,
+      });
+      toast('Đã thêm & đồng bộ kho repo thành công! Đang chuyển đến cài đặt ZenFile Ultra...', 'success');
+      onClose();
+      navigate('/apps?install=zen-file-ultra');
+    } catch (err: any) {
+      toast(err?.message || 'Không thể tự động thêm kho, vui lòng làm theo hướng dẫn thủ công', 'error');
+      setTab('guide');
+    } finally {
+      setAddingRepo(false);
+    }
   };
 
   return (
-    <Modal open={true} title="ZenFile Explorer Pro (Bản nâng cấp)" onClose={onClose} size="lg">
+    <Modal open={true} title="Trình Quản Lý Tệp Nâng Cao (File Manager Options)" onClose={onClose} size="lg">
       <div className="space-y-4">
-        <div className="space-y-3 rounded-2xl border border-zen-purple/40 bg-gradient-to-br from-zen-purple/15 to-zen-blue/10 p-5">
-          <div className="flex items-center gap-2">
-            <Sparkles className="size-5 text-zen-purple animate-pulse" />
-            <h3 className="text-base font-bold text-white">Trình Quản lý Tệp tin Cao cấp ZenFile Pro</h3>
-          </div>
-          <p className="text-sm text-slate-300">
-            ZenFile Explorer Pro mang đến trải nghiệm duyệt tệp mượt mà, chuyên nghiệp và đầy đủ tính năng cho máy chủ VPS.
-          </p>
-          <div className="grid gap-2.5 pt-1 text-xs text-slate-200 sm:grid-cols-2">
-            <div className="flex items-start gap-2 rounded-lg bg-ink-950/40 p-2.5">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-400" />
-              <span>Duyệt toàn bộ thư mục VPS với tốc độ cực nhanh</span>
-            </div>
-            <div className="flex items-start gap-2 rounded-lg bg-ink-950/40 p-2.5">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-400" />
-              <span>Xem trước ảnh gallery lightbox, phát nhạc & video streaming</span>
-            </div>
-            <div className="flex items-start gap-2 rounded-lg bg-ink-950/40 p-2.5">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-400" />
-              <span>Tạo link chia sẻ tệp có mật khẩu bảo vệ & hạn dùng</span>
-            </div>
-            <div className="flex items-start gap-2 rounded-lg bg-ink-950/40 p-2.5">
-              <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-400" />
-              <span>Trình đọc PDF, Markdown trực quan và tìm kiếm đệ quy</span>
-            </div>
-          </div>
+        {/* Tab Switcher */}
+        <div className="flex flex-wrap gap-2 border-b border-slate-800 pb-2">
+          <button
+            type="button"
+            onClick={() => setTab('ultra')}
+            className={cn(
+              'flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition',
+              tab === 'ultra' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+            )}
+          >
+            <Sparkles className="size-3.5 text-indigo-300" />
+            <span>ZenFile Ultra (Kiểu mới khuyên dùng)</span>
+            <Badge tone="blue" className="text-[10px]">Mới</Badge>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('guide')}
+            className={cn(
+              'flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition',
+              tab === 'guide' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+            )}
+          >
+            <Boxes className="size-3.5 text-amber-300" />
+            <span>Hướng dẫn Add Repo App Store</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('pro')}
+            className={cn(
+              'flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition',
+              tab === 'pro' ? 'bg-slate-800 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+            )}
+          >
+            <FolderOpen className="size-3.5 text-slate-400" />
+            <span>FileBrowser (Bản cơ bản cũ)</span>
+          </button>
         </div>
 
-        {isInstalled ? (
-          isRunning ? (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/30 p-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 font-semibold text-emerald-300">
-                  <CheckCircle2 className="size-4" /> ZenFile Pro đã được cài đặt và đang chạy
+        {/* TAB 1: ZENFILE ULTRA (KIỂU MỚI) */}
+        {tab === 'ultra' && (
+          <div className="space-y-4">
+            <div className="space-y-3 rounded-2xl border border-indigo-500/40 bg-gradient-to-br from-indigo-500/15 via-purple-500/10 to-ink-950 p-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="size-5 text-indigo-400 animate-pulse" />
+                  <h3 className="text-base font-bold text-white">ZenFile Ultra (Cloud Commander Pro)</h3>
                 </div>
-                <p className="text-xs text-slate-400">Tài khoản mặc định: <code className="mono text-white">admin / admin</code></p>
+                <Badge tone="blue">Kiểu mới nhiều tính năng hơn</Badge>
               </div>
-              <div className="flex items-center gap-2">
-                {onSwitchToPro && (
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Được tùy biến và đóng gói độc lập cho hệ sinh thái ZenPanel, giải quyết triệt để sự gò bó và thiếu tính năng của các trình duyệt tệp truyền thống.
+              </p>
+              <div className="grid gap-2.5 pt-1 text-xs text-slate-200 sm:grid-cols-2">
+                <div className="flex items-start gap-2 rounded-lg bg-ink-950/50 p-2.5 border border-slate-800/60">
+                  <Layers className="mt-0.5 size-4 shrink-0 text-indigo-400" />
+                  <span><b>2 cửa sổ song song (Dual-Pane):</b> Sao chép (F5), di chuyển (F6) tệp tin giữa 2 thư mục siêu tốc</span>
+                </div>
+                <div className="flex items-start gap-2 rounded-lg bg-ink-950/50 p-2.5 border border-slate-800/60">
+                  <Terminal className="mt-0.5 size-4 shrink-0 text-emerald-400" />
+                  <span><b>Web Terminal nhúng sẵn:</b> Chạy bash/sh/PowerShell tương tác ngay trong thư mục đang duyệt (Ctrl + ~)</span>
+                </div>
+                <div className="flex items-start gap-2 rounded-lg bg-ink-950/50 p-2.5 border border-slate-800/60">
+                  <FileCode className="mt-0.5 size-4 shrink-0 text-amber-400" />
+                  <span><b>Monaco Code Editor chuyên sâu:</b> Tô màu cú pháp, tìm kiếm regex, phím tắt VS Code (F4)</span>
+                </div>
+                <div className="flex items-start gap-2 rounded-lg bg-ink-950/50 p-2.5 border border-slate-800/60">
+                  <FileArchive className="mt-0.5 size-4 shrink-0 text-rose-400" />
+                  <span><b>Nén & Giải nén đa định dạng:</b> Hỗ trợ .zip, .tar, .tar.gz, .tgz trực tiếp không cần cài gói phụ trợ</span>
+                </div>
+                <div className="flex items-start gap-2 rounded-lg bg-ink-950/50 p-2.5 border border-slate-800/60">
+                  <Eye className="mt-0.5 size-4 shrink-0 text-cyan-400" />
+                  <span><b>Xem trước đa phương tiện & Diff:</b> Ảnh lightbox, video, nhạc, so sánh khác biệt nội dung file (F3)</span>
+                </div>
+                <div className="flex items-start gap-2 rounded-lg bg-ink-950/50 p-2.5 border border-slate-800/60">
+                  <Shield className="mt-0.5 size-4 shrink-0 text-green-400" />
+                  <span><b>Toàn quyền Root VPS:</b> Truy cập và chỉnh sửa mọi thư mục hệ thống không bị giới hạn permission</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Trạng thái đã cài đặt hay chưa */}
+            {isUltraInstalled ? (
+              isUltraRunning ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/30 p-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 font-semibold text-emerald-300">
+                      <CheckCircle2 className="size-4" /> ZenFile Ultra đã được cài đặt và đang chạy
+                    </div>
+                    <p className="text-xs text-slate-400">Cổng truy cập: <code className="mono text-white">{ultraPort}</code> (Đầy đủ 2 cửa sổ & Web Terminal)</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {onSwitchToUltra && (
+                      <Button
+                        variant="primary"
+                        icon={Sparkles}
+                        onClick={() => {
+                          onSwitchToUltra();
+                          onClose();
+                        }}
+                      >
+                        Mở giao diện Ultra
+                      </Button>
+                    )}
+                    {ultraUrl && (
+                      <a href={ultraUrl} target="_blank" rel="noreferrer">
+                        <Button variant="secondary" icon={ExternalLink}>
+                          Tab riêng
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 font-semibold text-amber-300">
+                      <Play className="size-4" /> ZenFile Ultra đã cài đặt nhưng đang tạm dừng
+                    </div>
+                    <p className="text-xs text-slate-400">Khởi động container để bắt đầu duyệt tệp với giao diện 2 cửa sổ kiểu mới.</p>
+                  </div>
+                  {onStartUltra && (
+                    <Button
+                      variant="primary"
+                      icon={Play}
+                      onClick={() => {
+                        onStartUltra();
+                        onClose();
+                      }}
+                    >
+                      Khởi động ngay
+                    </Button>
+                  )}
+                </div>
+              )
+            ) : (
+              <div className="space-y-3 rounded-xl border border-indigo-500/30 bg-slate-900/60 p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-white">Chuyển sang ZenFile Ultra qua App Store</span>
+                  <Badge tone="blue">Repo chính thức</Badge>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  ZenFile Ultra nằm trong kho <b>ZenPanel Community & Pro Apps</b>. Bạn có thể tự động thêm kho và cài đặt nhanh chỉ với 1 click:
+                </p>
+                <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
                   <Button
                     variant="primary"
                     icon={Sparkles}
-                    onClick={() => {
-                      onSwitchToPro();
-                      onClose();
-                    }}
+                    loading={addingRepo}
+                    onClick={() => void handleAutoAddAndInstall()}
+                    className="w-full sm:flex-1"
                   >
-                    Mở giao diện Pro
+                    ⚡ Tự động thêm kho & Cài đặt ZenFile Ultra ngay
                   </Button>
-                )}
-                {proUrl && (
-                  <a href={proUrl} target="_blank" rel="noreferrer">
-                    <Button variant="secondary" icon={ExternalLink}>
-                      Tab riêng
-                    </Button>
-                  </a>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 font-semibold text-amber-300">
-                  <Play className="size-4" /> ZenFile Pro đã cài đặt nhưng đang tạm dừng
+                  <Button
+                    variant="secondary"
+                    icon={Boxes}
+                    onClick={() => setTab('guide')}
+                    className="w-full sm:w-auto"
+                  >
+                    Xem hướng dẫn Add Repo
+                  </Button>
                 </div>
-                <p className="text-xs text-slate-400">Bấm nút bên cạnh để khởi động container và duyệt tệp ngay lập tức.</p>
               </div>
-              {onStart && (
-                <Button
-                  variant="primary"
-                  icon={Play}
-                  onClick={() => {
-                    onStart();
-                    onClose();
-                  }}
-                >
-                  Khởi động ngay
-                </Button>
-              )}
-            </div>
-          )
-        ) : (
-          <div className="space-y-3">
-            <div className="space-y-3 rounded-xl border border-slate-700/60 bg-ink-950/50 p-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold text-white">Cài đặt tự động qua App Store (Khuyên dùng)</span>
-                <Badge tone="blue">1-Click Docker</Badge>
-              </div>
-              <p className="text-xs text-slate-400">
-                ZenFile Pro không kích hoạt sẵn để tiết kiệm tài nguyên VPS. Bạn có thể cài đặt dễ dàng bằng 1 click từ App Store.
-              </p>
-              <Button
-                variant="primary"
-                icon={Download}
-                onClick={() => {
-                  onClose();
-                  navigate('/apps?install=filebrowser');
-                }}
-                className="w-full"
-              >
-                Cài đặt ZenFile Pro qua App Store ngay
-              </Button>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: HƯỚNG DẪN THỦ CÔNG ADD REPO */}
+        {tab === 'guide' && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-200 leading-relaxed">
+              💡 <b>Cách thêm kho repo mở rộng vào App Store:</b> Bạn có thể thêm link catalog JSON từ GitHub repo này để tự động cập nhật ZenFile Ultra và các công cụ mở rộng khác.
             </div>
 
-            <div className="space-y-2 rounded-xl border border-slate-800 bg-ink-950/30 p-3">
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
-                <span>File cài đặt docker-compose.yml mẫu:</span>
-                <button
-                  type="button"
-                  onClick={copyCompose}
-                  className="flex items-center gap-1 text-xs text-blue-400 hover:underline"
-                >
-                  <Copy className="size-3" /> {copiedCompose ? 'Đã sao chép!' : 'Sao chép YAML'}
-                </button>
+            <div className="space-y-3 rounded-xl border border-slate-800 bg-ink-950/60 p-4 text-xs text-slate-300">
+              <div className="flex items-start gap-3">
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-zen-blue text-xs font-bold text-white">1</div>
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <span className="font-semibold text-white">Sao chép đường dẫn kho repo chính thức:</span>
+                  <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 p-2">
+                    <code className="mono text-[11px] text-emerald-400 truncate flex-1">{OFFICIAL_REPO_URL}</code>
+                    <Button size="xs" variant="soft" icon={Copy} onClick={copyRepoUrl}>
+                      {copiedUrl ? 'Đã sao chép!' : 'Sao chép link'}
+                    </Button>
+                  </div>
+                </div>
               </div>
-              <pre className="mono max-h-36 overflow-x-auto rounded-lg bg-ink-950 p-2.5 text-[11px] text-slate-400">
-                {composeTemplate}
-              </pre>
+
+              <div className="flex items-start gap-3">
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-zen-blue text-xs font-bold text-white">2</div>
+                <div className="space-y-1 flex-1">
+                  <span className="font-semibold text-white">Mở mục Kho Repos tại tab App Store:</span>
+                  <p className="text-slate-400">Vào tab <b>App Store</b> trên menu bên trái, sau đó bấm nút <b>"Kho Repos"</b> ở góc trên cùng.</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-zen-blue text-xs font-bold text-white">3</div>
+                <div className="space-y-1 flex-1">
+                  <span className="font-semibold text-white">Dán URL và bấm "Thêm & Đồng bộ ngay":</span>
+                  <p className="text-slate-400">ZenPanel sẽ tự động tải danh mục ứng dụng từ GitHub và hiển thị thông báo đồng bộ thành công.</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-zen-blue text-xs font-bold text-white">4</div>
+                <div className="space-y-1 flex-1">
+                  <span className="font-semibold text-white">Cài đặt ZenFile Ultra:</span>
+                  <p className="text-slate-400">Tìm ứng dụng <b>"ZenFile Ultra (Cloud Commander Pro)"</b> trong danh sách App Store và bấm <b>"Cài đặt"</b> (1-Click Docker).</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">5</div>
+                <div className="space-y-1 flex-1">
+                  <span className="font-semibold text-white">Tận hưởng giao diện kiểu mới:</span>
+                  <p className="text-slate-400">Quay lại tab <b>File Manager</b>, ZenPanel sẽ tự động nhận diện và chuyển sang giao diện 2 cửa sổ & Web Terminal!</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="primary"
+                icon={Boxes}
+                onClick={() => {
+                  onClose();
+                  navigate('/apps?openRepo=1');
+                }}
+              >
+                Mở mục Kho Repos ở App Store ngay
+              </Button>
             </div>
           </div>
         )}
 
-        <div className="flex justify-end pt-2">
+        {/* TAB 3: FILEBROWSER (BẢN CŨ) */}
+        {tab === 'pro' && (
+          <div className="space-y-4">
+            <div className="space-y-2 rounded-xl border border-slate-700/60 bg-ink-950/50 p-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-white">FileBrowser (Bản cơ bản truyền thống)</h4>
+                <Badge tone="slate">Cơ bản</Badge>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                FileBrowser là trình duyệt tệp giao diện web đơn giản. Nếu bạn không cần 2 cửa sổ hay Web Terminal như ZenFile Ultra, bạn vẫn có thể sử dụng bản này.
+              </p>
+            </div>
+
+            {isInstalled ? (
+              isRunning ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-950/30 p-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 font-semibold text-emerald-300">
+                      <CheckCircle2 className="size-4" /> FileBrowser đang chạy
+                    </div>
+                    <p className="text-xs text-slate-400">Tài khoản mặc định: <code className="mono text-white">admin / admin</code></p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {onSwitchToPro && (
+                      <Button
+                        variant="primary"
+                        icon={FolderOpen}
+                        onClick={() => {
+                          onSwitchToPro();
+                          onClose();
+                        }}
+                      >
+                        Mở FileBrowser
+                      </Button>
+                    )}
+                    {proUrl && (
+                      <a href={proUrl} target="_blank" rel="noreferrer">
+                        <Button variant="secondary" icon={ExternalLink}>
+                          Tab riêng
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 p-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 font-semibold text-amber-300">
+                      <Play className="size-4" /> FileBrowser đã cài đặt nhưng đang tạm dừng
+                    </div>
+                  </div>
+                  {onStart && (
+                    <Button
+                      variant="primary"
+                      icon={Play}
+                      onClick={() => {
+                        onStart();
+                        onClose();
+                      }}
+                    >
+                      Khởi động lại
+                    </Button>
+                  )}
+                </div>
+              )
+            ) : (
+              <div className="space-y-3 rounded-xl border border-slate-800 bg-ink-950/40 p-4">
+                <p className="text-xs text-slate-400">Bạn có thể cài đặt FileBrowser trực tiếp từ App Store nếu muốn sử dụng giao diện web cổ điển.</p>
+                <Button
+                  variant="secondary"
+                  icon={Download}
+                  onClick={() => {
+                    onClose();
+                    navigate('/apps?install=filebrowser');
+                  }}
+                  className="w-full"
+                >
+                  Cài đặt FileBrowser qua App Store
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-end border-t border-slate-800 pt-3">
           <Button variant="ghost" onClick={onClose}>
             Đóng
           </Button>
@@ -864,7 +1084,7 @@ export default function FileManager() {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [compressing, setCompressing] = useState(false);
-  const [viewMode, setViewMode] = useState<'standard' | 'pro'>('standard');
+  const [viewMode, setViewMode] = useState<'standard' | 'ultra' | 'pro'>('standard');
   const fileInput = useRef<HTMLInputElement>(null);
   const { confirm, prompt, run, toast } = useFeedback();
   const { runJob } = useJobs();
@@ -890,6 +1110,14 @@ export default function FileManager() {
   const proPort = proApp?.installed?.params.port || '8084';
   const proUrl = proApp?.publicLink?.url ?? `http://${window.location.hostname}:${proPort}`;
 
+  const ultraApp = apps.data?.find(
+    (a) => a.id.includes('zen-file-ultra') || a.id.includes('cloudcmd') || a.name?.toLowerCase().includes('zenfile ultra') || a.name?.toLowerCase().includes('cloud commander'),
+  );
+  const isUltraInstalled = Boolean(ultraApp?.installed || (ultraApp && ultraApp.status !== 'not-installed'));
+  const isUltraRunning = ultraApp?.status === 'running';
+  const ultraPort = ultraApp?.installed?.params.port || '8085';
+  const ultraUrl = ultraApp?.publicLink?.url ?? `http://${window.location.hostname}:${ultraPort}`;
+
   const startPro = async () => {
     await runJob(() => post<Job>('/api/apps/filebrowser/start'));
     await apps.reload();
@@ -908,16 +1136,43 @@ export default function FileManager() {
     await apps.reload();
   };
 
-  // Tự động mở ZenFile Pro nếu đã cài đặt ở App Store (trừ khi người dùng chỉ định ?mode=standard trong URL)
+  const startUltra = async () => {
+    if (!ultraApp) return;
+    await runJob(() => post<Job>(`/api/apps/${ultraApp.id}/start`));
+    await apps.reload();
+  };
+
+  const uninstallUltra = async () => {
+    if (!ultraApp) return;
+    const ok = await confirm({
+      title: 'Gỡ cài đặt ZenFile Ultra',
+      message: 'Bạn có chắc chắn muốn gỡ cài đặt ZenFile Ultra? Sau khi gỡ, ZenPanel sẽ quay về giao diện File Manager tiêu chuẩn ban đầu.',
+      danger: true,
+      confirmLabel: 'Gỡ cài đặt',
+    });
+    if (!ok) return;
+    await runJob(() => post<Job>(`/api/apps/${ultraApp.id}/uninstall`, { removeData: false }));
+    setViewMode('standard');
+    await apps.reload();
+  };
+
+  // Tự động nhận diện chế độ xem tối ưu
   useEffect(() => {
-    if (isProInstalled) {
-      if (params.get('mode') !== 'standard') {
-        setViewMode('pro');
-      }
+    const modeParam = params.get('mode');
+    if (modeParam === 'standard') {
+      setViewMode('standard');
+    } else if (modeParam === 'ultra' && isUltraInstalled) {
+      setViewMode('ultra');
+    } else if (modeParam === 'pro' && isProInstalled) {
+      setViewMode('pro');
+    } else if (isUltraInstalled) {
+      setViewMode('ultra');
+    } else if (isProInstalled) {
+      setViewMode('pro');
     } else {
       setViewMode('standard');
     }
-  }, [isProInstalled, params]);
+  }, [isUltraInstalled, isProInstalled, params]);
 
   const sep = roots?.separator ?? '/';
   const currentPath = params.get('path') ?? roots?.roots[0] ?? null;
@@ -1101,33 +1356,54 @@ export default function FileManager() {
               </select>
             </div>
 
-            {/* Chuyển đổi giữa Duyệt chuẩn OS và ZenFile Pro UI */}
-            {isProInstalled ? (
-              <div className="flex items-center rounded-xl border border-slate-700/60 bg-ink-950/60 p-0.5 text-xs">
+            {/* Chuyển đổi giữa Duyệt chuẩn OS, ZenFile Ultra và FileBrowser UI */}
+            <div className="flex flex-wrap items-center rounded-xl border border-slate-700/60 bg-ink-950/60 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode('standard');
+                  setParams((p) => {
+                    p.set('mode', 'standard');
+                    return p;
+                  });
+                }}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-semibold transition-all',
+                  viewMode === 'standard' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200',
+                )}
+              >
+                <Folder className="size-3.5" />
+                <span className="hidden md:inline">{osStyle === 'windows' ? 'Windows Explorer' : osStyle === 'ubuntu' ? 'Ubuntu Files' : 'macOS Finder'}</span>
+                <span className="md:hidden">Tiêu chuẩn</span>
+              </button>
+
+              {isUltraInstalled && (
                 <button
                   type="button"
                   onClick={() => {
-                    setViewMode('standard');
+                    setViewMode('ultra');
                     setParams((p) => {
-                      p.set('mode', 'standard');
+                      p.delete('mode');
                       return p;
                     });
                   }}
                   className={cn(
                     'flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-semibold transition-all',
-                    viewMode === 'standard' ? 'bg-slate-800 text-white shadow' : 'text-slate-400 hover:text-slate-200',
+                    viewMode === 'ultra' ? 'bg-indigo-600 text-white shadow' : 'text-indigo-300 hover:text-white',
                   )}
                 >
-                  <Folder className="size-3.5" />
-                  <span className="hidden md:inline">{osStyle === 'windows' ? 'Windows Explorer' : osStyle === 'ubuntu' ? 'Ubuntu Files' : 'macOS Finder'}</span>
-                  <span className="md:hidden">Mặc định</span>
+                  <Sparkles className="size-3 text-indigo-300" /> ZenFile Ultra
+                  <span className={cn('size-1.5 rounded-full', isUltraRunning ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400')} />
                 </button>
+              )}
+
+              {isProInstalled && (
                 <button
                   type="button"
                   onClick={() => {
                     setViewMode('pro');
                     setParams((p) => {
-                      p.delete('mode');
+                      p.set('mode', 'pro');
                       return p;
                     });
                   }}
@@ -1138,15 +1414,21 @@ export default function FileManager() {
                       : 'text-purple-300 hover:text-white',
                   )}
                 >
-                  <Sparkles className="size-3 text-amber-300" /> ZenFile Pro UI
+                  <FolderOpen className="size-3 text-amber-300" /> FileBrowser
                   <span className={cn('size-1.5 rounded-full', isProRunning ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400')} />
                 </button>
-              </div>
-            ) : (
-              <Button size="sm" variant="soft" icon={Sparkles} onClick={() => setProModal(true)}>
-                ✨ Cài ZenFile Pro
-              </Button>
-            )}
+              )}
+
+              <button
+                type="button"
+                onClick={() => setProModal(true)}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-slate-400 hover:text-white transition"
+                title="Tùy chọn & Hướng dẫn chuyển đổi kiểu mới"
+              >
+                <Sparkles className="size-3 text-amber-300" />
+                <span className="hidden sm:inline">{!isUltraInstalled ? 'Kiểu mới' : 'Tùy chọn'}</span>
+              </button>
+            </div>
 
             {/* Chọn ổ đĩa trên Windows / Multi-roots */}
             {roots && roots.roots.length > 1 && (
@@ -1162,8 +1444,79 @@ export default function FileManager() {
         }
       />
 
-      {/* CHẾ ĐỘ PRO: Nhúng trực tiếp giao diện ZenFile Pro toàn màn hình */}
-      {viewMode === 'pro' && isProInstalled ? (
+      {/* CHẾ ĐỘ ULTRA: Nhúng trực tiếp giao diện ZenFile Ultra (Cloud Commander Pro) toàn màn hình */}
+      {viewMode === 'ultra' && isUltraInstalled ? (
+        isUltraRunning && ultraUrl ? (
+          <div className="space-y-3 animate-fadeIn">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-500/40 bg-ink-950/70 px-4 py-2.5 backdrop-blur-md">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-indigo-200">
+                <Sparkles className="size-4 text-indigo-400" />
+                <span className="font-semibold text-white">ZenFile Ultra (Cloud Commander Pro)</span>
+                <Badge tone="green" className="text-[11px]">Đang chạy (Cổng {ultraPort})</Badge>
+                <span className="hidden text-xs text-slate-400 xl:inline">
+                  · Phím tắt: <code className="mono text-white">Ctrl + `</code> (Terminal) · <code className="mono text-white">F4</code> (Sửa code) · <code className="mono text-white">F5</code> (Sao chép 2 ô) · <code className="mono text-white">F6</code> (Di chuyển)
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="xs"
+                  variant="secondary"
+                  icon={RefreshCw}
+                  onClick={() => {
+                    const ifr = document.getElementById('zenfile-ultra-iframe') as HTMLIFrameElement;
+                    if (ifr) ifr.src = ifr.src;
+                  }}
+                >
+                  Làm mới
+                </Button>
+                <a href={ultraUrl} target="_blank" rel="noreferrer">
+                  <Button size="xs" variant="secondary" icon={ExternalLink}>
+                    Mở tab riêng
+                  </Button>
+                </a>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="text-zen-red hover:bg-zen-red/10"
+                  icon={Trash2}
+                  onClick={() => void uninstallUltra()}
+                >
+                  Gỡ cài đặt
+                </Button>
+              </div>
+            </div>
+            <div className="relative h-[calc(100dvh-10rem)] min-h-[580px] w-full overflow-hidden rounded-2xl border border-slate-800 bg-[#0c101a] shadow-2xl">
+              <iframe
+                id="zenfile-ultra-iframe"
+                src={ultraUrl}
+                className="h-full w-full border-0"
+                title="ZenFile Ultra"
+              />
+            </div>
+          </div>
+        ) : (
+          <Card className="text-center p-8 space-y-4">
+            <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-400">
+              <Sparkles className="size-7" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-white">ZenFile Ultra đã được cài đặt nhưng container đang tạm dừng</h3>
+              <p className="text-sm text-slate-400">Khởi động container để bắt đầu duyệt tệp với 2 cửa sổ & Web Terminal toàn màn hình.</p>
+            </div>
+            <div className="flex justify-center gap-3 pt-2">
+              <Button variant="primary" icon={Play} onClick={() => void startUltra()}>
+                Khởi động ZenFile Ultra ngay
+              </Button>
+              <Button variant="secondary" onClick={() => setViewMode('standard')}>
+                Quay về Duyệt tiêu chuẩn
+              </Button>
+              <Button variant="ghost" className="text-zen-red hover:bg-zen-red/10" icon={Trash2} onClick={() => void uninstallUltra()}>
+                Gỡ cài đặt
+              </Button>
+            </div>
+          </Card>
+        )
+      ) : viewMode === 'pro' && isProInstalled ? (
         isProRunning && proUrl ? (
           <div className="space-y-3 animate-fadeIn">
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zen-purple/40 bg-ink-950/70 px-4 py-2.5 backdrop-blur-md">
@@ -1967,9 +2320,15 @@ export default function FileManager() {
           isInstalled={isProInstalled}
           isRunning={isProRunning}
           proUrl={proUrl}
+          isUltraInstalled={isUltraInstalled}
+          isUltraRunning={isUltraRunning}
+          ultraUrl={ultraUrl}
+          ultraPort={ultraPort}
           onClose={() => setProModal(false)}
           onStart={() => void startPro()}
+          onStartUltra={() => void startUltra()}
           onSwitchToPro={() => setViewMode('pro')}
+          onSwitchToUltra={() => setViewMode('ultra')}
         />
       )}
     </>

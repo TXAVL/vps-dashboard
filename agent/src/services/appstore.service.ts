@@ -316,10 +316,15 @@ export class AppStoreService {
   }
 
   async addRepo(input: { name?: string; url: string; description?: string }): Promise<AppRepo> {
-    const url = input.url?.trim();
+    let url = input.url?.trim() || '';
     if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
       throw badRequest('URL kho repo không hợp lệ (phải bắt đầu bằng http:// hoặc https://)');
     }
+    // Tự động chuyển đổi link GitHub web sang raw JSON nếu người dùng copy từ thanh địa chỉ trình duyệt
+    if (url.includes('github.com') && url.includes('/blob/')) {
+      url = url.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+    }
+
     const id = 'repo-' + Math.random().toString(36).slice(2, 9);
     const repo: AppRepo = {
       id,
@@ -337,8 +342,13 @@ export class AppStoreService {
     const repo = appRepos.get(id);
     if (!repo) throw badRequest('Không tìm thấy kho repo');
 
+    let fetchUrl = repo.url.trim();
+    if (fetchUrl.includes('github.com') && fetchUrl.includes('/blob/')) {
+      fetchUrl = fetchUrl.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/');
+    }
+
     try {
-      const res = await fetch(repo.url, {
+      const res = await fetch(fetchUrl, {
         headers: { 'User-Agent': 'ZenPanel-AppStore' },
         signal: AbortSignal.timeout(12000),
       });

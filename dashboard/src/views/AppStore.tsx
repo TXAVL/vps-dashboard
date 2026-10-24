@@ -585,10 +585,15 @@ export default function AppStore() {
 
   useEffect(() => {
     const toInstall = searchParams.get('install');
-    if (!toInstall || !apps.data) return;
-    const target = apps.data.find((a) => a.id === toInstall);
-    if (target && !target.installed) {
-      setInstalling({ app: target, mode: 'install' });
+    if (toInstall && apps.data) {
+      const target = apps.data.find((a) => a.id === toInstall || a.id.endsWith(`-${toInstall}`) || a.id.includes(toInstall));
+      if (target && !target.installed) {
+        setInstalling({ app: target, mode: 'install' });
+        setSearchParams({}, { replace: true });
+      }
+    }
+    if (searchParams.get('openRepo') === '1' || searchParams.get('repo') === '1') {
+      setRepoModalOpen(true);
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, apps.data, setSearchParams]);

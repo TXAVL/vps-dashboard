@@ -1,6 +1,7 @@
 // ZenPanel - Biểu đồ SVG nhẹ cho metrics realtime (không cần thư viện chart)
 import { useId } from 'react';
 import { levelColor } from '../lib/format';
+import { cn } from './ui';
 
 const COLORS = { blue: '#3B82F6', green: '#10B981', amber: '#F59E0B', red: '#EF4444', violet: '#8B5CF6', cyan: '#06B6D4' };
 export type ChartColor = keyof typeof COLORS;
@@ -24,7 +25,7 @@ export function AreaChart({ series, max, height = 120, className }: { series: Se
   };
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className={className} style={{ height, width: '100%' }}>
+    <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className={cn('w-full', className)} style={{ height, width: '100%' }}>
       {[0.25, 0.5, 0.75].map((f) => (
         <line key={f} x1={0} x2={width} y1={height * f} y2={height * f} stroke="rgb(51 65 85 / 0.35)" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />
       ))}
@@ -48,20 +49,24 @@ export function AreaChart({ series, max, height = 120, className }: { series: Se
   );
 }
 
-/** Vòng tròn phần trăm kiểu đồng hồ */
-export function RingGauge({ value, size = 112, label, sublabel }: { value: number; size?: number; label: string; sublabel?: string }) {
+/** Vòng tròn phần trăm kiểu đồng hồ - Tối ưu responsive trên màn hình mobile nhỏ */
+export function RingGauge({ value, size, label, sublabel }: { value: number; size?: number; label: string; sublabel?: string }) {
   const pct = Math.max(0, Math.min(100, value));
-  const stroke = 10;
-  const radius = (size - stroke) / 2;
+  const stroke = 9;
+  const viewBoxSize = 100;
+  const radius = (viewBoxSize - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const color = COLORS[levelColor(pct)];
   return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="rgb(30 41 59)" strokeWidth={stroke} />
+    <div
+      className="relative inline-flex items-center justify-center size-20 xs:size-24 sm:size-[104px]"
+      style={size ? { maxWidth: size, maxHeight: size } : undefined}
+    >
+      <svg viewBox={`0 0 ${viewBoxSize} ${viewBoxSize}`} className="-rotate-90 size-full">
+        <circle cx={viewBoxSize / 2} cy={viewBoxSize / 2} r={radius} fill="none" stroke="rgb(30 41 59)" strokeWidth={stroke} />
         <circle
-          cx={size / 2}
-          cy={size / 2}
+          cx={viewBoxSize / 2}
+          cy={viewBoxSize / 2}
           r={radius}
           fill="none"
           stroke={color}
@@ -72,21 +77,34 @@ export function RingGauge({ value, size = 112, label, sublabel }: { value: numbe
           style={{ transition: 'stroke-dashoffset 0.7s ease, stroke 0.3s' }}
         />
       </svg>
-      <div className="absolute text-center">
-        <div className="text-xl font-extrabold text-white">{label}</div>
-        {sublabel && <div className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{sublabel}</div>}
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-1">
+        <div className="text-base xs:text-lg sm:text-xl font-extrabold text-white leading-none">{label}</div>
+        {sublabel && <div className="mt-0.5 text-[9px] sm:text-[10px] font-medium uppercase tracking-wider text-slate-400">{sublabel}</div>}
       </div>
     </div>
   );
 }
 
-/** Lưới ô nhỏ thể hiện tải từng nhân CPU */
+/** Lưới ô nhỏ thể hiện tải từng nhân CPU - Tự co giãn theo số nhân và màn hình */
 export function CoreGrid({ cores }: { cores: number[] }) {
+  const n = cores.length;
+  const colsClass =
+    n <= 4
+      ? 'grid-cols-4'
+      : n <= 8
+        ? 'grid-cols-4 sm:grid-cols-8'
+        : n <= 16
+          ? 'grid-cols-6 sm:grid-cols-8 md:grid-cols-16'
+          : 'grid-cols-8 sm:grid-cols-12 md:grid-cols-16';
+
   return (
-    <div className="grid grid-cols-8 gap-1.5 sm:grid-cols-12 lg:grid-cols-16">
+    <div className={cn('grid gap-1.5 sm:gap-2', colsClass)}>
       {cores.map((value, i) => (
-        <div key={i} className="group relative h-8 overflow-hidden rounded-md bg-slate-800" data-tip={`Core ${i}: ${value.toFixed(0)}%`}>
+        <div key={i} className="group relative h-8 sm:h-9 overflow-hidden rounded-md bg-slate-800" data-tip={`Core ${i}: ${value.toFixed(0)}%`}>
           <div className="absolute inset-x-0 bottom-0 transition-all duration-700" style={{ height: `${value}%`, background: COLORS[levelColor(value)] }} />
+          <span className="absolute inset-0 flex items-center justify-center text-[9px] sm:text-[10px] font-mono font-medium text-slate-300 drop-shadow">
+            {value.toFixed(0)}%
+          </span>
         </div>
       ))}
     </div>

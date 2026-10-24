@@ -1,0 +1,44 @@
+{
+  "name": "ZenPanel Community & Pro Apps",
+  "description": "Kho ứng dụng mở rộng & công cụ quản trị máy chủ nâng cao cho ZenPanel",
+  "version": "1.0.0",
+  "homepage": "https://github.com/TXAVL/vps-dashboard",
+  "apps": [
+    {
+      "id": "zen-file-ultra",
+      "name": "ZenFile Ultra (Cloud Commander Pro)",
+      "description": "Trình quản lý tệp tin 2 cửa sổ (Dual-Pane) thế hệ mới: Tích hợp sẵn Web Terminal, Monaco Code Editor, Trình nén & giải nén Zip/Tar/Tar.gz, xem trước ảnh lightbox/audio/video, phím tắt F1-F10 như Midnight Commander, toàn quyền root VPS.",
+      "category": "tools",
+      "icon": "FolderOpen",
+      "website": "https://cloudcmd.io",
+      "platform": "all",
+      "appType": "docker",
+      "defaultPort": 8085,
+      "composeTemplate": "services:\n  zen-file-ultra:\n    image: coderaiser/cloudcmd:latest\n    container_name: ${container}\n    restart: unless-stopped\n    ports:\n      - \"${port}:8000\"\n    environment:\n      - CLOUDCMD_CONSOLE=true\n      - CLOUDCMD_TERMINAL=true\n      - CLOUDCMD_EDITOR=deep\n      - CLOUDCMD_PACK=true\n      - CLOUDCMD_CONFIG_DIALOG=true\n      - CLOUDCMD_ROOT=/mnt/fs\n    volumes:\n      - /:/mnt/fs"
+    },
+    {
+      "id": "tinyfilemanager",
+      "name": "TinyFileManager Pro",
+      "description": "Trình quản lý tệp tin siêu nhẹ chạy nền Alpine/PHP, chiếm dưới 10MB RAM, tích hợp sẵn Ace Code Editor, trình nén & giải nén zip trực tiếp, upload file dung lượng lớn đa luồng.",
+      "category": "tools",
+      "icon": "FolderOpen",
+      "website": "https://tinyfilemanager.github.io",
+      "platform": "all",
+      "appType": "docker",
+      "defaultPort": 8086,
+      "composeTemplate": "services:\n  tinyfilemanager:\n    image: tinyfilemanager/tinyfilemanager:latest\n    container_name: ${container}\n    restart: unless-stopped\n    ports:\n      - \"${port}:80\"\n    volumes:\n      - /:/var/www/html/data"
+    },
+    {
+      "id": "alist-disk",
+      "name": "AList Multi-Cloud File Explorer",
+      "description": "Hệ thống quản lý và chia sẻ file đa nền tảng: Gom toàn bộ Google Drive, OneDrive, Amazon S3, WebDAV, FTP và ổ cứng VPS vào 1 giao diện duy nhất.",
+      "category": "storage",
+      "icon": "HardDrive",
+      "website": "https://alist.nn.ci",
+      "platform": "all",
+      "appType": "docker",
+      "defaultPort": 5244,
+      "composeTemplate": "services:\n  alist:\n    image: xhofe/alist:latest\n    container_name: ${container}\n    restart: unless-stopped\n    ports:\n      - \"${port}:5244\"\n    volumes:\n      - /etc/alist:/opt/alist/data\n      - /:/vps-root"
+    }
+  ]
+}
