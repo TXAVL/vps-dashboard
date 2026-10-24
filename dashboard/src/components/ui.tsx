@@ -110,6 +110,7 @@ const badgeTones = {
   blue: 'bg-zen-blue/10 text-blue-300 border-zen-blue/30',
   amber: 'bg-zen-amber/10 text-amber-300 border-zen-amber/30',
   red: 'bg-zen-red/10 text-red-300 border-zen-red/30',
+  purple: 'bg-purple-500/10 text-purple-300 border-purple-500/30',
   slate: 'bg-slate-700/30 text-slate-300 border-slate-600/40',
 };
 
@@ -120,7 +121,7 @@ export function Badge({ tone = 'slate', children, className }: { tone?: Tone; ch
 }
 
 export function StatusDot({ tone, pulse }: { tone: Tone; pulse?: boolean }) {
-  const colors: Record<Tone, string> = { green: 'bg-zen-green', blue: 'bg-zen-blue', amber: 'bg-zen-amber', red: 'bg-zen-red', slate: 'bg-slate-500' };
+  const colors: Record<Tone, string> = { green: 'bg-zen-green', blue: 'bg-zen-blue', amber: 'bg-zen-amber', red: 'bg-zen-red', purple: 'bg-purple-500', slate: 'bg-slate-500' };
   return (
     <span className="relative inline-flex size-2.5">
       {pulse && <span className={cn('absolute inline-flex size-full animate-ping rounded-full opacity-60', colors[tone])} />}
@@ -137,6 +138,7 @@ export function Progress({ value, tone, className }: { value: number; tone?: Ton
     blue: 'from-blue-500 to-cyan-400',
     amber: 'from-amber-500 to-yellow-400',
     red: 'from-red-600 to-zen-red',
+    purple: 'from-purple-600 to-purple-400',
     slate: 'from-slate-500 to-slate-400',
   };
   return (
