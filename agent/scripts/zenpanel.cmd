@@ -15,8 +15,11 @@ if /i "%ACT%"=="status" ( schtasks /Query /TN "%TASK%" /V /FO LIST | findstr /i 
 if /i "%ACT%"=="logs" ( powershell -NoProfile -Command "Get-Content -Encoding UTF8 '%LOG%' -Tail 50 -Wait" & goto :eof )
 if /i "%ACT%"=="url" ( powershell -NoProfile -Command "(Select-String -Path '%LOG%' -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' | Select-Object -Last 1).Matches.Value" & goto :eof )
 if /i "%ACT%"=="reset-password" ( cd /d "%APP%\agent" & set "ZENPANEL_DATA_DIR=%DATA%" & node dist\cli\reset-password.js %2 & goto :eof )
-if /i "%ACT%"=="update" ( powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/TXAVL/vps-dashboard/main/agent/scripts/install.ps1 | iex" & goto :eof )
-echo Dung: zenpanel {status^|start^|stop^|restart^|logs^|url^|reset-password [mat-khau]^|update}
+if /i "%ACT%"=="update" (
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$app='%APP%'; $force=('%2' -eq '--force' -or '%2' -eq '-f'); if (Test-Path \"$app\agent\package.json\") { $cur = (Get-Content \"$app\agent\package.json\" | ConvertFrom-Json).version; try { $rem = (Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/TXAVL/vps-dashboard/main/agent/package.json' -TimeoutSec 5).version; if (-not $force -and $cur -and $rem -and [version]$cur -ge [version]$rem) { Write-Host \"`n================================================================`n[OK] ZenPanel dang o phien ban moi nhat (v$cur).`nKhong co ban cap nhat moi.`n================================================================`n(Dung 'zenpanel update --force' neu muon cai de lai)\"; exit 0 } } catch {} }; irm https://raw.githubusercontent.com/TXAVL/vps-dashboard/main/agent/scripts/install.ps1 | iex"
+  goto :eof
+)
+echo Dung: zenpanel {status^|start^|stop^|restart^|logs^|url^|reset-password [mat-khau]^|update [--force]}
 goto :eof
 
 :stop

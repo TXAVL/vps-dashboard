@@ -196,13 +196,76 @@ export class UpdateService {
     return this.getState();
   }
 
-  /** Các phiên bản có thể tải: nhánh chính + các tag/release trên GitHub */
+  /** Các phiên bản có thể tải hoặc quay lại: nhánh chính + tag + các bản sao lưu đã có trên máy + commit lịch sử */
   async remoteVersions(): Promise<RemoteVersion[]> {
     const state = this.state.latest ? this.getState() : await this.check();
+    const list: RemoteVersion[] = [];
+    const seenShas = new Set<string>();
+
+    if (state.latest) {
+      list.push(state.latest);
+      seenShas.add(state.latest.sha);
+    }
+
+    // 1. Thẻ phát hành (Tags) từ GitHub nếu có
     const tags = await github<{ name: string; commit: { sha: string } }[]>('/tags?per_page=30').catch(() => []);
-    const list: RemoteVersion[] = state.latest ? [state.latest] : [];
-    for (const tag of tags) list.push({ ref: tag.name, label: `Bản phát hành ${tag.name}`, version: tag.name.replace(/^v/, ''), sha: tag.commit.sha, message: '', date: null });
-    return list;
+    for (const tag of tags) {
+      if (!seenShas.has(tag.commit.sha)) {
+        seenShas.add(tag.commit.sha);
+        list.push({
+          ref: tag.name,
+          label: `Bản phát hành ${tag.name}`,
+          version: tag.name.replace(/^v/, ''),
+          sha: tag.commit.sha,
+          message: 'Bản phát hành chính thức từ GitHub',
+          date: null,
+        });
+      }
+    }
+
+    // 2. Các gói sao lưu / phiên bản dự phòng đã lưu sẵn trên ổ đĩa máy chủ (Offline rollback)
+    for (const pkg of packages.all()) {
+      if (!seenShas.has(pkg.sha) && existsSync(pkg.file)) {
+        seenShas.add(pkg.sha);
+        list.push({
+          ref: pkg.sha,
+          label: `Bản sao lưu v${pkg.version}`,
+          version: pkg.version,
+          sha: pkg.sha,
+          message: `Gói sao lưu có sẵn trên máy (${(pkg.size / 1024).toFixed(1)} KB) · Sẵn sàng quay lại ngay lập tức`,
+          date: pkg.downloadedAt,
+        });
+      }
+    }
+
+    // 3. Quét các commit có gắn phiên bản gần đây trên nhánh cập nhật (hỗ trợ rollback ngay cả khi không gắn tag)
+    try {
+      const commits = await github<{ sha: string; commit: { message: string; committer: { date: string } } }[]>(
+        `/commits?sha=${encodeURIComponent(config.updateBranch)}&per_page=20`,
+      );
+      for (const c of commits) {
+        if (!seenShas.has(c.sha)) {
+          const firstLine = c.commit.message.split('\n')[0];
+          const m = firstLine.match(/v?(\d+\.\d+\.\d+)/i);
+          const ver = m ? m[1] : '';
+          if (ver) {
+            seenShas.add(c.sha);
+            list.push({
+              ref: c.sha,
+              label: `Commit ${c.sha.slice(0, 7)} (v${ver})`,
+              version: ver,
+              sha: c.sha,
+              message: firstLine,
+              date: c.commit.committer.date,
+            });
+          }
+        }
+      }
+    } catch {
+      // bỏ qua lỗi nếu bị giới hạn GitHub rate limit
+    }
+
+    return list.sort((a, b) => compareVersions(b.version, a.version) || (b.date ?? '').localeCompare(a.date ?? ''));
   }
 
   listPackages(): (VersionPackage & { current: boolean })[] {

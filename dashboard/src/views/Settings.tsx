@@ -41,6 +41,7 @@ import {
   Trash2,
   Cpu,
   Wrench,
+  RotateCcw,
 } from 'lucide-react';
 import { PanelUpdateModal, type UpdateTarget } from '../components/modals/PanelUpdateModal';
 import { ToolUpgradeModal } from '../components/modals/ToolUpgradeModal';
@@ -964,8 +965,8 @@ function UpdateCard() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        {/* Lịch sử phiên bản */}
-        <Card title="Lịch sử phiên bản" icon={History} bodyClassName="p-0">
+        {/* Lịch sử phiên bản & Quay lại bản cũ */}
+        <Card title="Lịch sử phiên bản & Quay lại bản cũ" icon={History} bodyClassName="p-0">
           {remote.error ? (
             <div className="p-4">
               <ErrorBox message={remote.error} onRetry={remote.reload} />
@@ -973,7 +974,11 @@ function UpdateCard() {
           ) : !remote.data ? (
             <Spinner />
           ) : history.length === 0 ? (
-            <EmptyState icon={GitBranch} title="Chưa có phiên bản khác" description="Khi có bản phát hành mới trên GitHub, chúng sẽ hiện ở đây." />
+            <EmptyState
+              icon={History}
+              title="Chưa có bản ghi lịch sử khác"
+              description="Các phiên bản trước đó và gói sao lưu của ZenPanel sẽ hiển thị ở đây để bạn có thể xem chi tiết hoặc quay lại bất kỳ lúc nào."
+            />
           ) : (
             <div className="divide-y divide-slate-800/80">
               {visible.map((v) => {
@@ -982,19 +987,25 @@ function UpdateCard() {
                 const newer = update ? v.version.localeCompare(update.current, undefined, { numeric: true }) > 0 : false;
                 return (
                   <div key={`${v.ref}-${v.sha}`} className="flex items-center gap-3 px-4 py-3">
-                    <div className={cn('size-2 shrink-0 rounded-full', isCurrent ? 'bg-emerald-400' : newer ? 'bg-sky-400' : 'bg-slate-600')} />
+                    <div className={cn('size-2 shrink-0 rounded-full', isCurrent ? 'bg-emerald-400' : newer ? 'bg-sky-400' : 'bg-amber-400')} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="mono text-sm font-bold text-white">v{v.version}</span>
                         <span className="truncate text-xs text-slate-500">{v.label}</span>
                         {isCurrent && <Badge tone="green">Đang dùng</Badge>}
                         {pkg && !isCurrent && <Badge tone="blue">Có sẵn trên máy</Badge>}
+                        {!pkg && !isCurrent && <Badge tone="slate">Từ GitHub</Badge>}
                       </div>
-                      {v.message && <div className="truncate text-xs text-slate-500">{v.message}</div>}
+                      {v.message && <div className="truncate text-xs text-slate-400">{v.message}</div>}
                     </div>
                     {!isCurrent && (
-                      <Button size="xs" variant={newer ? 'soft' : 'ghost'} icon={newer ? Rocket : History} onClick={() => open(v)}>
-                        {newer ? 'Cập nhật' : 'Quay lại'}
+                      <Button
+                        size="xs"
+                        variant={newer ? 'primary' : pkg ? 'secondary' : 'ghost'}
+                        icon={newer ? Rocket : RotateCcw}
+                        onClick={() => open(v)}
+                      >
+                        {newer ? 'Cập nhật' : 'Quay lại bản này'}
                       </Button>
                     )}
                   </div>
@@ -1052,11 +1063,24 @@ function UpdateCard() {
             ) : (
               <div className="divide-y divide-slate-800/80">
                 {spare.map((pkg) => (
-                  <div key={pkg.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-                    <span className="mono font-semibold text-slate-200">v{pkg.version}</span>
-                    <span className="mono text-xs text-slate-500">{pkg.sha.slice(0, 7)}</span>
-                    <span className="flex-1 text-right text-xs text-slate-500">{formatBytes(pkg.size)}</span>
-                    <IconButton icon={Trash2} title="Xoá gói" className="hover:text-zen-red" onClick={() => void remove(pkg)} />
+                  <div key={pkg.id} className="flex items-center gap-2.5 px-4 py-2.5 text-sm">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="mono font-semibold text-slate-200">v{pkg.version}</span>
+                        <span className="mono text-xs text-slate-500">{pkg.sha.slice(0, 7)}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500">{formatBytes(pkg.size)} · Tải lúc {formatRelative(pkg.downloadedAt)}</div>
+                    </div>
+                    <Button
+                      size="xs"
+                      variant="secondary"
+                      icon={RotateCcw}
+                      title={`Quay lại phiên bản v${pkg.version}`}
+                      onClick={() => open({ ref: pkg.sha, sha: pkg.sha, version: pkg.version, label: `Bản sao lưu v${pkg.version}` })}
+                    >
+                      Quay lại
+                    </Button>
+                    <IconButton icon={Trash2} title="Xoá gói khỏi ổ đĩa" className="hover:text-zen-red" onClick={() => void remove(pkg)} />
                   </div>
                 ))}
               </div>

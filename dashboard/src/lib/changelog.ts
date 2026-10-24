@@ -51,12 +51,27 @@ export const CHANGELOG: ChangelogEntry[] = [
         ],
       },
       {
-        title: '🔗 Sửa Lỗi Thông Báo Đường Dẫn Mới Của ZenPanel Sau Khi Cập Nhật',
+        title: '🛡️ Khắc Phục Treo Modal Cập Nhật Khi Cấp Lại Domain Cloudflare Quick Tunnel',
         items: [
-          'Khắc phục triệt để lỗi hộp thoại thông báo in lại URL cũ của trang hiện tại thay vì hiển thị đường dẫn Cloudflare Quick Tunnel mới sau khi khởi động lại.',
-          'Cơ chế chờ thông minh (Smart Polling): Duy trì trạng thái chờ Cloudflare cấp domain mới trong giai đoạn reconnect, không còn bị kết thúc sớm khi đường dẫn tunnel chưa kịp trả về.',
-          'Quét nguồn kép (Dual-Source URL Detection): Tự động trích xuất link Cloudflare mới từ cả API trạng thái (/api/update/status) lẫn nhật ký cài đặt chi tiết của installer.',
-          'Giao diện thông báo URL phân tách rõ ràng: Hiển thị nổi bật nhãn "Đường dẫn đã đổi", nút sao chép 1-click và hai lựa chọn "Mở tab mới (tự đăng nhập)" hoặc "Chuyển sang trang mới".',
+          'Thêm cơ chế Timeout cho API Client: Tất cả các request polling kiểm tra trạng thái cập nhật đều có timeout 3–4 giây, chặn đứng hoàn toàn tình trạng treo vô hạn khi tunnel cũ bị đóng.',
+          'Xử lý mượt mà khi cấp mới Quick Tunnel: Khi agent tắt để khởi động lại, hệ thống nhận diện việc domain trycloudflare cũ đã đóng và tự động chuyển sang màn hình hoàn tất khi máy chủ khởi động xong mà không bị kẹt hay báo lỗi giả.',
+          'Hướng dẫn lấy link mới trực quan: Cung cấp nút sao chép 1-click cho lệnh `zenpanel url` và nút mở trực tiếp qua IP máy chủ (kèm token tự đăng nhập).',
+        ],
+      },
+      {
+        title: '⏪ Lịch Sử Phiên Bản & Nút Quay Lại Bản Cũ (Rollback 1-Click)',
+        items: [
+          'Bổ sung nút "Quay lại" trực tiếp tại danh sách "Gói dự phòng trên máy": Cho phép khôi phục tức thì về các bản cũ (v0.6.5, v0.6.4...) mà không cần tải lại.',
+          'Khắc phục hiển thị Lịch sử phiên bản: Tự động tổng hợp các bản phát hành, gói sao lưu offline trên máy và commit lịch sử từ GitHub để người dùng có thể quay lại bất kỳ lúc nào.',
+          'Mô tả trực quan, rõ ràng: Thay thế thông báo gây nhầm lẫn bằng hướng dẫn chi tiết về tính năng lưu trữ dự phòng và khôi phục.',
+        ],
+      },
+      {
+        title: '⚡ Lệnh CLI Thông Minh: zenpanel update Tự Động Kiểm Tra Bản Mới',
+        items: [
+          'Lệnh `zenpanel update` tự động đối chiếu phiên bản hiện tại với bản mới nhất trên GitHub trước khi thực thi.',
+          'Nếu đã ở bản mới nhất: Báo rõ ràng hệ thống đã cập nhật đầy đủ và hướng dẫn dùng cờ `--force` nếu muốn cài đè lại.',
+          'Chỉ tiến hành tải và build khi có phiên bản mới hoặc khi người dùng truyền cờ `--force` (zenpanel update --force).',
         ],
       },
     ],

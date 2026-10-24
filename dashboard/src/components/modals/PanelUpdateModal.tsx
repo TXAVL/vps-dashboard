@@ -56,6 +56,8 @@ export function PanelUpdateModal({
   const [startedAt, setStartedAt] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [newUrl, setNewUrl] = useState<string | null>(null);
+  const [tunnelRenewed, setTunnelRenewed] = useState(false);
+  const [initialDirectUrl, setInitialDirectUrl] = useState<string | null>(null);
   const initialOrigin = useRef(window.location.origin);
   const cancelled = useRef(false);
   const downgrade = compare(target.version, current) < 0;
@@ -64,6 +66,13 @@ export function PanelUpdateModal({
     void get<UpdateChangelog>(`/api/update/changelog?ref=${encodeURIComponent(target.sha)}`)
       .then(setChangelog)
       .catch((err: Error) => setChangelogError(err.message));
+
+    void get<{ directUrl?: string | null }>('/api/update/status', { timeout: 3500 })
+      .then((s) => {
+        if (s?.directUrl) setInitialDirectUrl(s.directUrl);
+      })
+      .catch(() => undefined);
+
     return () => {
       cancelled.current = true;
     };
@@ -106,14 +115,17 @@ export function PanelUpdateModal({
     setPhase('install');
     const installStart = Date.now();
     try {
-      await post(`/api/update/packages/${encodeURIComponent(id)}/install`);
+      await post(`/api/update/packages/${encodeURIComponent(id)}/install`, {}, { timeout: 10000 });
     } catch (err) {
       return fail((err as Error).message);
     }
     let sawDown = false;
-    for (let i = 0; i < 150 && !cancelled.current; i++) {
+    let downAt = 0;
+    const isTryCloudflare = window.location.hostname.endsWith('trycloudflare.com');
+
+    for (let i = 0; i < 90 && !cancelled.current; i++) {
       await new Promise((r) => setTimeout(r, 2000));
-      const log = await get<{ log: string }>('/api/update/log').catch(() => null);
+      const log = await get<{ log: string }>('/api/update/log', { timeout: 3000 }).catch(() => null);
       if (log?.log) setInstallLog(log.log);
       const status = await get<{
         startedAt: number;
@@ -121,16 +133,30 @@ export function PanelUpdateModal({
         tunnelStatus?: string;
         publicUrl?: string | null;
         directUrl?: string | null;
-      }>('/api/update/status').catch(() => null);
+      }>('/api/update/status', { timeout: 3000 }).catch(() => null);
 
       if (!status) {
-        sawDown = true;
+        if (!sawDown) {
+          sawDown = true;
+          downAt = Date.now();
+        }
         setPhase('restart');
+
+        // Khi người dùng đang mở panel qua trycloudflare.com:
+        // Lúc agent khởi động lại, tunnel cũ bị ngắt vĩnh viễn và Cloudflare cấp domain mới.
+        // Sau khi đã thấy agent tắt (sawDown) và chờ đủ ~35s cho installer build & restart:
+        if (isTryCloudflare && downAt && Date.now() - downAt > 35_000) {
+          setTunnelRenewed(true);
+          setPhase('done');
+          onFinished();
+          return;
+        }
         continue;
       }
 
       if (status.startedAt > installStart - 5000) {
         setPhase('reconnect');
+        if (status.directUrl) setInitialDirectUrl(status.directUrl);
 
         // Quét tìm link Cloudflare Tunnel từ cả status API lẫn install log
         const logMatches = [...(log?.log ?? '').matchAll(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/gi)];
@@ -158,8 +184,14 @@ export function PanelUpdateModal({
       }
     }
     if (!cancelled.current) {
+      if (isTryCloudflare && sawDown) {
+        setTunnelRenewed(true);
+        setPhase('done');
+        onFinished();
+        return;
+      }
       fail(
-        window.location.hostname.endsWith('trycloudflare.com')
+        isTryCloudflare
           ? 'Quá thời gian chờ kết nối lại. Khi cập nhật qua Cloudflare Tunnel, đường dẫn sẽ đổi mới sau khi khởi động. Hãy chạy "zenpanel url" trên máy chủ để lấy link mới.'
           : 'Quá 5 phút chưa thấy ZenPanel khởi động lại. Kiểm tra nhật ký hoặc chạy "zenpanel status" trên máy chủ.',
       );
@@ -348,42 +380,94 @@ export function PanelUpdateModal({
               <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-950/30 p-4">
                 <CheckCircle2 className="size-9 shrink-0 text-emerald-400" />
                 <div>
-                  <div className="font-bold text-white">Đã chạy ZenPanel v{target.version}</div>
-                  <div className="text-xs text-slate-400">Hoàn tất trong {formatDuration(elapsed)} · dữ liệu được giữ nguyên.</div>
+                  <div className="font-bold text-white">Đã khởi động lại với ZenPanel v{target.version}</div>
+                  <div className="text-xs text-slate-400">Hoàn tất trong {formatDuration(elapsed)} · toàn bộ dữ liệu được bảo toàn nguyên vẹn.</div>
                 </div>
               </div>
-              <div
-                className={cn(
-                  'space-y-2.5 rounded-2xl border p-4 transition-all',
-                  urlChanged
-                    ? 'border-emerald-500/40 bg-emerald-950/25 shadow-lg shadow-emerald-950/30'
-                    : 'border-indigo-500/30 bg-indigo-950/20',
-                )}
-              >
-                <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="font-semibold text-slate-200">
-                    {urlChanged ? 'Đường dẫn truy cập mới' : 'Địa chỉ truy cập'}
-                  </span>
-                  {urlChanged ? (
-                    <Badge tone="green">Đường dẫn đã đổi</Badge>
-                  ) : (
-                    <Badge tone="slate">Không đổi</Badge>
+
+              {tunnelRenewed && !newUrl ? (
+                <div className="space-y-3.5 rounded-2xl border border-sky-500/40 bg-gradient-to-br from-sky-950/30 via-ink-950 to-indigo-950/30 p-4 sm:p-5 shadow-lg shadow-sky-950/30">
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-sm font-bold text-sky-200">Đã cập nhật & máy chủ đã khởi động lại</span>
+                    <Badge tone="blue">Link Cloudflare đã cấp mới</Badge>
+                  </div>
+                  <p className="text-xs leading-relaxed text-slate-300">
+                    Vì phiên làm việc này đang kết nối qua <b>Cloudflare Quick Tunnel (trycloudflare.com)</b>, đường dẫn cũ đã tự động đóng khi máy chủ khởi động lại và Cloudflare đã cấp một đường dẫn ngẫu nhiên mới.
+                  </p>
+
+                  <div className="space-y-2.5 rounded-xl border border-white/10 bg-black/50 p-4">
+                    <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
+                      <span>Cách 1: Lấy link Cloudflare mới từ Terminal</span>
+                      <CopyButton value="zenpanel url" />
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Mở terminal SSH của VPS và chạy lệnh sau để nhận ngay URL mới:
+                    </p>
+                    <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-2">
+                      <code className="mono flex-1 text-sm font-bold text-emerald-300">zenpanel url</code>
+                      <CopyButton value="zenpanel url" />
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Hoặc xem thông tin kết nối chi tiết: <code className="mono text-slate-300">zenpanel status</code>
+                    </p>
+                  </div>
+
+                  {initialDirectUrl && (
+                    <div className="space-y-2 rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-3.5">
+                      <div className="flex items-center justify-between text-xs font-semibold text-emerald-200">
+                        <span>Cách 2: Mở trực tiếp qua IP máy chủ</span>
+                        <Badge tone="green">Cổng 2083</Badge>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <code className="mono truncate text-xs text-slate-300">{initialDirectUrl}</code>
+                        <Button
+                          size="xs"
+                          variant="primary"
+                          icon={ExternalLink}
+                          onClick={() =>
+                            window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
+                          }
+                        >
+                          Mở qua IP
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2.5">
-                  <code className="mono flex-1 truncate text-sm font-semibold text-emerald-300">{base}</code>
-                  <CopyButton value={base} />
+              ) : (
+                <div
+                  className={cn(
+                    'space-y-2.5 rounded-2xl border p-4 transition-all',
+                    urlChanged
+                      ? 'border-emerald-500/40 bg-emerald-950/25 shadow-lg shadow-emerald-950/30'
+                      : 'border-indigo-500/30 bg-indigo-950/20',
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="font-semibold text-slate-200">
+                      {urlChanged ? 'Đường dẫn truy cập mới' : 'Địa chỉ truy cập'}
+                    </span>
+                    {urlChanged ? (
+                      <Badge tone="green">Đường dẫn đã đổi</Badge>
+                    ) : (
+                      <Badge tone="slate">Không đổi</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2.5">
+                    <code className="mono flex-1 truncate text-sm font-semibold text-emerald-300">{base}</code>
+                    <CopyButton value={base} />
+                  </div>
+                  {urlChanged ? (
+                    <p className="text-[11px] leading-relaxed text-amber-200/90">
+                      Đường dẫn Cloudflare Tunnel đã được làm mới. Tab này dùng đường dẫn cũ có thể đã hết hạn, hãy mở tab mới để tiếp tục (hệ thống tự động đăng nhập).
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-400">
+                      Đường dẫn truy cập giữ nguyên. Bạn có thể tải lại trang này để áp dụng bản cập nhật mới.
+                    </p>
+                  )}
                 </div>
-                {urlChanged ? (
-                  <p className="text-[11px] leading-relaxed text-amber-200/90">
-                    Đường dẫn Cloudflare Tunnel đã được làm mới. Tab này dùng đường dẫn cũ có thể đã hết hạn, hãy mở tab mới để tiếp tục (hệ thống tự động đăng nhập).
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-slate-400">
-                    Đường dẫn truy cập giữ nguyên. Bạn có thể tải lại trang này để áp dụng bản cập nhật mới.
-                  </p>
-                )}
-              </div>
+              )}
             </div>
           )}
 
@@ -423,7 +507,24 @@ export function PanelUpdateModal({
             )}
             {phase === 'done' && (
               <>
-                {urlChanged ? (
+                {tunnelRenewed && !newUrl ? (
+                  <>
+                    <Button variant="ghost" onClick={onClose}>
+                      Đóng
+                    </Button>
+                    {initialDirectUrl && (
+                      <Button
+                        variant="primary"
+                        icon={ExternalLink}
+                        onClick={() =>
+                          window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
+                        }
+                      >
+                        Mở qua IP máy chủ
+                      </Button>
+                    )}
+                  </>
+                ) : urlChanged ? (
                   <>
                     <Button variant="ghost" icon={ExternalLink} onClick={() => window.open(autoLogin, '_blank')}>
                       Mở tab mới (tự đăng nhập)

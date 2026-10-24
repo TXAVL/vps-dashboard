@@ -74,7 +74,7 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T = unknown>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+export async function api<T = unknown>(path: string, init: RequestInit & { json?: unknown; timeout?: number } = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
   let body = init.body;
@@ -82,21 +82,34 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
     headers.set('Content-Type', 'application/json');
     body = JSON.stringify(init.json);
   }
-  const res = await fetch(path, { ...init, headers, body });
-  const data = res.headers.get('content-type')?.includes('application/json') ? await res.json() : await res.text();
-  if (!res.ok) {
-    if (res.status === 401 && token && !path.startsWith('/api/auth/login')) setToken(null);
-    const message = typeof data === 'object' && data && 'error' in data ? String(data.error) : `Lỗi ${res.status}`;
-    throw new ApiError(res.status, message);
+
+  let signal = init.signal;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  if (init.timeout && !signal) {
+    const controller = new AbortController();
+    signal = controller.signal;
+    timeoutId = setTimeout(() => controller.abort(), init.timeout);
   }
-  return data as T;
+
+  try {
+    const res = await fetch(path, { ...init, headers, body, signal });
+    const data = res.headers.get('content-type')?.includes('application/json') ? await res.json() : await res.text();
+    if (!res.ok) {
+      if (res.status === 401 && token && !path.startsWith('/api/auth/login')) setToken(null);
+      const message = typeof data === 'object' && data && 'error' in data ? String(data.error) : `Lỗi ${res.status}`;
+      throw new ApiError(res.status, message);
+    }
+    return data as T;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
-export const get = <T>(path: string) => api<T>(path);
-export const post = <T>(path: string, json?: unknown) => api<T>(path, { method: 'POST', json: json ?? {} });
-export const put = <T>(path: string, json?: unknown) => api<T>(path, { method: 'PUT', json: json ?? {} });
-export const patch = <T>(path: string, json?: unknown) => api<T>(path, { method: 'PATCH', json: json ?? {} });
-export const del = <T>(path: string) => api<T>(path, { method: 'DELETE' });
+export const get = <T>(path: string, options?: RequestInit & { timeout?: number }) => api<T>(path, options);
+export const post = <T>(path: string, json?: unknown, options?: RequestInit & { timeout?: number }) => api<T>(path, { method: 'POST', json: json ?? {}, ...options });
+export const put = <T>(path: string, json?: unknown, options?: RequestInit & { timeout?: number }) => api<T>(path, { method: 'PUT', json: json ?? {}, ...options });
+export const patch = <T>(path: string, json?: unknown, options?: RequestInit & { timeout?: number }) => api<T>(path, { method: 'PATCH', json: json ?? {}, ...options });
+export const del = <T>(path: string, options?: RequestInit & { timeout?: number }) => api<T>(path, { method: 'DELETE', ...options });
 
 /** URL WebSocket kèm token (trình duyệt không gửi được header Authorization cho WS) */
 export function wsUrl(path: string, params: Record<string, string | number> = {}): string {
