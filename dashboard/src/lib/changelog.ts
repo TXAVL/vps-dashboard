@@ -75,6 +75,23 @@ export const CHANGELOG: ChangelogEntry[] = [
         ],
       },
       {
+        title: '🌐 Cập Nhật Website Giữ Nguyên 100% URL (Zero-Downtime Website Update)',
+        items: [
+          'Tự động nhận diện thay đổi nhỏ: Khi bạn push sửa lỗi giao diện lên GitHub mà chưa nâng phiên bản (số phiên bản giữ nguyên), lệnh `zenpanel update` sẽ tự động cập nhật Website mà không chạy installer đầy đủ.',
+          'Giữ nguyên URL tuyệt đối: Quá trình chỉ đồng bộ mã nguồn giao diện và build lại Vite trong thư mục dashboard. Fastify tự phục vụ bundle mới mà KHÔNG cần dừng hay khởi động lại tiến trình agent.',
+          'Bảo toàn Cloudflare Quick Tunnel: Do dịch vụ không khởi động lại, tên miền `trycloudflare.com` hiện tại và kết nối trực tiếp IP:2083 được giữ nguyên vẹn 100%, không bị gián đoạn hay đổi URL.',
+          'Hỗ trợ lệnh chuyên biệt: Bạn có thể gõ `zenpanel update ui` hoặc `zenpanel update website` bất kỳ lúc nào để làm mới website trong vài giây (sau đó chỉ cần F5 / Ctrl+F5 trên trình duyệt).',
+        ],
+      },
+      {
+        title: '🧪 API Tester Toàn Diện: 35+ Endpoint AI Gateway & Quản Trị Hệ Thống VPS',
+        items: [
+          'Tích hợp sẵn 4 bộ sưu tập mẫu: ZenPanel AI Gateway (Chuẩn OpenAI 13 endpoint), ZenPanel AI Gateway (Anthropic & Ollama 8 endpoint), ZenPanel Quản Trị VPS (14 endpoint hệ thống) và Ví dụ API công khai.',
+          'Thử nghiệm trực tiếp mọi API: Tích hợp sẵn biến môi trường {{baseUrl}} và {{panelToken}} để kiểm tra ngay API Docker, RAM Clean, Metrics, Speedtest, AI Chat, Embeddings...',
+          'Nút "Mẫu API" 1-click: Cho phép khôi phục hoặc nạp thêm các bộ sưu tập API mẫu mới nhất vào workspace bất kỳ lúc nào mà không làm mất các request cá nhân.',
+        ],
+      },
+      {
         title: '🎨 Bộ Sưu Tập 12 Theme & 8 Tông Nền Cao Cấp Mới',
         items: [
           'Thêm 6 màu nhấn (Themes) bắt mắt mới: Sunset Orange, Neon Fuchsia, Electric Lime, Cosmic Indigo, Nordic Teal và Ruby Crimson (nâng tổng số lên 12 theme).',

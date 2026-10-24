@@ -18,7 +18,64 @@ svc() {
   fi
 }
 
-ACTION="${1:-status}"
+update_website() {
+  export PATH="/usr/local/bin:/usr/bin:$PATH"
+  echo ""
+  echo "🌐 Đang tiến hành cập nhật giao diện Website ZenPanel..."
+
+  if [ ! -d "$APP_DIR/dashboard" ]; then
+    echo "❌ Không tìm thấy thư mục $APP_DIR/dashboard!"
+    exit 1
+  fi
+
+  TMP_UI=$(mktemp -d 2>/dev/null || mktemp -d -t 'zp_ui_XXXXXX')
+  trap 'rm -rf "$TMP_UI"' EXIT
+
+  echo "📥 Đang tải mã nguồn giao diện mới nhất từ GitHub..."
+  if ! curl -fsSL --connect-timeout 15 "https://codeload.github.com/TXAVL/vps-dashboard/tar.gz/refs/heads/main" | tar -xz -C "$TMP_UI"; then
+    echo "❌ Lỗi khi tải mã nguồn từ GitHub. Vui lòng kiểm tra kết nối mạng."
+    exit 1
+  fi
+
+  SRC_UI=$(find "$TMP_UI" -mindepth 1 -maxdepth 1 -type d | head -n1)
+  if [ -z "$SRC_UI" ] || [ ! -d "$SRC_UI/dashboard" ]; then
+    echo "❌ Không tìm thấy thư mục dashboard trong mã nguồn tải về."
+    exit 1
+  fi
+
+  echo "🔨 Đang đồng bộ tệp tin dashboard mới..."
+  rm -rf "$APP_DIR/dashboard/src" "$APP_DIR/dashboard/public"
+  cp -a "$SRC_UI/dashboard/src" "$APP_DIR/dashboard/"
+  [ -d "$SRC_UI/dashboard/public" ] && cp -a "$SRC_UI/dashboard/public" "$APP_DIR/dashboard/"
+  cp -a "$SRC_UI/dashboard/package.json" "$APP_DIR/dashboard/"
+  [ -f "$SRC_UI/dashboard/index.html" ] && cp -a "$SRC_UI/dashboard/index.html" "$APP_DIR/dashboard/"
+  [ -f "$SRC_UI/dashboard/vite.config.ts" ] && cp -a "$SRC_UI/dashboard/vite.config.ts" "$APP_DIR/dashboard/"
+
+  # Cập nhật script CLI mới nhất nếu có
+  [ -f "$SRC_UI/agent/scripts/zenpanel.sh" ] && cp -f "$SRC_UI/agent/scripts/zenpanel.sh" /usr/local/bin/zenpanel 2>/dev/null || true
+
+  echo "⚡ Đang build lại giao diện Website (Vite)..."
+  cd "$APP_DIR/dashboard"
+  npm run build --silent || npm run build
+
+  echo ""
+  echo "================================================================"
+  echo "✔ Cập nhật giao diện Website ZenPanel THÀNH CÔNG!"
+  echo "✔ Dịch vụ không cần khởi động lại — GIỮ NGUYÊN 100% URL HIỆN TẠI!"
+  echo "================================================================"
+  current_url=$(logs 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
+  if [ -n "$current_url" ]; then
+    echo "🔗 URL truy cập hiện tại: $current_url"
+  fi
+  local_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  if [ -n "$local_ip" ]; then
+    echo "🔗 Direct URL: http://${local_ip}:2083"
+  fi
+  echo ""
+  echo "👉 Chỉ cần tải lại (F5 / Ctrl+F5) trình duyệt để thấy thay đổi mới."
+  echo "💡 Để cập nhật toàn bộ cả backend agent: zenpanel update --force"
+  echo ""
+}
 
 case "$ACTION" in
   start | stop | restart | status)
@@ -50,8 +107,17 @@ case "$ACTION" in
     cd "$APP_DIR/agent" && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/reset-password.js "${2:-}"
     ;;
   update)
+    SUB_OPT="${2:-}"
+
+    # 1. Nếu người dùng chỉ định rõ 'ui', 'website' hoặc '--ui'
+    if [ "$SUB_OPT" = "ui" ] || [ "$SUB_OPT" = "website" ] || [ "$SUB_OPT" = "--ui" ]; then
+      update_website
+      exit 0
+    fi
+
+    # 2. Kiểm tra cờ --force, -f, --full
     FORCE=0
-    if [ "${2:-}" = "--force" ] || [ "${2:-}" = "-f" ]; then
+    if [ "$SUB_OPT" = "--force" ] || [ "$SUB_OPT" = "-f" ] || [ "$SUB_OPT" = "--full" ] || [ "$SUB_OPT" = "full" ]; then
       FORCE=1
     fi
 
@@ -84,22 +150,20 @@ case "$ACTION" in
       if [ "$IS_NEWER" = "no" ]; then
         echo ""
         echo "================================================================"
-        echo "✔ ZenPanel đang ở phiên bản mới nhất (v$CURRENT_VER)!"
-        echo "  Không có bản cập nhật mới cần cài đặt."
+        echo "✔ Phiên bản hệ thống: v$CURRENT_VER (Chưa tăng số phiên bản)."
+        echo "🚀 Tự động cập nhật giao diện Website ZenPanel từ GitHub & GIỮ NGUYÊN URL..."
         echo "================================================================"
-        echo ""
-        echo "💡 Mẹo: Nếu bạn muốn cài đè hoặc ép buộc cập nhật lại, hãy dùng:"
-        echo "  zenpanel update --force"
+        update_website
         exit 0
       fi
 
       echo ""
       echo "✨ Phát hiện phiên bản mới: v$CURRENT_VER ➔ v$REMOTE_VER"
-      echo "🚀 Bắt đầu tiến trình cập nhật ZenPanel..."
+      echo "🚀 Bắt đầu tiến trình cập nhật toàn diện ZenPanel..."
       echo ""
     elif [ "$FORCE" -eq 1 ]; then
       echo ""
-      echo "⚡ Chế độ ép buộc (--force): Bắt đầu cài đè/cập nhật lại ZenPanel..."
+      echo "⚡ Chế độ toàn diện (--force): Bắt đầu cài đè/cập nhật toàn bộ ZenPanel..."
       echo ""
     else
       echo "Bắt đầu tải và chạy trình cài đặt ZenPanel..."
@@ -119,10 +183,12 @@ case "$ACTION" in
     echo "  zenpanel logs              Xem log thời gian thực"
     echo "  zenpanel url               Lấy đường dẫn Cloudflare Tunnel"
     echo "  zenpanel reset-password    Đặt lại mật khẩu quản trị viên"
-    echo "  zenpanel update [--force]  Kiểm tra và cập nhật ZenPanel (--force để cài đè)"
+    echo "  zenpanel update            Cập nhật ZenPanel (Tự động cập nhật website & giữ nguyên URL nếu phiên bản không đổi)"
+    echo "  zenpanel update ui         Cập nhật nhanh giao diện Website và GIỮ NGUYÊN 100% URL hiện tại"
+    echo "  zenpanel update --force    Cập nhật toàn bộ backend agent và khởi động lại dịch vụ"
     ;;
   *)
     echo "Lệnh không hợp lệ: '$1'"
-    echo "Sử dụng: zenpanel {status|start|stop|restart|logs|url|reset-password [mật-khẩu]|update}"
+    echo "Sử dụng: zenpanel {status|start|stop|restart|logs|url|reset-password [mật-khẩu]|update [ui|--force]}"
     ;;
 esac
