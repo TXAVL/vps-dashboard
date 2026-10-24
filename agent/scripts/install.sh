@@ -150,6 +150,17 @@ done
 # In lại khung thông tin (Public URL, Local, mật khẩu lần đầu) từ log của agent
 $LOG_CMD 2>/dev/null | awk '/╭/{buf=""} {buf=buf $0 "\n"} /╰/{last=buf} END{printf "%s", last}'
 
+url=$($LOG_CMD 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
+if [ -n "$url" ]; then
+  login_url=$(cd "$APP_DIR/agent" 2>/dev/null && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/login-url.js "$url" 2>/dev/null || true)
+  if [ -n "$login_url" ]; then
+    echo ""
+    green "🚀 Link đăng nhập 1-Click (Tự động login sang web mới không cần nhập mật khẩu):"
+    echo "  $login_url"
+  fi
+fi
+
 green "✔ Cài đặt ZenPanel hoàn tất!"
 echo "  • Tự chạy lại khi khởi động lại VPS: đã bật"
 echo "  • Lệnh nhanh: zenpanel status | restart | logs | url | reset-password | update"
+

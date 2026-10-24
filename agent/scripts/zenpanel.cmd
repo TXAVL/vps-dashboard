@@ -13,7 +13,7 @@ if /i "%ACT%"=="stop" goto stop
 if /i "%ACT%"=="restart" ( call :stop & timeout /t 2 >nul & schtasks /Run /TN "%TASK%" & goto :eof )
 if /i "%ACT%"=="status" ( schtasks /Query /TN "%TASK%" /V /FO LIST | findstr /i "TaskName Status Last" & goto :eof )
 if /i "%ACT%"=="logs" ( powershell -NoProfile -Command "Get-Content -Encoding UTF8 '%LOG%' -Tail 50 -Wait" & goto :eof )
-if /i "%ACT%"=="url" ( powershell -NoProfile -Command "(Select-String -Path '%LOG%' -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' | Select-Object -Last 1).Matches.Value" & goto :eof )
+if /i "%ACT%"=="url" ( powershell -NoProfile -Command "$u=(Select-String -Path '%LOG%' -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' | Select-Object -Last 1).Matches.Value; if ($u) { try { $tok = & node '%APP%\agent\dist\cli\login-url.js' $u; if ($tok) { Write-Host $tok; exit 0 } } catch {} }; Write-Host $u" & goto :eof )
 if /i "%ACT%"=="reset-password" ( cd /d "%APP%\agent" & set "ZENPANEL_DATA_DIR=%DATA%" & node dist\cli\reset-password.js %2 & goto :eof )
 if /i "%ACT%"=="update" (
   powershell -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -44,7 +44,12 @@ if /i "%ACT%"=="update" (
     "  Write-Host '✔ Cap nhat giao dien Website ZenPanel THANH CONG!'; " ^
     "  Write-Host '✔ Dich vu khong can khoi dong lai - GIU NGUYEN 100% URL HIEN TAI!'; " ^
     "  Write-Host '================================================================'; " ^
-    "  Write-Host '👉 Chi can tai lai (F5 / Ctrl+F5) tren trinh duyet de thay thay doi moi.`n'; " ^
+    "  $curUrl = (Select-String -Path '%LOG%' -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' -ErrorAction SilentlyContinue | Select-Object -Last 1).Matches.Value; " ^
+    "  if ($curUrl) { " ^
+    "    Write-Host ('🔗 URL hien tai: ' + $curUrl); " ^
+    "    try { $loginUrl = & node (Join-Path $app 'agent\dist\cli\login-url.js') $curUrl; if ($loginUrl) { Write-Host ('🚀 Link dang nhap 1-Click (Tu dong login):`n   ' + $loginUrl) } } catch {} " ^
+    "  }; " ^
+    "  Write-Host '`n👉 Chi can tai lai (F5 / Ctrl+F5) tren trinh duyet de thay thay doi moi.`n'; " ^
     "}; " ^
     "if ($onlyUi) { Update-Website; exit 0 }; " ^
     "Write-Host '🔍 Dang kiem tra phien ban ZenPanel...'; " ^

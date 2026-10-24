@@ -66,10 +66,20 @@ update_website() {
   current_url=$(logs 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
   if [ -n "$current_url" ]; then
     echo "🔗 URL truy cập hiện tại: $current_url"
+    login_url=$(cd "$APP_DIR/agent" 2>/dev/null && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/login-url.js "$current_url" 2>/dev/null || true)
+    if [ -n "$login_url" ]; then
+      echo "🚀 Link đăng nhập 1-Click (Tự động login sang web mới):"
+      echo "   $login_url"
+    fi
   fi
   local_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
   if [ -n "$local_ip" ]; then
     echo "🔗 Direct URL: http://${local_ip}:2083"
+    direct_login=$(cd "$APP_DIR/agent" 2>/dev/null && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/login-url.js "http://${local_ip}:2083" 2>/dev/null || true)
+    if [ -n "$direct_login" ]; then
+      echo "🚀 Link trực tiếp (Tự động login):"
+      echo "   $direct_login"
+    fi
   fi
   echo ""
   echo "👉 Chỉ cần tải lại (F5 / Ctrl+F5) trình duyệt để thấy thay đổi mới."
@@ -86,12 +96,20 @@ case "$ACTION" in
       url=$(logs 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
       if [ -n "$url" ]; then
         echo "Public URL: $url"
+        login_url=$(cd "$APP_DIR/agent" 2>/dev/null && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/login-url.js "$url" 2>/dev/null || true)
+        if [ -n "$login_url" ]; then
+          echo "Auto-Login: $login_url"
+        fi
       else
         echo "Public URL: Đang kết nối hoặc chưa bật tunnel (kiểm tra: zenpanel logs)"
       fi
       local_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
       if [ -n "$local_ip" ]; then
         echo "Direct URL: http://${local_ip}:2083"
+        direct_login=$(cd "$APP_DIR/agent" 2>/dev/null && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/login-url.js "http://${local_ip}:2083" 2>/dev/null || true)
+        if [ -n "$direct_login" ]; then
+          echo "Direct-Login: $direct_login"
+        fi
       fi
       echo ""
       echo "Lệnh tiện ích: zenpanel {status|start|stop|restart|logs|url|reset-password|update}"
@@ -101,7 +119,17 @@ case "$ACTION" in
     if command -v journalctl >/dev/null 2>&1; then journalctl -u zenpanel -f -o cat
     else tail -f /var/log/zenpanel.log; fi ;;
   url)
-    logs 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1
+    url=$(logs 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
+    if [ -n "$url" ]; then
+      login_url=$(cd "$APP_DIR/agent" 2>/dev/null && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/login-url.js "$url" 2>/dev/null || true)
+      if [ -n "$login_url" ]; then
+        echo "$login_url"
+      else
+        echo "$url"
+      fi
+    else
+      echo "Chưa có URL tunnel hoặc chưa bật."
+    fi
     ;;
   reset-password)
     cd "$APP_DIR/agent" && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/reset-password.js "${2:-}"
