@@ -9,6 +9,60 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.7',
+    date: '2026-10-24',
+    highlights: [
+      {
+        title: '🌐 Cập Nhật Website Thông Minh & Giữ Nguyên 100% URL (Zero-Downtime Update)',
+        items: [
+          'Tự động nhận diện thay đổi nhỏ: Khi bạn push sửa lỗi giao diện lên GitHub mà chưa nâng phiên bản, lệnh `zenpanel update` sẽ tự động cập nhật Website mà không chạy installer đầy đủ.',
+          'Giữ nguyên URL tuyệt đối: Quá trình chỉ đồng bộ mã nguồn giao diện và build lại Vite trong thư mục dashboard. Fastify tự phục vụ bundle mới mà KHÔNG cần dừng hay khởi động lại tiến trình agent.',
+          'Bảo toàn Cloudflare Quick Tunnel: Do dịch vụ không khởi động lại, tên miền `trycloudflare.com` hiện tại và kết nối trực tiếp IP:2083 được giữ nguyên vẹn 100%, không bị gián đoạn hay đổi URL.',
+          'Hỗ trợ lệnh chuyên biệt: Bạn có thể gõ `zenpanel update ui` hoặc `zenpanel update website` bất kỳ lúc nào để làm mới website trong vài giây (sau đó chỉ cần F5 / Ctrl+F5 trên trình duyệt).',
+        ],
+      },
+      {
+        title: '🚀 Màn Hình Cập Nhật Mới: In URL Công Khai & Nút Mở Tab Mới Tự Đăng Nhập (1-Click Auto-Login)',
+        items: [
+          'In rõ ràng URL công khai: Hiển thị minh bạch đường dẫn truy cập mới ngay khi cập nhật hoàn tất kèm nút sao chép nhanh.',
+          'Link đăng nhập 1-Click an toàn: Tự động tạo link kèm mã xác thực Token để bạn vào thẳng trang quản trị mà không cần gõ lại mật khẩu.',
+          'Nút bấm "Mở tab mới & Tự đăng nhập ngay": Bấm 1 chạm là trình duyệt tự mở tab mới và đăng nhập sẵn sang phiên bản vừa cập nhật.',
+          'Khắc phục hoàn toàn lỗi treo modal: Tối ưu thời gian chờ kết nối lại (timeout 3-4s), có ô dán link nhanh và hỗ trợ nút mở qua IP máy chủ tiện lợi.',
+        ],
+      },
+      {
+        title: '⚡ Lệnh CLI `zenpanel url` & `install.sh` Tự Sinh Link Đăng Nhập Trực Tiếp',
+        items: [
+          'Lệnh `zenpanel url` và `zenpanel status` trên terminal SSH tự động in kèm đường dẫn 1-Click Auto-Login giúp bạn truy cập VPS siêu tốc.',
+          'Trình cài đặt `install.sh` tự động in link đăng nhập ngay khi kết thúc cài đặt hoặc cập nhật phiên bản mới.',
+        ],
+      },
+      {
+        title: '🎨 Bộ Sưu Tập 12 Theme & 8 Tông Nền Cao Cấp Mới',
+        items: [
+          'Thêm 6 màu nhấn (Themes) bắt mắt mới: Sunset Orange (cam hoàng hôn), Neon Fuchsia (hồng neon), Electric Lime (xanh chuối điện), Cosmic Indigo (chàm vũ trụ), Nordic Teal (xanh mòng két) và Ruby Crimson (đỏ hồng ngọc).',
+          'Thêm 5 tông nền (Base Tones) chuyên nghiệp: Charcoal Zinc (chuẩn VS Code), Dracula Night (tím huyền bí), Nordic Frost (băng tuyết), Deep Forest (rừng thông huyền ảo) và Warm Mocha (cà phê ấm áp).',
+          'Tích hợp ánh sáng tương phản thông minh (Ambient Glow) tự động hòa quyện với màu nhấn đã chọn.',
+        ],
+      },
+      {
+        title: '🧪 Trung Tâm Thử Nghiệm API Tester Toàn Diện (35+ Endpoints Mẫu)',
+        items: [
+          'Tích hợp sẵn 4 bộ sưu tập mẫu: ZenPanel AI Gateway (Chuẩn OpenAI 13 endpoint), ZenPanel AI Gateway (Anthropic & Ollama 8 endpoint), ZenPanel Quản Trị VPS (14 endpoint hệ thống) và Ví dụ API công khai.',
+          'Thử nghiệm trực tiếp mọi API: Tích hợp sẵn biến môi trường {{baseUrl}} và {{panelToken}} để kiểm tra ngay API Docker, RAM Clean, Metrics, Speedtest, AI Chat, Embeddings...',
+          'Nút "Mẫu API" 1-click: Cho phép khôi phục hoặc nạp thêm các bộ sưu tập API mẫu mới nhất vào workspace bất kỳ lúc nào mà không làm mất các request cá nhân.',
+        ],
+      },
+      {
+        title: '🛡️ Tối Ưu Hiển Thị Tooltip & Chuẩn Hóa ZenPanel AI Gateway',
+        items: [
+          'Sửa lỗi hiển thị tooltip: Khi rê chuột ở gần mép phải màn hình, tooltip tự động chuyển sang neo theo lề phải và giữ nguyên chiều ngang phẳng, không bị bóp méo thành cột dọc.',
+          'Chuẩn hóa thương hiệu ZenPanel AI Gateway: Đồng bộ tên gọi cổng kết nối AI trên toàn bộ bảng điều khiển.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.6.6',
     date: '2026-10-24',
     highlights: [
@@ -51,14 +105,6 @@ export const CHANGELOG: ChangelogEntry[] = [
         ],
       },
       {
-        title: '🛡️ Khắc Phục Treo Modal Cập Nhật Khi Cấp Lại Domain Cloudflare Quick Tunnel',
-        items: [
-          'Thêm cơ chế Timeout cho API Client: Tất cả các request polling kiểm tra trạng thái cập nhật đều có timeout 3–4 giây, chặn đứng hoàn toàn tình trạng treo vô hạn khi tunnel cũ bị đóng.',
-          'Xử lý mượt mà khi cấp mới Quick Tunnel: Khi agent tắt để khởi động lại, hệ thống nhận diện việc domain trycloudflare cũ đã đóng và tự động chuyển sang màn hình hoàn tất khi máy chủ khởi động xong mà không bị kẹt hay báo lỗi giả.',
-          'Hướng dẫn lấy link mới trực quan: Cung cấp nút sao chép 1-click cho lệnh `zenpanel url` và nút mở trực tiếp qua IP máy chủ (kèm token tự đăng nhập).',
-        ],
-      },
-      {
         title: '⏪ Lịch Sử Phiên Bản & Nút Quay Lại Bản Cũ (Rollback 1-Click)',
         items: [
           'Bổ sung nút "Quay lại" trực tiếp tại danh sách "Gói dự phòng trên máy": Cho phép khôi phục tức thì về các bản cũ (v0.6.5, v0.6.4...) mà không cần tải lại.',
@@ -72,31 +118,6 @@ export const CHANGELOG: ChangelogEntry[] = [
           'Lệnh `zenpanel update` tự động đối chiếu phiên bản hiện tại với bản mới nhất trên GitHub trước khi thực thi.',
           'Nếu đã ở bản mới nhất: Báo rõ ràng hệ thống đã cập nhật đầy đủ và hướng dẫn dùng cờ `--force` nếu muốn cài đè lại.',
           'Chỉ tiến hành tải và build khi có phiên bản mới hoặc khi người dùng truyền cờ `--force` (zenpanel update --force).',
-        ],
-      },
-      {
-        title: '🌐 Cập Nhật Website Giữ Nguyên 100% URL (Zero-Downtime Website Update)',
-        items: [
-          'Tự động nhận diện thay đổi nhỏ: Khi bạn push sửa lỗi giao diện lên GitHub mà chưa nâng phiên bản (số phiên bản giữ nguyên), lệnh `zenpanel update` sẽ tự động cập nhật Website mà không chạy installer đầy đủ.',
-          'Giữ nguyên URL tuyệt đối: Quá trình chỉ đồng bộ mã nguồn giao diện và build lại Vite trong thư mục dashboard. Fastify tự phục vụ bundle mới mà KHÔNG cần dừng hay khởi động lại tiến trình agent.',
-          'Bảo toàn Cloudflare Quick Tunnel: Do dịch vụ không khởi động lại, tên miền `trycloudflare.com` hiện tại và kết nối trực tiếp IP:2083 được giữ nguyên vẹn 100%, không bị gián đoạn hay đổi URL.',
-          'Hỗ trợ lệnh chuyên biệt: Bạn có thể gõ `zenpanel update ui` hoặc `zenpanel update website` bất kỳ lúc nào để làm mới website trong vài giây (sau đó chỉ cần F5 / Ctrl+F5 trên trình duyệt).',
-        ],
-      },
-      {
-        title: '🧪 API Tester Toàn Diện: 35+ Endpoint AI Gateway & Quản Trị Hệ Thống VPS',
-        items: [
-          'Tích hợp sẵn 4 bộ sưu tập mẫu: ZenPanel AI Gateway (Chuẩn OpenAI 13 endpoint), ZenPanel AI Gateway (Anthropic & Ollama 8 endpoint), ZenPanel Quản Trị VPS (14 endpoint hệ thống) và Ví dụ API công khai.',
-          'Thử nghiệm trực tiếp mọi API: Tích hợp sẵn biến môi trường {{baseUrl}} và {{panelToken}} để kiểm tra ngay API Docker, RAM Clean, Metrics, Speedtest, AI Chat, Embeddings...',
-          'Nút "Mẫu API" 1-click: Cho phép khôi phục hoặc nạp thêm các bộ sưu tập API mẫu mới nhất vào workspace bất kỳ lúc nào mà không làm mất các request cá nhân.',
-        ],
-      },
-      {
-        title: '🎨 Bộ Sưu Tập 12 Theme & 8 Tông Nền Cao Cấp Mới',
-        items: [
-          'Thêm 6 màu nhấn (Themes) bắt mắt mới: Sunset Orange, Neon Fuchsia, Electric Lime, Cosmic Indigo, Nordic Teal và Ruby Crimson (nâng tổng số lên 12 theme).',
-          'Thêm 5 tông nền (Base Tones) chuyên nghiệp: Charcoal Zinc (VS Code style), Dracula Night (tím huyền bí), Nordic Frost (băng tuyết Bắc Âu), Deep Forest (rừng thông huyền ảo) và Warm Mocha (cà phê ấm áp) bên cạnh Dark Slate, OLED Black và Midnight Navy.',
-          'Tích hợp ánh sáng tương phản thông minh (Ambient Glow) tự động hòa quyện với màu nhấn đã chọn.',
         ],
       },
     ],

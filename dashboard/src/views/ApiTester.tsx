@@ -19,6 +19,7 @@ import {
   Minimize2,
   PanelLeft,
   Pencil,
+  Plus,
   RotateCcw,
   Save,
   Send,
