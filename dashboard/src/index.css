@@ -107,6 +107,54 @@
   --color-blue-600: #0891b2;
   --zen-glow: 6 182 212;
 }
+:root[data-theme='orange'] {
+  --color-zen-blue: #f97316;
+  --color-blue-300: #fdba74;
+  --color-blue-400: #fb923c;
+  --color-blue-500: #f97316;
+  --color-blue-600: #ea580c;
+  --zen-glow: 249 115 22;
+}
+:root[data-theme='fuchsia'] {
+  --color-zen-blue: #d946ef;
+  --color-blue-300: #f0abfc;
+  --color-blue-400: #e879f9;
+  --color-blue-500: #d946ef;
+  --color-blue-600: #c026d3;
+  --zen-glow: 217 70 239;
+}
+:root[data-theme='lime'] {
+  --color-zen-blue: #84cc16;
+  --color-blue-300: #bef264;
+  --color-blue-400: #a3e635;
+  --color-blue-500: #84cc16;
+  --color-blue-600: #65a30d;
+  --zen-glow: 132 204 22;
+}
+:root[data-theme='indigo'] {
+  --color-zen-blue: #6366f1;
+  --color-blue-300: #a5b4fc;
+  --color-blue-400: #818cf8;
+  --color-blue-500: #6366f1;
+  --color-blue-600: #4f46e5;
+  --zen-glow: 99 102 241;
+}
+:root[data-theme='teal'] {
+  --color-zen-blue: #14b8a6;
+  --color-blue-300: #5eead4;
+  --color-blue-400: #2dd4bf;
+  --color-blue-500: #14b8a6;
+  --color-blue-600: #0d9488;
+  --zen-glow: 20 184 166;
+}
+:root[data-theme='crimson'] {
+  --color-zen-blue: #ef4444;
+  --color-blue-300: #fca5a5;
+  --color-blue-400: #f87171;
+  --color-blue-500: #ef4444;
+  --color-blue-600: #dc2626;
+  --zen-glow: 239 68 68;
+}
 
 :root[data-base='oled'] {
   --color-ink-950: #000000;
@@ -117,6 +165,31 @@
   --color-ink-950: #060b1f;
   --color-ink-900: #0c1530;
   --color-ink-800: #16224a;
+}
+:root[data-base='zinc'] {
+  --color-ink-950: #09090b;
+  --color-ink-900: #141418;
+  --color-ink-800: #202026;
+}
+:root[data-base='dracula'] {
+  --color-ink-950: #0d0b18;
+  --color-ink-900: #161226;
+  --color-ink-800: #241d3d;
+}
+:root[data-base='nord'] {
+  --color-ink-950: #0e141b;
+  --color-ink-900: #18222e;
+  --color-ink-800: #253344;
+}
+:root[data-base='forest'] {
+  --color-ink-950: #06130e;
+  --color-ink-900: #0c2018;
+  --color-ink-800: #143226;
+}
+:root[data-base='mocha'] {
+  --color-ink-950: #120e10;
+  --color-ink-900: #1d161a;
+  --color-ink-800: #2b2126;
 }
 
 html,

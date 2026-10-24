@@ -236,8 +236,20 @@ export interface DnsRecord {
 
 export interface PanelPrefs {
   networkUnit: 'bytes' | 'bits';
-  theme: 'zen' | 'emerald' | 'violet' | 'amber' | 'rose' | 'cyan';
-  base: 'slate' | 'oled' | 'navy';
+  theme:
+    | 'zen'
+    | 'emerald'
+    | 'violet'
+    | 'cyan'
+    | 'amber'
+    | 'rose'
+    | 'orange'
+    | 'fuchsia'
+    | 'lime'
+    | 'indigo'
+    | 'teal'
+    | 'crimson';
+  base: 'slate' | 'oled' | 'navy' | 'zinc' | 'dracula' | 'nord' | 'forest' | 'mocha';
   vpsExpiry: string | null;
   vpsProvider: string;
   vpsRenewUrl: string;

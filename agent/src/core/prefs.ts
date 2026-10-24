@@ -2,8 +2,30 @@
 import { readJson, writeJson } from './store.js';
 import { badRequest } from './validate.js';
 
-export const THEMES = ['zen', 'emerald', 'violet', 'amber', 'rose', 'cyan'] as const;
-export const BASES = ['slate', 'oled', 'navy'] as const;
+export const THEMES = [
+  'zen',
+  'emerald',
+  'violet',
+  'cyan',
+  'amber',
+  'rose',
+  'orange',
+  'fuchsia',
+  'lime',
+  'indigo',
+  'teal',
+  'crimson',
+] as const;
+export const BASES = [
+  'slate',
+  'oled',
+  'navy',
+  'zinc',
+  'dracula',
+  'nord',
+  'forest',
+  'mocha',
+] as const;
 /** 15 mốc tần suất kiểm tra cập nhật (phút): 15 phút → 1 tháng */
 export const UPDATE_INTERVALS = [15, 30, 60, 120, 180, 240, 360, 480, 720, 1440, 2880, 4320, 10080, 20160, 43200] as const;
 

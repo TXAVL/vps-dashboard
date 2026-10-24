@@ -74,6 +74,14 @@ export const CHANGELOG: ChangelogEntry[] = [
           'Chỉ tiến hành tải và build khi có phiên bản mới hoặc khi người dùng truyền cờ `--force` (zenpanel update --force).',
         ],
       },
+      {
+        title: '🎨 Bộ Sưu Tập 12 Theme & 8 Tông Nền Cao Cấp Mới',
+        items: [
+          'Thêm 6 màu nhấn (Themes) bắt mắt mới: Sunset Orange, Neon Fuchsia, Electric Lime, Cosmic Indigo, Nordic Teal và Ruby Crimson (nâng tổng số lên 12 theme).',
+          'Thêm 5 tông nền (Base Tones) chuyên nghiệp: Charcoal Zinc (VS Code style), Dracula Night (tím huyền bí), Nordic Frost (băng tuyết Bắc Âu), Deep Forest (rừng thông huyền ảo) và Warm Mocha (cà phê ấm áp) bên cạnh Dark Slate, OLED Black và Midnight Navy.',
+          'Tích hợp ánh sáng tương phản thông minh (Ambient Glow) tự động hòa quyện với màu nhấn đã chọn.',
+        ],
+      },
     ],
   },
   {

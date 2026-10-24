@@ -251,12 +251,23 @@ const THEMES: { id: PanelPrefs['theme']; label: string; color: string }[] = [
   { id: 'cyan', label: 'Cyan', color: '#06b6d4' },
   { id: 'amber', label: 'Amber', color: '#f59e0b' },
   { id: 'rose', label: 'Rose', color: '#f43f5e' },
+  { id: 'orange', label: 'Sunset Orange', color: '#f97316' },
+  { id: 'fuchsia', label: 'Neon Fuchsia', color: '#d946ef' },
+  { id: 'lime', label: 'Electric Lime', color: '#84cc16' },
+  { id: 'indigo', label: 'Cosmic Indigo', color: '#6366f1' },
+  { id: 'teal', label: 'Nordic Teal', color: '#14b8a6' },
+  { id: 'crimson', label: 'Ruby Crimson', color: '#ef4444' },
 ];
 
-const BASES: { id: PanelPrefs['base']; label: string; colors: [string, string] }[] = [
-  { id: 'slate', label: 'Dark Slate', colors: ['#0b0f19', '#1e293b'] },
-  { id: 'navy', label: 'Midnight Navy', colors: ['#060b1f', '#16224a'] },
-  { id: 'oled', label: 'OLED Black', colors: ['#000000', '#171717'] },
+const BASES: { id: PanelPrefs['base']; label: string; desc: string; colors: [string, string] }[] = [
+  { id: 'slate', label: 'Dark Slate', desc: 'Xanh xám hiện đại', colors: ['#0b0f19', '#1e293b'] },
+  { id: 'navy', label: 'Midnight Navy', desc: 'Xanh đậm huyền bí', colors: ['#060b1f', '#16224a'] },
+  { id: 'oled', label: 'OLED Black', desc: 'Đen tuyệt đối', colors: ['#000000', '#171717'] },
+  { id: 'zinc', label: 'Charcoal Zinc', desc: 'Xám than trung tính', colors: ['#09090b', '#202026'] },
+  { id: 'dracula', label: 'Dracula Night', desc: 'Tím đậm huyền ảo', colors: ['#0d0b18', '#241d3d'] },
+  { id: 'nord', label: 'Nordic Frost', desc: 'Băng tuyết Bắc Âu', colors: ['#0e141b', '#253344'] },
+  { id: 'forest', label: 'Deep Forest', desc: 'Rừng thông sâu thẳm', colors: ['#06130e', '#143226'] },
+  { id: 'mocha', label: 'Warm Mocha', desc: 'Cà phê ấm áp', colors: ['#120e10', '#2b2126'] },
 ];
 
 const UPDATE_INTERVALS: [number, string][] = [
@@ -285,42 +296,43 @@ function AppearanceCard() {
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
-      <Card title="Màu nhấn" icon={Palette}>
+      <Card title={`Màu nhấn (${THEMES.length} Themes)`} icon={Palette}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {THEMES.map((t) => (
             <button
               key={t.id}
               onClick={() => save({ theme: t.id }, `Đã đổi màu nhấn: ${t.label}`)}
               className={cn(
-                'flex items-center gap-3 rounded-xl border p-3 text-left text-sm font-semibold transition',
+                'flex items-center gap-2.5 rounded-xl border p-2.5 text-left text-xs font-semibold transition',
                 prefs.theme === t.id ? 'border-zen-blue/70 bg-zen-blue/10 text-white ring-2 ring-zen-blue/20' : 'border-slate-700/50 bg-ink-950/50 text-slate-300 hover:border-slate-500',
               )}
             >
-              <span className="size-6 shrink-0 rounded-lg shadow-lg" style={{ background: t.color, boxShadow: `0 0 16px ${t.color}66` }} />
-              {t.label}
-              {prefs.theme === t.id && <Check className="ml-auto size-4 text-blue-300" />}
+              <span className="size-5 shrink-0 rounded-lg shadow-lg" style={{ background: t.color, boxShadow: `0 0 14px ${t.color}66` }} />
+              <span className="truncate">{t.label}</span>
+              {prefs.theme === t.id && <Check className="ml-auto size-3.5 text-blue-300 shrink-0" />}
             </button>
           ))}
         </div>
       </Card>
-      <Card title="Màu nền" icon={Moon}>
-        <div className="grid gap-2 sm:grid-cols-3">
+      <Card title={`Tông nền (${BASES.length} Tông nền)`} icon={Moon}>
+        <div className="grid gap-2 grid-cols-2 sm:grid-cols-4">
           {BASES.map((b) => (
             <button
               key={b.id}
               onClick={() => save({ base: b.id }, `Đã đổi nền: ${b.label}`)}
               className={cn(
-                'overflow-hidden rounded-xl border text-left text-sm font-semibold transition',
+                'overflow-hidden rounded-xl border text-left text-xs font-semibold transition',
                 prefs.base === b.id ? 'border-zen-blue/70 ring-2 ring-zen-blue/20' : 'border-slate-700/50 hover:border-slate-500',
               )}
+              title={b.desc}
             >
-              <div className="flex h-14 items-end gap-1.5 p-2" style={{ background: b.colors[0] }}>
-                <div className="h-6 flex-1 rounded-md" style={{ background: b.colors[1] }} />
-                <div className="h-9 flex-1 rounded-md" style={{ background: b.colors[1] }} />
+              <div className="flex h-11 items-end gap-1 p-1.5" style={{ background: b.colors[0] }}>
+                <div className="h-5 flex-1 rounded-md" style={{ background: b.colors[1] }} />
+                <div className="h-7 flex-1 rounded-md" style={{ background: b.colors[1] }} />
               </div>
-              <div className="flex items-center justify-between px-3 py-2 text-slate-200">
-                {b.label}
-                {prefs.base === b.id && <Check className="size-4 text-blue-300" />}
+              <div className="flex items-center justify-between px-2 py-1.5 text-slate-200">
+                <span className="truncate text-[11px]">{b.label}</span>
+                {prefs.base === b.id && <Check className="size-3 text-blue-300 shrink-0" />}
               </div>
             </button>
           ))}
