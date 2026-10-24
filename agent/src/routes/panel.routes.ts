@@ -119,18 +119,22 @@ export async function panelRoutes(
   app.get('/api/update/log', async () => ({ log: await updates.installLog() }));
   app.get('/api/update/status', async () => {
     let tunnel = ctx.tunnel?.getState() ?? null;
-    // Nếu tunnel đang khởi động và chưa có URL, đợi nhanh tối đa 3.5 giây để bắt kịp URL mới
-    if (ctx.tunnel && (!tunnel?.url) && (tunnel?.status === 'idle' || tunnel?.status === 'starting')) {
-      for (let w = 0; w < 7; w++) {
+    // Nếu tunnel đang khởi động và chưa có URL, đợi tối đa ~5 giây để bắt kịp URL mới
+    if (ctx.tunnel && !tunnel?.url && (tunnel?.status === 'idle' || tunnel?.status === 'starting')) {
+      for (let w = 0; w < 10; w++) {
         await new Promise((r) => setTimeout(r, 500));
         tunnel = ctx.tunnel.getState();
         if (tunnel.url) break;
       }
     }
+    const ipv4 = publicIpCache?.ipv4 ?? (await resolvePublicIpv4().catch(() => null));
+    const directUrl = ipv4 ? `http://${ipv4}:${ctx.port}` : null;
     return {
       version: updates.getState().current,
       tunnelUrl: tunnel?.url ?? null,
       tunnelStatus: tunnel?.status ?? 'disabled',
+      publicUrl: tunnel?.url || directUrl || null,
+      directUrl,
       startedAt: ctx.startedAt,
     };
   });

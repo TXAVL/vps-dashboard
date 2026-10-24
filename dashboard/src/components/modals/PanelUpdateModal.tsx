@@ -56,6 +56,7 @@ export function PanelUpdateModal({
   const [startedAt, setStartedAt] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [newUrl, setNewUrl] = useState<string | null>(null);
+  const initialOrigin = useRef(window.location.origin);
   const cancelled = useRef(false);
   const downgrade = compare(target.version, current) < 0;
 
@@ -100,7 +101,7 @@ export function PanelUpdateModal({
     }
   };
 
-  /** Chạy installer rồi theo dõi: agent tắt (restart) → bật lại (startedAt mới) → tunnel có URL */
+  /** Chạy installer rồi theo dõi: agent tắt (restart) → bật lại (startedAt mới) → tunnel có URL mới */
   const install = async (id: string) => {
     setPhase('install');
     const installStart = Date.now();
@@ -114,27 +115,55 @@ export function PanelUpdateModal({
       await new Promise((r) => setTimeout(r, 2000));
       const log = await get<{ log: string }>('/api/update/log').catch(() => null);
       if (log?.log) setInstallLog(log.log);
-      const status = await get<{ startedAt: number; tunnelUrl: string | null; tunnelStatus?: string }>('/api/update/status').catch(() => null);
+      const status = await get<{
+        startedAt: number;
+        tunnelUrl: string | null;
+        tunnelStatus?: string;
+        publicUrl?: string | null;
+        directUrl?: string | null;
+      }>('/api/update/status').catch(() => null);
+
       if (!status) {
         sawDown = true;
         setPhase('restart');
         continue;
       }
+
       if (status.startedAt > installStart - 5000) {
         setPhase('reconnect');
-        const onTunnel = window.location.hostname.endsWith('trycloudflare.com');
-        if (status.tunnelUrl || !onTunnel || i > 120) {
-          setNewUrl(status.tunnelUrl);
-          setPhase('done');
-          onFinished();
-          return;
+
+        // Quét tìm link Cloudflare Tunnel từ cả status API lẫn install log
+        const logMatches = [...(log?.log ?? '').matchAll(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/gi)];
+        const logTunnelUrl = logMatches.length > 0 ? logMatches[logMatches.length - 1][0] : null;
+        const resolvedTunnel = status.tunnelUrl || logTunnelUrl;
+
+        // Nếu máy chủ bật tunnel (tunnelStatus === 'starting' hoặc 'idle')
+        // và chưa lấy được URL, ta tiếp tục chờ (tối đa ~80s) để bắt được URL mới chính xác
+        const isTunnelStarting = (status.tunnelStatus === 'starting' || status.tunnelStatus === 'idle') && !resolvedTunnel;
+        if (isTunnelStarting && i < 60) {
+          continue;
         }
-      } else if (sawDown) setPhase('restart');
+
+        const finalUrl = resolvedTunnel || status.publicUrl || status.directUrl || null;
+        setNewUrl(finalUrl);
+        setPhase('done');
+        onFinished();
+        return;
+      } else if (sawDown) {
+        setPhase('restart');
+      }
+
       if (/(✘|error:|lỗi nghiêm trọng|failed to)/i.test(log?.log.split('\n').slice(-3).join('\n') ?? '')) {
         return fail('Installer báo lỗi, xem nhật ký bên dưới');
       }
     }
-    if (!cancelled.current) fail('Quá 5 phút chưa thấy ZenPanel khởi động lại. Kiểm tra nhật ký hoặc chạy "zenpanel status" trên máy chủ.');
+    if (!cancelled.current) {
+      fail(
+        window.location.hostname.endsWith('trycloudflare.com')
+          ? 'Quá thời gian chờ kết nối lại. Khi cập nhật qua Cloudflare Tunnel, đường dẫn sẽ đổi mới sau khi khởi động. Hãy chạy "zenpanel url" trên máy chủ để lấy link mới.'
+          : 'Quá 5 phút chưa thấy ZenPanel khởi động lại. Kiểm tra nhật ký hoặc chạy "zenpanel status" trên máy chủ.',
+      );
+    }
   };
 
   const locked = phase === 'install' || phase === 'restart' || phase === 'reconnect';
@@ -143,7 +172,15 @@ export function PanelUpdateModal({
   const base = (newUrl || window.location.origin).replace(/\/+$/, '');
   const token = getToken();
   const autoLogin = token ? `${base}/?token=${encodeURIComponent(token)}&auto_login=1` : base;
-  const urlChanged = Boolean(newUrl && !window.location.origin.includes(new URL(newUrl).hostname));
+
+  let urlChanged = false;
+  if (newUrl) {
+    try {
+      urlChanged = !initialOrigin.current.includes(new URL(newUrl).hostname);
+    } catch {
+      urlChanged = newUrl.replace(/\/+$/, '') !== initialOrigin.current.replace(/\/+$/, '');
+    }
+  }
 
   const stageIndex = order.indexOf(phase);
   const percent =
@@ -315,16 +352,37 @@ export function PanelUpdateModal({
                   <div className="text-xs text-slate-400">Hoàn tất trong {formatDuration(elapsed)} · dữ liệu được giữ nguyên.</div>
                 </div>
               </div>
-              <div className="space-y-2 rounded-2xl border border-indigo-500/30 bg-indigo-950/20 p-4">
+              <div
+                className={cn(
+                  'space-y-2.5 rounded-2xl border p-4 transition-all',
+                  urlChanged
+                    ? 'border-emerald-500/40 bg-emerald-950/25 shadow-lg shadow-emerald-950/30'
+                    : 'border-indigo-500/30 bg-indigo-950/20',
+                )}
+              >
                 <div className="flex items-center justify-between gap-2 text-xs">
-                  <span className="font-semibold text-slate-300">Địa chỉ truy cập</span>
-                  {urlChanged && <Badge tone="amber">Đường dẫn đã đổi</Badge>}
+                  <span className="font-semibold text-slate-200">
+                    {urlChanged ? 'Đường dẫn truy cập mới' : 'Địa chỉ truy cập'}
+                  </span>
+                  {urlChanged ? (
+                    <Badge tone="green">Đường dẫn đã đổi</Badge>
+                  ) : (
+                    <Badge tone="slate">Không đổi</Badge>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 rounded-xl bg-black/30 px-3 py-2">
-                  <code className="mono flex-1 truncate text-sm text-emerald-300">{base}</code>
+                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2.5">
+                  <code className="mono flex-1 truncate text-sm font-semibold text-emerald-300">{base}</code>
                   <CopyButton value={base} />
                 </div>
-                {urlChanged && <p className="text-[11px] text-amber-200/90">Tab này dùng đường dẫn cũ đã hết hạn. Mở tab mới để tiếp tục (tự đăng nhập).</p>}
+                {urlChanged ? (
+                  <p className="text-[11px] leading-relaxed text-amber-200/90">
+                    Đường dẫn Cloudflare Tunnel đã được làm mới. Tab này dùng đường dẫn cũ có thể đã hết hạn, hãy mở tab mới để tiếp tục (hệ thống tự động đăng nhập).
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400">
+                    Đường dẫn truy cập giữ nguyên. Bạn có thể tải lại trang này để áp dụng bản cập nhật mới.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -365,12 +423,31 @@ export function PanelUpdateModal({
             )}
             {phase === 'done' && (
               <>
-                <Button variant="ghost" onClick={() => window.location.reload()}>
-                  Tải lại tab này
-                </Button>
-                <Button variant="primary" icon={ExternalLink} onClick={() => window.open(autoLogin, '_blank')}>
-                  Mở tab mới (tự đăng nhập)
-                </Button>
+                {urlChanged ? (
+                  <>
+                    <Button variant="ghost" icon={ExternalLink} onClick={() => window.open(autoLogin, '_blank')}>
+                      Mở tab mới (tự đăng nhập)
+                    </Button>
+                    <Button
+                      variant="primary"
+                      icon={ExternalLink}
+                      onClick={() => {
+                        window.location.href = autoLogin;
+                      }}
+                    >
+                      Chuyển sang trang mới
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="ghost" onClick={onClose}>
+                      Đóng
+                    </Button>
+                    <Button variant="primary" icon={RotateCcw} onClick={() => window.location.reload()}>
+                      Tải lại trang (F5)
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </div>

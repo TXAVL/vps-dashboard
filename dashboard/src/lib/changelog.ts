@@ -50,6 +50,15 @@ export const CHANGELOG: ChangelogEntry[] = [
           'Nâng cấp thanh điều hướng Shell và các modal chẩn đoán hệ thống (VpsDoctorModal) để thao tác chạm mượt mà trên mobile.',
         ],
       },
+      {
+        title: '🔗 Sửa Lỗi Thông Báo Đường Dẫn Mới Của ZenPanel Sau Khi Cập Nhật',
+        items: [
+          'Khắc phục triệt để lỗi hộp thoại thông báo in lại URL cũ của trang hiện tại thay vì hiển thị đường dẫn Cloudflare Quick Tunnel mới sau khi khởi động lại.',
+          'Cơ chế chờ thông minh (Smart Polling): Duy trì trạng thái chờ Cloudflare cấp domain mới trong giai đoạn reconnect, không còn bị kết thúc sớm khi đường dẫn tunnel chưa kịp trả về.',
+          'Quét nguồn kép (Dual-Source URL Detection): Tự động trích xuất link Cloudflare mới từ cả API trạng thái (/api/update/status) lẫn nhật ký cài đặt chi tiết của installer.',
+          'Giao diện thông báo URL phân tách rõ ràng: Hiển thị nổi bật nhãn "Đường dẫn đã đổi", nút sao chép 1-click và hai lựa chọn "Mở tab mới (tự đăng nhập)" hoặc "Chuyển sang trang mới".',
+        ],
+      },
     ],
   },
   {
