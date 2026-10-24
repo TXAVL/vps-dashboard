@@ -1,4 +1,4 @@
-// ZenPanel - AI Gateway: Combo model (kiểu 9Router), endpoint đa chuẩn (OpenAI / Anthropic / Ollama) và giới hạn theo API key
+// ZenPanel - AI Gateway: Combo model (Smart Routing), endpoint đa chuẩn (OpenAI / Anthropic / Ollama) và giới hạn theo API key
 import { useState } from 'react';
 import { ArrowDown, ArrowUp, Gauge, Layers, Plug, Plus, Save, Trash2 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
@@ -84,7 +84,7 @@ export function ConnectTab({
   return (
     <div className="space-y-4">
       <Card
-        title="Combo model (9Router)"
+        title="Combo model (Smart Routing)"
         icon={Layers}
         actions={
           <Button size="sm" variant="primary" icon={Plus} onClick={() => setEditing({ index: -1, combo: { name: '', models: [], strategy: 'fallback' } })}>

@@ -554,7 +554,7 @@ export const APP_CATALOG: AppDefinition[] = [
   {
     id: 'litellm',
     name: 'AI Gateway (LiteLLM)',
-    description: '1 endpoint chuẩn OpenAI cho mọi model: ChatGPT, Claude, Gemini, OpenRouter, NVIDIA. Giống OpenRouter nhưng tự host.',
+    description: '1 endpoint chuẩn OpenAI cho mọi model: ChatGPT, Claude, Gemini, OpenRouter, NVIDIA. Tự host trực tiếp trên ZenPanel.',
     category: 'ai',
     icon: 'Waypoints',
     website: 'https://docs.litellm.ai',

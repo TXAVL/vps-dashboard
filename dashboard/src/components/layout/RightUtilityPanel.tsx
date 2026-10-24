@@ -78,7 +78,7 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
     }
   };
 
-  // 1Router: Đo độ trễ tới các nhà cung cấp AI & DNS (Latency Tester)
+  // ZenPanel AI Gateway: Đo độ trễ tới các nhà cung cấp AI & DNS (Latency Tester)
   const [aiLatencyLoading, setAiLatencyLoading] = useState(false);
   const [aiLatencies, setAiLatencies] = useState<Record<string, { latencyMs: number; reachable: boolean; status?: number; error?: string }>>({});
   const aiProvidersList = [
@@ -106,7 +106,7 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
     setAiLatencyLoading(false);
   };
 
-  // 9Router: Presets cho IDEs (Cursor, Claude Code, Cline, Windsurf)
+  // ZenPanel AI Gateway: Presets cho IDEs (Cursor, Claude Code, Cline, Windsurf)
   const [selectedIde, setSelectedIde] = useState<'cursor' | 'claude' | 'cline' | 'windsurf'>('cursor');
   const effectiveAiHost = pubIsTunnel ? (pubRawIp || pubHost) : pubHost;
   const aiBaseUrl = typeof window !== 'undefined'
@@ -331,7 +331,7 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
           )}
         >
           <Zap className="size-3 text-purple-400" />
-          9Router
+          AI Gateway
         </button>
         <button
           onClick={() => setTab('pulse')}
@@ -648,10 +648,10 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
           </div>
         )}
 
-        {/* Tab 2: 9Router & 1Router AI Hub */}
+        {/* Tab 2: ZenPanel AI Gateway Hub */}
         {tab === 'router' && (
           <div className="space-y-4">
-            {/* Banner 9Router.com & 1Router */}
+            {/* Banner ZenPanel AI Gateway */}
             <div className="rounded-2xl border border-purple-500/30 bg-gradient-to-br from-purple-950/40 via-ink-950/80 to-blue-950/40 p-3.5 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -660,8 +660,8 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
                   </div>
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-1">
-                      9Router AI Gateway Hub
-                      <span className="rounded bg-purple-500/20 px-1 py-0.2 text-[9px] text-purple-300">9router.com</span>
+                      ZenPanel AI Gateway
+                      <span className="rounded bg-purple-500/20 px-1 py-0.2 text-[9px] text-purple-300">Self-Hosted</span>
                     </div>
                     <div className="text-[10px] text-slate-400">1-Click Config cho Cursor, Claude Code, Cline</div>
                   </div>
@@ -672,12 +672,12 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
               </p>
             </div>
 
-            {/* 1Router Latency Tester */}
+            {/* AI Latency Tester */}
             <div className="rounded-xl border border-slate-700/60 bg-ink-900/60 p-3 space-y-2.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-white">
                   <Network className="size-3.5 text-zen-blue" />
-                  1Router AI & DNS Latency
+                  Kiểm Tra Độ Trễ AI & DNS
                 </div>
                 <button
                   onClick={handleTestAiLatencies}
@@ -707,7 +707,7 @@ export function RightUtilityPanel({ open, onClose, onOpenDoctor, pinned, onToggl
               </div>
             </div>
 
-            {/* 9Router IDE Presets */}
+            {/* ZenPanel AI Gateway IDE Presets */}
             <div className="rounded-xl border border-slate-700/60 bg-ink-900/60 p-3 space-y-2.5">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-white">

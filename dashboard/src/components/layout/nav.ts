@@ -108,7 +108,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'ai',
     title: 'AI & Lập trình',
     items: [
-      { to: '/ai', label: 'AI Gateway', icon: Sparkles, description: 'Router AI kiểu 9Router/OpenRouter: OpenAI, Anthropic, Ollama API', keywords: 'openai claude gemini openrouter ollama 9router' },
+      { to: '/ai', label: 'AI Gateway', icon: Sparkles, description: 'ZenPanel AI Gateway: 1 endpoint OpenAI, Anthropic, Ollama API', keywords: 'openai claude gemini openrouter ollama gateway ai' },
       { to: '/api-tester', label: 'API Tester', icon: Send, description: 'Test API kiểu Postman, gửi từ VPS tới mọi URL', keywords: 'postman http request' },
     ],
   },

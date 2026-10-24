@@ -1,4 +1,4 @@
-// ZenPanel - AI Gateway tích hợp (giống OpenRouter / 9router): 1 endpoint chuẩn OpenAI cho mọi nhà cung cấp
+// ZenPanel - AI Gateway tích hợp: 1 endpoint chuẩn OpenAI & Anthropic cho mọi nhà cung cấp
 // Model gọi theo dạng "<nhà cung cấp>/<model>", vd "anthropic/claude-sonnet-5-5", "openrouter/meta-llama/llama-3.3-70b-instruct".
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readJson, writeJson } from '../core/store.js';

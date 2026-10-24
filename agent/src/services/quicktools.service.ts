@@ -405,7 +405,7 @@ export class QuickToolsService {
     }
   }
 
-  /** Đo độ trễ kết nối (Ping/TTFB) tới các nhà cung cấp AI & DNS (Phong cách 1Router & 9Router) */
+  /** Đo độ trễ kết nối (Ping/TTFB) tới các nhà cung cấp AI & DNS */
   async testAiLatency(providerId: string): Promise<AiLatencyResult> {
     const endpoints: Record<string, string> = {
       openai: 'https://api.openai.com/v1/models',

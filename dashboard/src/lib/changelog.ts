@@ -123,7 +123,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-23',
     highlights: [
       {
-        title: '🔀 AI Gateway Chuẩn 9Router: Định Tuyến 3 Tầng Thông Minh Không Lo Đứt Gãy',
+        title: '🔀 ZenPanel AI Gateway: Định Tuyến 3 Tầng Thông Minh Không Lo Đứt Gãy',
         items: [
           'Tự động nhảy tầng dự phòng (Tier 1 ➔ Tier 2 ➔ Tier 3): Khi bạn đang lập trình với Claude Code, Cursor hay Cline mà tài khoản chính hết tiền, bị giới hạn tốc độ (lỗi 429) hoặc máy chủ AI bị nghẽn, ZenPanel sẽ tự động nhảy sang mô hình giá rẻ hoặc mô hình miễn phí ngay lập tức. Công việc của bạn luôn được liên tục, không bao giờ bị dừng giữa chừng.',
           'Đặt tên mô hình siêu tiện: Bạn chỉ cần nhập "tier1" (mô hình thông minh cao cấp nhất), "tier2" (mô hình tiết kiệm siêu tốc như Gemini 3.5 Flash Lite, DeepSeek), "tier3" (tầng miễn phí cứu cánh) hoặc "auto" để ZenPanel tự quyết định.',

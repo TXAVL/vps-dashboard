@@ -789,7 +789,7 @@ export default function AppStore() {
                 <Link to="/ai" className="font-semibold text-blue-300 underline">
                   AI Gateway
                 </Link>
-                , các app AI sẽ tự dùng chung. Cài <b>AI Gateway</b> để có 1 endpoint chuẩn OpenAI cho mọi model, giống OpenRouter nhưng tự host.
+                , các app AI sẽ tự dùng chung. Cài <b>AI Gateway</b> để có 1 endpoint chuẩn OpenAI cho mọi model, tự host trực tiếp trên ZenPanel.
               </Notice>
             </div>
           )}

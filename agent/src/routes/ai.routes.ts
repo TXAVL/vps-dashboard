@@ -130,7 +130,7 @@ function getGatewayGuide(gateway: AiGatewayService) {
   const s = gateway.getSettings();
   return {
     status: s.enabled ? 'online' : 'disabled',
-    service: 'TXAZENPANEL AI Gateway (9Router compatible)',
+    service: 'TXAZENPANEL AI Gateway',
     version: '0.6.4',
     description: 'Cổng điều phối AI thông minh 3 tầng (3-Tier) chuẩn OpenAI. Hỗ trợ đầy đủ cho Postman, cURL, AI Agents, LangChain, Next.js, n8n, Cursor, Claude Code, Cline.',
     currentConfiguration: {
@@ -240,7 +240,7 @@ function getGatewayGuide(gateway: AiGatewayService) {
 function buildPostmanCollection(baseUrl: string) {
   return {
     info: {
-      name: 'ZenPanel AI Gateway (OpenAI Compatible & 9Router)',
+      name: 'ZenPanel AI Gateway (OpenAI & Anthropic Compatible)',
       description: 'Bộ sưu tập Postman Collection đầy đủ cho ZenPanel AI Gateway. Hỗ trợ Chat Completions, Auto-Routing 3 Tầng, và Set nhanh Model Default / Fallbacks qua API.',
       schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
     },

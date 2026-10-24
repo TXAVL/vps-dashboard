@@ -7,6 +7,7 @@ interface TipState {
   x: number;
   y: number;
   placement: 'top' | 'bottom';
+  align: 'center' | 'left' | 'right';
 }
 
 export function TooltipLayer() {
@@ -21,7 +22,27 @@ export function TooltipLayer() {
       if (!text) return;
       const rect = el.getBoundingClientRect();
       const placement = rect.top < 56 ? 'bottom' : 'top';
-      setTip({ text, x: rect.left + rect.width / 2, y: placement === 'top' ? rect.top - 8 : rect.bottom + 8, placement });
+      const isRightEdge = rect.right > window.innerWidth - 80;
+      const isLeftEdge = rect.left < 80;
+
+      let align: 'center' | 'left' | 'right' = 'center';
+      let x = rect.left + rect.width / 2;
+
+      if (isRightEdge) {
+        align = 'right';
+        x = rect.right;
+      } else if (isLeftEdge) {
+        align = 'left';
+        x = rect.left;
+      }
+
+      setTip({
+        text,
+        x,
+        y: placement === 'top' ? rect.top - 8 : rect.bottom + 8,
+        placement,
+        align,
+      });
     };
 
     const onOver = (event: Event) => {
@@ -93,12 +114,20 @@ export function TooltipLayer() {
   return createPortal(
     <div
       role="tooltip"
-      className="pointer-events-none fixed z-[70] max-w-[calc(100vw-2rem)] sm:max-w-xs rounded-lg border border-slate-600/70 bg-ink-900/95 px-2.5 py-1.5 text-xs font-medium text-slate-100 shadow-xl shadow-black/60 backdrop-blur transition-opacity duration-150 animate-in fade-in"
+      className="pointer-events-none fixed z-[100] w-max max-w-[calc(100vw-2rem)] sm:max-w-xs rounded-lg border border-slate-600/70 bg-ink-900/95 px-2.5 py-1.5 text-xs font-medium text-slate-100 shadow-xl shadow-black/60 backdrop-blur whitespace-nowrap transition-opacity duration-150 animate-in fade-in"
       style={{
-        left: Math.min(Math.max(tip.x, 16), window.innerWidth - 16),
-        top: tip.y,
-        transform: `translate(-50%, ${tip.placement === 'top' ? '-100%' : '0'})`,
-        wordBreak: 'break-word',
+        ...(tip.align === 'right'
+          ? { right: `${Math.max(12, window.innerWidth - tip.x)}px` }
+          : tip.align === 'left'
+            ? { left: `${Math.max(12, tip.x)}px` }
+            : {
+                left: `${tip.x}px`,
+              }),
+        top: `${tip.y}px`,
+        transform:
+          tip.align === 'center'
+            ? `translate(-50%, ${tip.placement === 'top' ? '-100%' : '0'})`
+            : `translate(0, ${tip.placement === 'top' ? '-100%' : '0'})`,
       }}
     >
       {tip.text}

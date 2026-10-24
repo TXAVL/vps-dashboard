@@ -1057,7 +1057,7 @@ function RoutingTab({ gateway, saveGateway, models }: { gateway: GatewaySettings
             <div className="flex items-center gap-2">
               <span className="flex size-7 items-center justify-center rounded-xl bg-indigo-600/40 text-sm">🔀</span>
               <h3 className="text-base font-black text-white">Kiến trúc Định tuyến 3 Tầng Thông minh (Smart 3-Tier Architecture)</h3>
-              <Badge tone="blue" className="text-[11px] font-bold">Chuẩn 9Router</Badge>
+              <Badge tone="blue" className="text-[11px] font-bold">ZenPanel AI Gateway</Badge>
             </div>
             <p className="text-xs text-slate-300">
               Tự động phân luồng từ model cao cấp (Tier 1) ➔ model giá rẻ (Tier 2) ➔ model miễn phí (Tier 3) khi gặp lỗi 429 (Rate Limit) hoặc hết quota.
@@ -3154,7 +3154,7 @@ export ANTHROPIC_API_KEY="${activeKeyStr}"
 # 2. Khởi chạy Claude Code với Model Tier 1 hoặc auto
 claude --model tier1
 
-# Mẹo 9Router: Claude Code nén output terminal tự động qua RTK Token Saver của ZenPanel!`,
+# Mẹo: Claude Code nén output terminal tự động qua RTK Token Saver của ZenPanel!`,
     },
     cursor: {
       name: 'Cursor IDE',
@@ -3251,7 +3251,7 @@ aider \\
     "model": "${model}",
     "stream": true,
     "messages": [
-      {"role": "user", "content": "Xin chào! Kiểm tra hệ thống ZenPanel AI Gateway 9Router."}
+      {"role": "user", "content": "Xin chào! Kiểm tra hệ thống ZenPanel AI Gateway."}
     ]
   }'`,
     },
@@ -3351,9 +3351,9 @@ console.log(res.choices[0].message.content);`,
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-        {/* QUICK INTEGRATION CENTER 9ROUTER */}
+        {/* QUICK INTEGRATION CENTER */}
         <Card
-          title="⚡ Trung tâm Tích hợp 1-Click (Chuẩn 9Router cho Coding Agents & IDE)"
+          title="⚡ Trung tâm Tích hợp 1-Click (ZenPanel AI Gateway cho Coding Agents & IDE)"
           icon={Route}
           actions={
             <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer">
@@ -3843,9 +3843,9 @@ function NineRouterTab({
                 <Zap className="size-5" />
               </span>
               <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-                9Router AI Hub & Developer Presets
+                ZenPanel AI Gateway — Developer Presets
                 <span className="rounded-full bg-purple-500/20 border border-purple-500/40 px-2.5 py-0.5 text-xs font-bold text-purple-300">
-                  9router.com
+                  Self-Hosted Gateway
                 </span>
               </h2>
             </div>
@@ -3985,7 +3985,7 @@ function NineRouterTab({
                     </div>
                   </li>
                   <li>Ở danh sách Model, thêm các model mong muốn: <code className="mono text-emerald-300">auto</code>, <code className="mono text-emerald-300">openai/gpt-4o</code>, <code className="mono text-emerald-300">anthropic/claude-3-7-sonnet</code> hoặc <code className="mono text-emerald-300">gemini/gemini-2.5-flash</code>.</li>
-                  <li>Bật toggle cho model đó. Khi chat hoặc agent sinh code, Cursor sẽ đi qua 9Router của VPS với đầy đủ fallback tự động!</li>
+                  <li>Bật toggle cho model đó. Khi chat hoặc agent sinh code, Cursor sẽ đi qua ZenPanel AI Gateway của VPS với đầy đủ fallback tự động!</li>
                 </ol>
               </div>
             )}
@@ -4077,7 +4077,7 @@ claude`}
                       {
                         models: [
                           {
-                            title: 'ZenPanel 9Router (Auto Fallback)',
+                            title: 'ZenPanel AI Gateway (Auto Fallback)',
                             provider: 'openai',
                             model: gateway.defaultModel || 'auto',
                             apiKey: selectedKey,
@@ -4094,7 +4094,7 @@ claude`}
 {`{
   "models": [
     {
-      "title": "ZenPanel 9Router",
+      "title": "ZenPanel AI Gateway",
       "provider": "openai",
       "model": "${gateway.defaultModel || 'auto'}",
       "apiKey": "${selectedKey}",
@@ -4186,7 +4186,7 @@ export default function AiGateway() {
     <>
       <PageHeader
         title="AI Gateway"
-        description="Router AI kiểu 9Router / OpenRouter: 1 endpoint chuẩn OpenAI, Anthropic & Ollama cho mọi model — combo fallback, xoay vòng key, giới hạn theo key"
+        description="ZenPanel AI Gateway: 1 endpoint chuẩn OpenAI, Anthropic & Ollama cho mọi model — combo fallback, xoay vòng key, giới hạn theo key"
         icon={Sparkles}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -4220,7 +4220,7 @@ export default function AiGateway() {
           tabs={[
             { id: 'overview', label: 'Tổng quan', icon: Route },
             { id: 'connect', label: '🔌 Combo & Kết nối', icon: Zap, count: gateway.combos?.length },
-            { id: 'ninerouter', label: '🚀 9Router Presets (IDE)', icon: Zap },
+            { id: 'ninerouter', label: '⚡ Presets Kết Nối IDE', icon: Zap },
             { id: 'apikeys', label: '🔑 Cấp phát API Keys', icon: KeyRound, count: keysApi.data?.length },
             { id: 'company', label: '🏢 AI Company (Sếp & Công nhân)', icon: Building2 },
             { id: 'subagents', label: 'Sub AI Agents', icon: Bot, count: subagents.data?.length },
