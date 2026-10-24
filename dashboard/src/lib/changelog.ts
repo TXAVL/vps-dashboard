@@ -54,6 +54,14 @@ export const CHANGELOG: ChangelogEntry[] = [
         ],
       },
       {
+        title: '💾 Tùy Chọn Định Dạng Sao Lưu Linh Hoạt (.tar.gz & .zip)',
+        items: [
+          'Hỗ trợ lựa chọn 2 định dạng nén: Người dùng có thể chọn `.tar.gz` (giữ nguyên 100% phân quyền file Linux, user sở hữu và symlink) hoặc `.zip` (phổ biến, dễ mở đúp chuột trực tiếp trên Windows/macOS không cần cài phần mềm thứ 3).',
+          'Đồng bộ cả sao lưu thủ công lẫn tự động: Lựa chọn định dạng có hiệu lực cho cả tính năng "Sao lưu ngay" và cài đặt "Lịch sao lưu tự động".',
+          'Nhãn định dạng trực quan: Danh sách các bản sao lưu tự động gắn huy hiệu màu phân biệt rõ ràng (.tar.gz, .zip, .sql.gz, .mongo.gz, .rdb).',
+        ],
+      },
+      {
         title: '🛡️ Tối Ưu Hiển Thị Tooltip & Chuẩn Hóa ZenPanel AI Gateway',
         items: [
           'Sửa lỗi hiển thị tooltip: Khi rê chuột ở gần mép phải màn hình, tooltip tự động chuyển sang neo theo lề phải và giữ nguyên chiều ngang phẳng, không bị bóp méo thành cột dọc.',

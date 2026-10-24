@@ -24,6 +24,8 @@ export interface BackupTarget {
   ref?: string;
   /** database: tên database (trống = toàn bộ server) */
   database?: string;
+  /** Định dạng file nén: tar.gz hoặc zip (mặc định theo OS) */
+  format?: 'tar.gz' | 'zip';
 }
 
 export interface BackupRecord {
@@ -107,17 +109,18 @@ export class BackupService {
 
   private validate(input: BackupTarget): BackupTarget {
     const kind = input?.kind;
-    if (kind === 'panel') return { kind };
+    const format = input?.format === 'zip' || input?.format === 'tar.gz' ? input.format : undefined;
+    if (kind === 'panel') return { kind, format };
     if (kind === 'site') {
       const site = this.sites.list().find((s) => s.domain === input.ref);
       if (!site) throw badRequest('Không tìm thấy website');
-      return { kind, ref: site.domain };
+      return { kind, ref: site.domain, format };
     }
     if (kind === 'directory') {
       const dir = String(input.ref ?? '').trim();
       if (!dir || !path.isAbsolute(dir)) throw badRequest('Nhập đường dẫn tuyệt đối của thư mục cần sao lưu');
       if (path.parse(dir).root === path.resolve(dir)) throw badRequest('Không sao lưu cả ổ đĩa gốc, hãy chọn thư mục cụ thể');
-      return { kind, ref: path.resolve(dir) };
+      return { kind, ref: path.resolve(dir), format };
     }
     if (kind === 'database') {
       if (!input.ref) throw badRequest('Chọn database server');
@@ -140,7 +143,7 @@ export class BackupService {
   private async run(target: BackupTarget, scheduleId: string | null, note = ''): Promise<BackupRecord> {
     const started = Date.now();
     await mkdir(backupDir(), { recursive: true });
-    const format = this.adapter.archiveFormat();
+    const format = (target.kind !== 'database' && target.format) ? target.format : this.adapter.archiveFormat();
     let file: string;
 
     if (target.kind === 'database') {

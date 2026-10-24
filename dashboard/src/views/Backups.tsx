@@ -10,7 +10,7 @@ import { useApi } from '../lib/hooks';
 import type { Job } from '../lib/types';
 
 type Kind = 'site' | 'directory' | 'database' | 'panel';
-interface Target { kind: Kind; ref?: string; database?: string }
+interface Target { kind: Kind; ref?: string; database?: string; format?: 'tar.gz' | 'zip' }
 interface BackupItem { id: string; name: string; target: Target; file: string; size: number; createdAt: string; durationSec: number; scheduleId: string | null; note: string; exists: boolean }
 interface Schedule { id: string; name: string; target: Target; every: 'hours' | 'daily' | 'weekly'; hours: number; time: string; day: number; keep: number; enabled: boolean; lastRunAt: string | null; lastStatus: 'success' | 'error' | null; lastError: string | null }
 interface Data {
@@ -22,13 +22,22 @@ interface Data {
 const KIND_LABEL: Record<Kind, string> = { site: 'Website', directory: 'Thư mục', database: 'Database', panel: 'Cấu hình ZenPanel' };
 const DAYS = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
 
+function getFormatBadge(file: string) {
+  if (file.endsWith('.tar.gz')) return <Badge tone="green">.tar.gz</Badge>;
+  if (file.endsWith('.zip')) return <Badge tone="blue">.zip</Badge>;
+  if (file.endsWith('.sql.gz')) return <Badge tone="amber">.sql.gz</Badge>;
+  if (file.endsWith('.mongo.gz')) return <Badge tone="amber">.mongo.gz</Badge>;
+  if (file.endsWith('.rdb')) return <Badge tone="purple">.rdb</Badge>;
+  return null;
+}
+
 function TargetFields({ value, onChange, sources }: { value: Target; onChange: (t: Target) => void; sources: Data['sources'] }) {
   return (
     <>
       <Field label="Loại sao lưu">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
-            <button key={k} type="button" onClick={() => onChange({ kind: k })} className={cn('rounded-xl border px-3 py-2 text-xs font-semibold transition', value.kind === k ? 'border-zen-blue bg-zen-blue/15 text-white' : 'border-slate-700/60 text-slate-400 hover:text-white')}>
+            <button key={k} type="button" onClick={() => onChange({ ...value, kind: k })} className={cn('rounded-xl border px-3 py-2 text-xs font-semibold transition', value.kind === k ? 'border-zen-blue bg-zen-blue/15 text-white' : 'border-slate-700/60 text-slate-400 hover:text-white')}>
               {KIND_LABEL[k]}
             </button>
           ))}
@@ -61,6 +70,45 @@ function TargetFields({ value, onChange, sources }: { value: Target; onChange: (
         </>
       )}
       {value.kind === 'panel' && <p className="text-xs text-slate-400">Sao lưu {sources.dataDir} (tài khoản, cấu hình app, website, AI key, lịch...) — bỏ qua gói phiên bản và log.</p>}
+
+      {value.kind !== 'database' && (
+        <Field label="Định dạng nén" hint="Chọn .tar.gz để bảo toàn phân quyền Linux hoặc .zip để dễ mở ngay trên máy tính">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => onChange({ ...value, format: 'tar.gz' })}
+              className={cn(
+                'flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition',
+                (!value.format || value.format === 'tar.gz')
+                  ? 'border-emerald-500 bg-emerald-500/15 text-white ring-1 ring-emerald-500/30'
+                  : 'border-slate-700/60 text-slate-400 hover:text-white',
+              )}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-xs">
+                <span>.tar.gz (Gzip)</span>
+                <Badge tone="green">Khuyên dùng VPS</Badge>
+              </div>
+              <span className="text-[11px] text-slate-400">Giữ nguyên 100% quyền file Linux, user & symlink</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange({ ...value, format: 'zip' })}
+              className={cn(
+                'flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition',
+                value.format === 'zip'
+                  ? 'border-sky-500 bg-sky-500/15 text-white ring-1 ring-sky-500/30'
+                  : 'border-slate-700/60 text-slate-400 hover:text-white',
+              )}
+            >
+              <div className="flex items-center gap-1.5 font-bold text-xs">
+                <span>.zip (Zip Archive)</span>
+                <Badge tone="blue">Tiện tải về máy</Badge>
+              </div>
+              <span className="text-[11px] text-slate-400">Mở đúp chuột trực tiếp trên Windows / macOS</span>
+            </button>
+          </div>
+        </Field>
+      )}
     </>
   );
 }
@@ -178,6 +226,7 @@ export default function Backups() {
                         <td className={td}>
                           <div className="flex items-center gap-2 font-semibold text-slate-100">
                             {b.name} <Badge tone="slate">{KIND_LABEL[b.target.kind]}</Badge>
+                            {getFormatBadge(b.file)}
                             {b.scheduleId && <Badge tone="blue">Tự động</Badge>}
                             {!b.exists && <Badge tone="red">Mất file</Badge>}
                           </div>
