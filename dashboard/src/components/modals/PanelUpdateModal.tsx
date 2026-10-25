@@ -411,7 +411,7 @@ export function PanelUpdateModal({
               <div className="space-y-3.5 rounded-2xl border border-emerald-500/40 bg-gradient-to-br from-ink-950 via-emerald-950/20 to-ink-950 p-4 sm:p-5 shadow-xl shadow-emerald-950/25">
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
-                    <Globe className="size-4 text-sky-400" /> Đường dẫn Website mới
+                    <Globe className="size-4 text-sky-400" /> {urlChanged ? 'Đường dẫn Website mới' : 'Đường dẫn Website (Không đổi)'}
                   </span>
                   {isOldUrlDead ? (
                     <Badge tone="amber">Cần mở link mới</Badge>
@@ -518,15 +518,27 @@ export function PanelUpdateModal({
 
                     {/* Nút hành động trực tiếp */}
                     <div className="pt-1.5 flex flex-wrap items-center gap-2">
-                      <Button
-                        variant="primary"
-                        size="md"
-                        className="flex-1 sm:flex-initial font-bold shadow-lg shadow-sky-500/25"
-                        icon={ExternalLink}
-                        onClick={() => window.open(autoLogin, '_blank')}
-                      >
-                        Mở tab mới & Tự đăng nhập ngay
-                      </Button>
+                      {!urlChanged ? (
+                        <Button
+                          variant="primary"
+                          size="md"
+                          className="flex-1 sm:flex-initial font-bold shadow-lg shadow-emerald-500/25"
+                          icon={RotateCcw}
+                          onClick={() => window.location.reload()}
+                        >
+                          Tải lại trang (F5) để dùng ngay
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="primary"
+                          size="md"
+                          className="flex-1 sm:flex-initial font-bold shadow-lg shadow-sky-500/25"
+                          icon={ExternalLink}
+                          onClick={() => window.open(autoLogin, '_blank')}
+                        >
+                          Mở tab mới & Tự đăng nhập ngay
+                        </Button>
+                      )}
                       <Button
                         variant="secondary"
                         size="md"
@@ -541,10 +553,10 @@ export function PanelUpdateModal({
                         <Button
                           variant="ghost"
                           size="md"
-                          icon={RotateCcw}
-                          onClick={() => window.location.reload()}
+                          icon={ExternalLink}
+                          onClick={() => window.open(autoLogin, '_blank')}
                         >
-                          Tải lại trang (F5)
+                          Mở tab mới
                         </Button>
                       )}
                     </div>
@@ -609,7 +621,15 @@ export function PanelUpdateModal({
                 <Button variant="ghost" onClick={onClose}>
                   Đóng
                 </Button>
-                {effectiveBase ? (
+                {!urlChanged ? (
+                  <Button
+                    variant="primary"
+                    icon={RotateCcw}
+                    onClick={() => window.location.reload()}
+                  >
+                    Tải lại trang (F5)
+                  </Button>
+                ) : effectiveBase ? (
                   <Button
                     variant="primary"
                     icon={ExternalLink}
