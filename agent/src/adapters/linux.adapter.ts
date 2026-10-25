@@ -724,19 +724,43 @@ export class LinuxAdapter implements OSAdapter {
   }
 
   async syncScheduledTasks(tasks: ScheduledTask[]): Promise<void> {
-    if (!(await this.findExecutable('crontab'))) throw new Error('Chưa cài cron. Chạy: apt install cron (hoặc dnf install cronie)');
     const logDir = dataPath('logs', 'tasks');
     await mkdir(logDir, { recursive: true });
-    const current = await exec('crontab', ['-l']);
-    const keep = (current.code === 0 ? current.stdout : '').split('\n').filter((line) => line.trim() && !line.includes(CRON_MARK));
-    const managed = tasks
-      .filter((task) => task.enabled)
-      .map((task) => {
-        // % là ký tự đặc biệt trong crontab
-        const command = task.command.replace(/%/g, '\\%').replace(/\n/g, ' ');
-        return `${cronExpression(task.schedule)} ( ${command} ) >> ${path.join(logDir, `${task.id}.log`)} 2>&1 ${CRON_MARK}${task.id}`;
-      });
-    await execOk('crontab', ['-'], { input: `${[...keep, ...managed].join('\n')}\n` });
+
+    // Đảm bảo service cron hoặc crond đang chạy
+    if (await this.findExecutable('systemctl')) {
+      await exec('systemctl', ['enable', '--now', 'cron']).catch(() => null);
+      await exec('systemctl', ['enable', '--now', 'crond']).catch(() => null);
+    } else if (await this.findExecutable('rc-service')) {
+      await exec('rc-service', ['crond', 'start']).catch(() => null);
+    }
+
+    if (!(await this.findExecutable('crontab'))) {
+      // Hệ thống chưa cài lệnh crontab -> bỏ qua, scheduler ngầm của ZenPanel sẽ trực tiếp thực thi
+      return;
+    }
+
+    try {
+      const current = await exec('crontab', ['-l']);
+      const keep = (current.code === 0 ? current.stdout : '')
+        .split('\n')
+        .filter((line) => line.trim() && !line.includes(CRON_MARK) && !line.startsWith('SHELL=') && !line.startsWith('PATH='));
+      const managed = tasks
+        .filter((task) => task.enabled)
+        .map((task) => {
+          // % là ký tự đặc biệt trong crontab
+          const command = task.command.replace(/%/g, '\\%').replace(/\n/g, ' ');
+          return `${cronExpression(task.schedule)} ( ${command} ) >> ${path.join(logDir, `${task.id}.log`)} 2>&1 ${CRON_MARK}${task.id}`;
+        });
+
+      const header = [
+        'SHELL=/bin/bash',
+        'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+      ];
+      await execOk('crontab', ['-'], { input: `${[...header, ...keep, ...managed].join('\n')}\n` });
+    } catch {
+      // Bỏ qua lỗi crontab nếu quyền bị hạn chế; scheduler ngầm của ZenPanel sẽ đảm đương
+    }
   }
 
   runShell(command: string, opts?: ExecOptions) {

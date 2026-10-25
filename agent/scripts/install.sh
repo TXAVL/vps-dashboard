@@ -31,11 +31,11 @@ fi
 
 blue "🧘 ZenPanel installer — $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || uname -sr) · $(uname -m)"
 
-step "Cài gói cơ bản (curl, tar, ca-certificates)"
+step "Cài gói cơ bản (curl, tar, ca-certificates, cron)"
 case "$PM" in
-  apt) DEBIAN_FRONTEND=noninteractive apt-get update -y >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y curl tar ca-certificates >/dev/null ;;
-  dnf|yum) "$PM" install -y curl tar ca-certificates >/dev/null ;;
-  apk) apk add --no-cache curl tar ca-certificates bash >/dev/null ;;
+  apt) DEBIAN_FRONTEND=noninteractive apt-get update -y >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y curl tar ca-certificates cron >/dev/null && (systemctl enable --now cron >/dev/null 2>&1 || true) ;;
+  dnf|yum) "$PM" install -y curl tar ca-certificates cronie >/dev/null && (systemctl enable --now crond >/dev/null 2>&1 || true) ;;
+  apk) apk add --no-cache curl tar ca-certificates bash cronie >/dev/null && (rc-update add crond default >/dev/null 2>&1 || true; rc-service crond start >/dev/null 2>&1 || true) ;;
 esac
 
 node_ok() {

@@ -74,6 +74,7 @@ async function main() {
   const databases = new DatabaseService(docker, apps, adapter);
   const sites = new SiteService(adapter);
   const tasks = new TaskService(adapter);
+  tasks.startScheduler();
   const updates = new UpdateService(adapter, pkg.version);
   const cloudflare = new CloudflareService();
   const clean = new CleanService(adapter, docker);

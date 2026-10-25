@@ -40,8 +40,78 @@ function validateSchedule(input: unknown): TaskSchedule {
   }
 }
 
+function isTaskDue(task: ScheduledTask, now: Date): boolean {
+  if (!task.enabled) return false;
+
+  const currentMinute = now.getMinutes();
+  const currentHour = now.getHours();
+  const currentDay = now.getDay(); // 0: Chủ nhật, 1: Thứ 2, ... 6: Thứ 7
+  const currentHM = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+
+  // Kiểm tra lần chạy gần nhất: nếu vừa chạy trong vòng 50 giây qua thì không chạy lại trong cùng phút
+  if (task.lastRunAt) {
+    const lastRunTime = new Date(task.lastRunAt).getTime();
+    if (now.getTime() - lastRunTime < 50_000) {
+      return false;
+    }
+  }
+
+  const s = task.schedule;
+  switch (s.type) {
+    case 'minutes':
+      return currentMinute % s.every === 0;
+    case 'hourly':
+      return currentMinute === s.minute;
+    case 'daily':
+      return currentHM === s.time;
+    case 'weekly':
+      return currentDay === s.day && currentHM === s.time;
+    case 'startup':
+      return false;
+    default:
+      return false;
+  }
+}
+
 export class TaskService {
+  private readonly runningTasks = new Set<string>();
+  private schedulerTimer: NodeJS.Timeout | null = null;
+
   constructor(private readonly adapter: OSAdapter) {}
+
+  /** Khởi động tiến trình kiểm tra & chạy tác vụ nền liên tục */
+  startScheduler(): void {
+    if (this.schedulerTimer) return;
+
+    // Chạy tác vụ startup sau 5s khởi động panel
+    setTimeout(() => {
+      const startups = tasks.all().filter((t) => t.enabled && t.schedule.type === 'startup');
+      for (const t of startups) {
+        void this.executeTask(t, 'KHỞI ĐỘNG HỆ THỐNG');
+      }
+    }, 5000);
+
+    // Đồng bộ crontab/Task Scheduler trên hệ điều hành khi agent bật
+    void this.sync().catch(() => null);
+
+    // Vòng lặp kiểm tra mỗi 20 giây để không bao giờ bị lỡ mốc phút
+    this.schedulerTimer = setInterval(() => {
+      const now = new Date();
+      const allTasks = tasks.all();
+      for (const t of allTasks) {
+        if (isTaskDue(t, now)) {
+          void this.executeTask(t, 'LỊCH TỰ ĐỘNG');
+        }
+      }
+    }, 20_000);
+  }
+
+  stopScheduler(): void {
+    if (this.schedulerTimer) {
+      clearInterval(this.schedulerTimer);
+      this.schedulerTimer = null;
+    }
+  }
 
   list(): ScheduledTask[] {
     return tasks.all().sort((a, b) => a.name.localeCompare(b.name));
@@ -73,30 +143,97 @@ export class TaskService {
       lastRunAt: current?.lastRunAt ?? null,
       lastExitCode: current?.lastExitCode ?? null,
     };
-    const previous = tasks.all();
     tasks.upsert(task);
     try {
       await this.sync();
-    } catch (err) {
-      // Không áp dụng được vào hệ thống -> khôi phục danh sách cũ
-      for (const t of tasks.all()) tasks.remove(t.id);
-      for (const t of previous) tasks.upsert(t);
-      throw err;
+    } catch {
+      // Bỏ qua lỗi sync với OS (ví dụ chưa có lệnh crontab) vì daemon scheduler nội bộ sẽ tự động kích hoạt tác vụ
     }
     return task;
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<ScheduledTask> {
     const task = tasks.upsert({ ...this.get(id), enabled });
-    await this.sync();
+    try {
+      await this.sync();
+    } catch {}
     return task;
   }
 
   async remove(id: string): Promise<void> {
     this.get(id);
     tasks.remove(id);
-    await this.sync();
+    try {
+      await this.sync();
+    } catch {}
     await rm(dataPath('logs', 'tasks', `${id}.log`), { force: true });
+  }
+
+  /** Thực thi tác vụ tự động theo lịch ngầm và ghi nhận kết quả */
+  async executeTask(task: ScheduledTask, triggerLabel = 'LỊCH TỰ ĐỘNG'): Promise<void> {
+    if (this.runningTasks.has(task.id)) return;
+    this.runningTasks.add(task.id);
+
+    const startTime = new Date();
+    try {
+      const result = await this.adapter.runShell(task.command, { timeout: 30 * 60_000 });
+      const endTime = new Date();
+      const durationSec = ((endTime.getTime() - startTime.getTime()) / 1000).toFixed(2);
+
+      const latest = tasks.get(task.id);
+      if (latest) {
+        tasks.upsert({ ...latest, lastRunAt: endTime.toISOString(), lastExitCode: result.code });
+      }
+
+      try {
+        const logDir = dataPath('logs', 'tasks');
+        await mkdir(logDir, { recursive: true });
+        const logFile = path.join(logDir, `${task.id}.log`);
+        const outputText = [
+          result.stdout?.trim(),
+          result.stderr?.trim() ? `[STDERR]\n${result.stderr.trim()}` : '',
+        ].filter(Boolean).join('\n') || '[Lệnh thực thi hoàn tất, không sinh output ở stdout/stderr]';
+
+        const entry = [
+          `================================================================================`,
+          `[${endTime.toISOString().replace('T', ' ').slice(0, 19)}] ${triggerLabel} (${durationSec}s)`,
+          `Tác vụ: ${task.name}`,
+          `Lệnh:   ${task.command}`,
+          `--------------------------------------------------------------------------------`,
+          outputText,
+          `--------------------------------------------------------------------------------`,
+          `Mã thoát: ${result.code} - ${result.code === 0 ? 'THÀNH CÔNG' : 'THẤT BẠI'}`,
+          `================================================================================\n\n`,
+        ].join('\n');
+
+        await appendFile(logFile, entry, 'utf8');
+      } catch {}
+    } catch (err) {
+      const endTime = new Date();
+      const latest = tasks.get(task.id);
+      if (latest) {
+        tasks.upsert({ ...latest, lastRunAt: endTime.toISOString(), lastExitCode: 1 });
+      }
+      try {
+        const logDir = dataPath('logs', 'tasks');
+        await mkdir(logDir, { recursive: true });
+        const logFile = path.join(logDir, `${task.id}.log`);
+        const entry = [
+          `================================================================================`,
+          `[${endTime.toISOString().replace('T', ' ').slice(0, 19)}] ${triggerLabel} (LỖI THỰC THI)`,
+          `Tác vụ: ${task.name}`,
+          `Lệnh:   ${task.command}`,
+          `--------------------------------------------------------------------------------`,
+          `Lỗi: ${(err as Error).message}`,
+          `--------------------------------------------------------------------------------`,
+          `Mã thoát: 1 - THẤT BẠI`,
+          `================================================================================\n\n`,
+        ].join('\n');
+        await appendFile(logFile, entry, 'utf8');
+      } catch {}
+    } finally {
+      this.runningTasks.delete(task.id);
+    }
   }
 
   /** Chạy ngay trong 1 job để xem log trực tiếp trên panel và lưu vào file log tác vụ */

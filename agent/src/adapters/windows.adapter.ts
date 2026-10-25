@@ -424,7 +424,11 @@ export class WindowsAdapter implements OSAdapter {
       );
       if (!task.enabled) lines.push(`Disable-ScheduledTask -TaskPath ${psQuote(TASK_PATH)} -TaskName ${psQuote(`zp-${task.id}`)} | Out-Null;`);
     }
-    await this.ps(lines.join(' '), 120_000);
+    try {
+      await this.ps(lines.join(' '), 120_000);
+    } catch {
+      // Bỏ qua lỗi Task Scheduler nếu không đủ quyền; scheduler nội bộ của ZenPanel sẽ trực tiếp chạy tác vụ
+    }
   }
 
   runShell(command: string, opts?: ExecOptions) {
