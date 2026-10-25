@@ -523,7 +523,7 @@ export function PanelUpdateModal({
                           variant="ghost"
                           icon={ExternalLink}
                           onClick={() =>
-                            window.open(activeToken ? `${initialDirectUrl}/?token=${encodeURIComponent(activeToken)}&auto_login=1` : initialDirectUrl, '_blank')
+                            window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
                           }
                         >
                           Mở qua IP
