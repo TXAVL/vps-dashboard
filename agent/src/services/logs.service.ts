@@ -1,7 +1,7 @@
 // ZenPanel - Trình xem nhật ký: log hệ điều hành (journal / Event Log qua adapter), file log web server,
 // log website do ZenPanel tạo, log của ZenPanel (cập nhật, ứng dụng nền, cron)
 import { existsSync } from 'node:fs';
-import { open, readdir, stat } from 'node:fs/promises';
+import { open, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { LogSource, OSAdapter } from '../adapters/base.adapter.js';
 import { dataPath, readJson } from '../core/store.js';
@@ -100,5 +100,26 @@ export class LogService {
     const source = (await this.sources()).find((s) => s.id === id);
     if (!source?.path) throw badRequest('Nguồn này không phải file, không tải về được');
     return path.resolve(source.path);
+  }
+
+  /** Xóa hoặc làm rỗng nội dung log */
+  async clear(id: string): Promise<{ success: boolean; message: string }> {
+    const source = (await this.sources()).find((s) => s.id === id);
+    if (!source) throw badRequest('Nguồn log không tồn tại');
+
+    if (source.kind === 'file' && source.path) {
+      if (existsSync(source.path)) {
+        await writeFile(source.path, '', 'utf8');
+        return { success: true, message: `Đã xóa sạch nội dung log: ${source.label}` };
+      }
+      throw badRequest('File log không tồn tại');
+    }
+
+    if (this.adapter.clearSystemLog) {
+      await this.adapter.clearSystemLog(source.id);
+      return { success: true, message: `Đã làm sạch nhật ký: ${source.label}` };
+    }
+
+    return { success: true, message: `Đã xóa log: ${source.label}` };
   }
 }

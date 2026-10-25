@@ -15,6 +15,16 @@ export const THEMES = [
   'indigo',
   'teal',
   'crimson',
+  'sky',
+  'purple',
+  'pink',
+  'yellow',
+  'mint',
+  'coral',
+  'gold',
+  'lavender',
+  'ruby',
+  'matrix',
 ] as const;
 export const BASES = [
   'slate',

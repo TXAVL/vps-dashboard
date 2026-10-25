@@ -49,6 +49,7 @@ export async function opsRoutes(app: FastifyInstance, deps: { backups: BackupSer
     return logs.read(q.id, Number(q.lines) || 300, String(q.q ?? '').slice(0, 200));
   });
   app.post('/api/logs/download', async (req) => downloadLink(await logs.filePath(String((req.body as { id?: string } | undefined)?.id ?? ''))));
+  app.post('/api/logs/clear', async (req) => logs.clear(String((req.body as { id?: string } | undefined)?.id ?? '')));
 
   // ------------------------------------------------------------ Tối ưu RAM
   app.get('/api/system/memory', async () => clean.memory());

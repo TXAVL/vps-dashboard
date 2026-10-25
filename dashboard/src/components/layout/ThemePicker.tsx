@@ -19,6 +19,16 @@ export const THEME_OPTIONS: { id: PanelPrefs['theme']; label: string; color: str
   { id: 'indigo', label: 'Cosmic Indigo', color: '#6366f1' },
   { id: 'teal', label: 'Nordic Teal', color: '#14b8a6' },
   { id: 'crimson', label: 'Ruby Crimson', color: '#ef4444' },
+  { id: 'sky', label: 'Sky Blue', color: '#0ea5e9' },
+  { id: 'purple', label: 'Deep Purple', color: '#a855f7' },
+  { id: 'pink', label: 'Hot Pink', color: '#ec4899' },
+  { id: 'yellow', label: 'Solar Yellow', color: '#eab308' },
+  { id: 'mint', label: 'Neon Mint', color: '#10e7aa' },
+  { id: 'coral', label: 'Living Coral', color: '#ff6b6b' },
+  { id: 'gold', label: 'Imperial Gold', color: '#d4af37' },
+  { id: 'lavender', label: 'Pastel Lavender', color: '#9d72ff' },
+  { id: 'ruby', label: 'Deep Ruby', color: '#e11d48' },
+  { id: 'matrix', label: 'Cyber Matrix', color: '#00ff66' },
 ];
 
 export const BASE_OPTIONS: { id: PanelPrefs['base']; label: string; desc: string; colors: [string, string] }[] = [

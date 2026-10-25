@@ -1090,4 +1090,11 @@ export class LinuxAdapter implements OSAdapter {
     const { stdout, stderr } = await exec('journalctl', args[id], { timeout: 30_000 });
     return stdout || stderr;
   }
+
+  async clearSystemLog(id: string): Promise<void> {
+    if (id.startsWith('journal:')) {
+      await exec('journalctl', ['--rotate'], { timeout: 15_000 }).catch(() => null);
+      await exec('journalctl', ['--vacuum-time=1s'], { timeout: 15_000 }).catch(() => null);
+    }
+  }
 }

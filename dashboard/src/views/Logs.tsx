@@ -1,6 +1,6 @@
 // ZenPanel - Nhật ký: journal / Event Log, log web server, log website, log ZenPanel; lọc, tự làm mới, tải về
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Pause, Play, RefreshCw, ScrollText } from 'lucide-react';
+import { Download, Pause, Play, RefreshCw, ScrollText, Trash2 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { Button, EmptyState, ErrorBox, PageHeader, SearchInput, Select, Spinner, cn } from '../components/ui';
 import { get, post } from '../lib/api';
@@ -117,7 +117,7 @@ export default function Logs() {
   const [error, setError] = useState<string | null>(null);
   const [onlyIssues, setOnlyIssues] = useState(false);
   const box = useRef<HTMLDivElement>(null);
-  const { run } = useFeedback();
+  const { run, confirm } = useFeedback();
 
   useEffect(() => {
     if (!active && sources.data?.length) setActive(sources.data[0].id);
@@ -164,6 +164,21 @@ export default function Logs() {
     if (res) window.open(res.url, '_blank');
   };
 
+  const clearLog = async () => {
+    if (!active || !current) return;
+    const ok = await confirm({
+      title: 'Xóa sạch nhật ký này?',
+      message: `Bạn có chắc muốn làm rỗng nhật ký "${current.label}"? Toàn bộ dòng log cũ sẽ bị xóa và không thể khôi phục.`,
+      confirmLabel: 'Xóa sạch',
+      danger: true,
+    });
+    if (!ok) return;
+    await run(async () => {
+      await post('/api/logs/clear', { id: active });
+      await load();
+    }, 'Đã xóa sạch nhật ký');
+  };
+
   return (
     <>
       <PageHeader title="Nhật ký hệ thống" description="Xem log OS, web server, website và ZenPanel ngay trên web" icon={ScrollText} actions={<Button icon={RefreshCw} onClick={() => void sources.reload()}>Quét lại nguồn</Button>} />
@@ -203,6 +218,7 @@ export default function Logs() {
               <Button size="sm" variant={live ? 'primary' : 'ghost'} icon={live ? Pause : Play} onClick={() => setLive(!live)}>{live ? 'Đang theo dõi' : 'Theo dõi'}</Button>
               <Button size="sm" icon={RefreshCw} loading={loading} onClick={() => void load()}>Tải lại</Button>
               {current?.kind === 'file' && <Button size="sm" icon={Download} onClick={() => void download()}>Tải file</Button>}
+              <Button size="sm" variant="danger" icon={Trash2} onClick={() => void clearLog()}>Xóa log</Button>
             </div>
             <div className="flex flex-wrap gap-x-4 text-xs text-slate-500">
               {current?.path && <span className="mono">{current.path}</span>}

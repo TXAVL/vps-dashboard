@@ -155,6 +155,86 @@
   --color-blue-600: #dc2626;
   --zen-glow: 239 68 68;
 }
+:root[data-theme='sky'] {
+  --color-zen-blue: #0ea5e9;
+  --color-blue-300: #7dd3fc;
+  --color-blue-400: #38bdf8;
+  --color-blue-500: #0ea5e9;
+  --color-blue-600: #0284c7;
+  --zen-glow: 14 165 233;
+}
+:root[data-theme='purple'] {
+  --color-zen-blue: #a855f7;
+  --color-blue-300: #d8b4fe;
+  --color-blue-400: #c084fc;
+  --color-blue-500: #a855f7;
+  --color-blue-600: #9333ea;
+  --zen-glow: 168 85 247;
+}
+:root[data-theme='pink'] {
+  --color-zen-blue: #ec4899;
+  --color-blue-300: #f9a8d4;
+  --color-blue-400: #f472b6;
+  --color-blue-500: #ec4899;
+  --color-blue-600: #db2777;
+  --zen-glow: 236 72 153;
+}
+:root[data-theme='yellow'] {
+  --color-zen-blue: #eab308;
+  --color-blue-300: #fde047;
+  --color-blue-400: #facc15;
+  --color-blue-500: #eab308;
+  --color-blue-600: #ca8a04;
+  --zen-glow: 234 179 8;
+}
+:root[data-theme='mint'] {
+  --color-zen-blue: #10e7aa;
+  --color-blue-300: #a7f3d0;
+  --color-blue-400: #34d399;
+  --color-blue-500: #10e7aa;
+  --color-blue-600: #059669;
+  --zen-glow: 16 231 170;
+}
+:root[data-theme='coral'] {
+  --color-zen-blue: #ff6b6b;
+  --color-blue-300: #ffb4b4;
+  --color-blue-400: #ff8787;
+  --color-blue-500: #ff6b6b;
+  --color-blue-600: #fa5252;
+  --zen-glow: 255 107 107;
+}
+:root[data-theme='gold'] {
+  --color-zen-blue: #d4af37;
+  --color-blue-300: #fef08a;
+  --color-blue-400: #eab308;
+  --color-blue-500: #d4af37;
+  --color-blue-600: #b45309;
+  --zen-glow: 212 175 55;
+}
+:root[data-theme='lavender'] {
+  --color-zen-blue: #9d72ff;
+  --color-blue-300: #ddd6fe;
+  --color-blue-400: #b49eff;
+  --color-blue-500: #9d72ff;
+  --color-blue-600: #7c3aed;
+  --zen-glow: 157 114 255;
+}
+:root[data-theme='ruby'] {
+  --color-zen-blue: #e11d48;
+  --color-blue-300: #fda4af;
+  --color-blue-400: #fb7185;
+  --color-blue-500: #e11d48;
+  --color-blue-600: #be123c;
+  --zen-glow: 225 29 72;
+}
+:root[data-theme='matrix'] {
+  --color-zen-blue: #00ff66;
+  --color-blue-300: #86efac;
+  --color-blue-400: #4ade80;
+  --color-blue-500: #00ff66;
+  --color-blue-600: #16a34a;
+  --zen-glow: 0 255 102;
+}
 
 :root[data-base='oled'] {
   --color-ink-950: #000000;

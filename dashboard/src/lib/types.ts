@@ -248,7 +248,17 @@ export interface PanelPrefs {
     | 'lime'
     | 'indigo'
     | 'teal'
-    | 'crimson';
+    | 'crimson'
+    | 'sky'
+    | 'purple'
+    | 'pink'
+    | 'yellow'
+    | 'mint'
+    | 'coral'
+    | 'gold'
+    | 'lavender'
+    | 'ruby'
+    | 'matrix';
   base: 'slate' | 'oled' | 'navy' | 'zinc' | 'dracula' | 'nord' | 'forest' | 'mocha';
   vpsExpiry: string | null;
   vpsProvider: string;

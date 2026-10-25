@@ -798,4 +798,17 @@ foreach ($c in @(${commands.join(',')})) { $r = [ZenMem]::Run([int]$c); "cmd $c 
       60_000,
     );
   }
+
+  async clearSystemLog(id: string): Promise<void> {
+    const map: Record<string, string> = {
+      'eventlog:System': 'System',
+      'eventlog:Application': 'Application',
+      'eventlog:Security': 'Security',
+      'eventlog:OpenSSH': 'OpenSSH/Operational',
+    };
+    const log = map[id];
+    if (log) {
+      await this.ps(`wevtutil cl "${log}"`, 15_000).catch(() => null);
+    }
+  }
 }

@@ -298,4 +298,6 @@ export interface OSAdapter {
   logSources(): Promise<LogSource[]>;
   /** Đọc N dòng cuối của nguồn journal / eventlog (file do service tự đọc) */
   readSystemLog(id: string, lines: number): Promise<string>;
+  /** Xóa hoặc làm rỗng nhật ký hệ thống (journal / eventlog) */
+  clearSystemLog?(id: string): Promise<void>;
 }
