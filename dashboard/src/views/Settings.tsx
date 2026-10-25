@@ -1,5 +1,5 @@
 // ZenPanel - Cài đặt: tài khoản quản trị, Cloudflare Tunnel, thông tin agent
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import {
   Bot,
@@ -954,7 +954,20 @@ function UpdateCard() {
 
   const latest = update?.latest;
   const available = Boolean(update?.available && latest);
-  const history = (remote.data ?? []).filter((v) => v.version !== update?.current || v.sha !== latest?.sha);
+  const history = useMemo(() => {
+    const list: RemoteVersion[] = [];
+    const seen = new Set<string>();
+    for (const v of remote.data ?? []) {
+      const ver = v.version.trim().replace(/^v/, '');
+      if (!ver) continue;
+      // Bỏ qua nếu là bản đang dùng hiện tại hoặc là bản mới nhất đang hiển thị ở banner trên cùng
+      if (ver === update?.current?.replace(/^v/, '') || (available && ver === latest?.version.replace(/^v/, ''))) continue;
+      if (seen.has(ver)) continue;
+      seen.add(ver);
+      list.push(v);
+    }
+    return list;
+  }, [remote.data, update?.current, available, latest?.version]);
   const visible = showAll ? history : history.slice(0, 5);
   const spare = (packages.data ?? []).filter((p) => !p.current);
 

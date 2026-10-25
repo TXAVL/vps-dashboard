@@ -265,7 +265,20 @@ export class UpdateService {
       // bỏ qua lỗi nếu bị giới hạn GitHub rate limit
     }
 
-    return list.sort((a, b) => compareVersions(b.version, a.version) || (b.date ?? '').localeCompare(a.date ?? ''));
+    // 1. Sắp xếp theo phiên bản mới nhất trước; nếu bằng phiên bản thì ngày mới nhất trước
+    list.sort((a, b) => compareVersions(b.version, a.version) || (b.date ?? '').localeCompare(a.date ?? ''));
+
+    // 2. Cùng 1 phiên bản chỉ lấy bản mới nhất, loại bỏ trùng lặp
+    const uniqueList: RemoteVersion[] = [];
+    const seenVersions = new Set<string>();
+    for (const item of list) {
+      const cleanVer = item.version.trim().replace(/^v/, '');
+      if (!cleanVer || seenVersions.has(cleanVer)) continue;
+      seenVersions.add(cleanVer);
+      uniqueList.push(item);
+    }
+
+    return uniqueList;
   }
 
   listPackages(): (VersionPackage & { current: boolean })[] {
