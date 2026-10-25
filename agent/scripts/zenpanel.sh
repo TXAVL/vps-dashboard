@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ZenPanel CLI (Linux) - được install.sh cài vào /usr/local/bin/zenpanel, /usr/local/bin/zpanel & /usr/local/bin/zen
+# ZenPanel CLI (Linux) - được install.sh cài vào /usr/local/bin/zenpanel & /usr/local/bin/zpanel
 APP_DIR="/opt/zenpanel"
 DATA_DIR="/var/lib/zenpanel"
 INSTALL_URL="https://raw.githubusercontent.com/TXAVL/vps-dashboard/main/agent/scripts/install.sh"
@@ -228,7 +228,7 @@ case "$ACTION" in
     ;;
   help | -h | --help)
     echo "ZenPanel CLI - Quản trị ZenPanel VPS Dashboard"
-    echo "Sử dụng: zenpanel [lệnh] (hoặc zpanel [lệnh], zen [lệnh])"
+    echo "Sử dụng: zenpanel [lệnh] (hoặc zpanel [lệnh])"
     echo ""
     echo "Danh sách lệnh:"
     echo "  zenpanel status            Xem trạng thái dịch vụ và link truy cập (Mặc định)"
@@ -244,6 +244,6 @@ case "$ACTION" in
     ;;
   *)
     echo "Lệnh không hợp lệ: '$1'"
-    echo "Sử dụng: zenpanel {status|start|stop|restart|logs|url|reset-password [mật-khẩu]|update [ui|--force]} (hoặc zen / zpanel)"
+    echo "Sử dụng: zenpanel {status|start|stop|restart|logs|url|reset-password [mật-khẩu]|update [ui|--force]}"
     ;;
 esac
