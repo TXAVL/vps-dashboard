@@ -1,5 +1,6 @@
 // ZenPanel Agent - API Server (Fastify) + phục vụ Dashboard
 import { existsSync, readFileSync } from 'node:fs';
+import { rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import Fastify from 'fastify';
 import fastifyMultipart from '@fastify/multipart';
@@ -181,21 +182,36 @@ async function main() {
 
   let publicUrl: string | null = null;
   let tunnelNote: string | undefined;
+
+  const saveTunnelUrl = async (url: string | null) => {
+    try {
+      const file = path.join(config.dataDir, 'tunnel.url');
+      if (url) await writeFile(file, url.trim(), 'utf8');
+      else await rm(file, { force: true });
+    } catch {
+      // Bỏ qua lỗi ghi file nếu quyền hạn chưa cấp
+    }
+  };
+
   if (tunnel) {
     tunnel.on('download', (url: string) => console.log(`Đang tải cloudflared từ ${url} ...`));
     console.log('Đang mở Cloudflare Tunnel (trycloudflare.com) ...');
     try {
       publicUrl = await tunnel.start();
+      void saveTunnelUrl(publicUrl);
     } catch (err) {
       tunnelNote = `Lỗi: ${(err as Error).message}`;
+      void saveTunnelUrl(null);
     }
 
     // Báo lại trên console nếu tunnel rớt và được cấp domain mới
     tunnel.on('state', (state) => {
       if (state.status === 'online' && state.url && state.url !== publicUrl) {
         publicUrl = state.url;
+        void saveTunnelUrl(state.url);
         printTunnelChanged(state.url);
       } else if (state.status === 'error' && state.error) {
+        void saveTunnelUrl(null);
         printTunnelWarning(`${state.error}, đang thử kết nối lại...`);
       }
     });
@@ -204,6 +220,7 @@ async function main() {
   printBanner({ osInfo, host: config.host, port: config.port, publicUrl, tunnelNote, credentials });
 
   const shutdown = async () => {
+    await saveTunnelUrl(null);
     tunnel?.stop();
     metrics.stop();
     updates.stop();

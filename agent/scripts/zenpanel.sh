@@ -18,6 +18,21 @@ svc() {
   fi
 }
 
+get_tunnel_url() {
+  local u=""
+  if [ -f "$DATA_DIR/tunnel.url" ]; then
+    u=$(cat "$DATA_DIR/tunnel.url" 2>/dev/null | tr -d '\r\n')
+  fi
+  if [ -z "$u" ]; then
+    if command -v journalctl >/dev/null 2>&1; then
+      u=$(journalctl -u zenpanel --no-pager -o cat --since="-5m" 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
+    else
+      u=$(tail -n 100 /var/log/zenpanel.log 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
+    fi
+  fi
+  echo "$u"
+}
+
 update_website() {
   export PATH="/usr/local/bin:/usr/bin:$PATH"
   echo ""
@@ -56,14 +71,17 @@ update_website() {
 
   echo "⚡ Đang build lại giao diện Website (Vite)..."
   cd "$APP_DIR/dashboard"
-  npm run build --silent || npm run build
+  if ! (npm run build --silent || npm run build); then
+    echo "❌ Build giao diện Website thất bại! Kiểm tra lỗi hiển thị bên trên."
+    exit 1
+  fi
 
   echo ""
   echo "================================================================"
   echo "✔ Cập nhật giao diện Website ZenPanel THÀNH CÔNG!"
   echo "✔ Dịch vụ không cần khởi động lại — GIỮ NGUYÊN 100% URL HIỆN TẠI!"
   echo "================================================================"
-  current_url=$(logs 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
+  current_url=$(get_tunnel_url)
   if [ -n "$current_url" ]; then
     echo "🔗 URL truy cập hiện tại: $current_url"
     login_url=$(cd "$APP_DIR/agent" 2>/dev/null && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/login-url.js "$current_url" 2>/dev/null || true)
@@ -93,7 +111,7 @@ case "$ACTION" in
     if [ "$ACTION" = "status" ]; then
       echo ""
       echo "=== ZenPanel Connection Info ==="
-      url=$(logs 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
+      url=$(get_tunnel_url)
       if [ -n "$url" ]; then
         echo "Public URL: $url"
         login_url=$(cd "$APP_DIR/agent" 2>/dev/null && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/login-url.js "$url" 2>/dev/null || true)
@@ -119,7 +137,14 @@ case "$ACTION" in
     if command -v journalctl >/dev/null 2>&1; then journalctl -u zenpanel -f -o cat
     else tail -f /var/log/zenpanel.log; fi ;;
   url)
-    url=$(logs 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
+    if command -v systemctl >/dev/null 2>&1; then
+      if ! systemctl is-active --quiet zenpanel; then
+        echo "❌ Dịch vụ ZenPanel hiện đang KHÔNG chạy (stopped hoặc crashed)."
+        echo "👉 Hãy chạy: zenpanel status hoặc zenpanel logs để kiểm tra lỗi."
+        exit 1
+      fi
+    fi
+    url=$(get_tunnel_url)
     if [ -n "$url" ]; then
       login_url=$(cd "$APP_DIR/agent" 2>/dev/null && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/login-url.js "$url" 2>/dev/null || true)
       if [ -n "$login_url" ]; then
@@ -128,7 +153,8 @@ case "$ACTION" in
         echo "$url"
       fi
     else
-      echo "Chưa có URL tunnel hoặc chưa bật."
+      echo "⏳ Cloudflare Tunnel đang kết nối hoặc chưa cấp domain."
+      echo "👉 Vui lòng chờ 5-10 giây rồi thử lại, hoặc kiểm tra: zenpanel logs"
     fi
     ;;
   reset-password)

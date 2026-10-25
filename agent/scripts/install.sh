@@ -73,18 +73,17 @@ fi
 SRC="$(find "$TMP" -mindepth 1 -maxdepth 1 -type d | head -n1)"
 mkdir -p "$APP_DIR" "$DATA_DIR"
 # Giữ nguyên node_modules cũ để cập nhật nhanh hơn
-rm -rf "$APP_DIR/agent/src" "$APP_DIR/agent/dist" "$APP_DIR/dashboard/src" "$APP_DIR/dashboard/dist"
+rm -rf "$APP_DIR/agent/src" "$APP_DIR/dashboard/src"
 cp -a "$SRC/." "$APP_DIR/"
 
 step "Build ZenPanel Agent"
 cd "$APP_DIR/agent"
-npm ci --no-fund --no-audit --loglevel=error
+npm install --no-fund --no-audit --loglevel=error
 npm run build --silent
-npm prune --omit=dev --no-fund --no-audit --loglevel=error
 
 step "Build ZenPanel Dashboard"
 cd "$APP_DIR/dashboard"
-npm ci --no-fund --no-audit --loglevel=error
+npm install --no-fund --no-audit --loglevel=error
 npm run build --silent
 
 step "Đăng ký dịch vụ hệ thống"
@@ -150,7 +149,14 @@ done
 # In lại khung thông tin (Public URL, Local, mật khẩu lần đầu) từ log của agent
 $LOG_CMD 2>/dev/null | awk '/╭/{buf=""} {buf=buf $0 "\n"} /╰/{last=buf} END{printf "%s", last}'
 
-url=$($LOG_CMD 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
+url=""
+if [ -f "$DATA_DIR/tunnel.url" ]; then
+  url=$(cat "$DATA_DIR/tunnel.url" 2>/dev/null | tr -d '\r\n')
+fi
+if [ -z "$url" ]; then
+  url=$($LOG_CMD 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1)
+fi
+
 if [ -n "$url" ]; then
   login_url=$(cd "$APP_DIR/agent" 2>/dev/null && ZENPANEL_DATA_DIR="$DATA_DIR" node dist/cli/login-url.js "$url" 2>/dev/null || true)
   if [ -n "$login_url" ]; then

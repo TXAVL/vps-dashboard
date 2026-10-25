@@ -13,7 +13,7 @@ if /i "%ACT%"=="stop" goto stop
 if /i "%ACT%"=="restart" ( call :stop & timeout /t 2 >nul & schtasks /Run /TN "%TASK%" & goto :eof )
 if /i "%ACT%"=="status" ( schtasks /Query /TN "%TASK%" /V /FO LIST | findstr /i "TaskName Status Last" & goto :eof )
 if /i "%ACT%"=="logs" ( powershell -NoProfile -Command "Get-Content -Encoding UTF8 '%LOG%' -Tail 50 -Wait" & goto :eof )
-if /i "%ACT%"=="url" ( powershell -NoProfile -Command "$u=(Select-String -Path '%LOG%' -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' | Select-Object -Last 1).Matches.Value; if ($u) { try { $tok = & node '%APP%\agent\dist\cli\login-url.js' $u; if ($tok) { Write-Host $tok; exit 0 } } catch {} }; Write-Host $u" & goto :eof )
+if /i "%ACT%"=="url" ( powershell -NoProfile -Command "$u=''; if (Test-Path '%DATA%\tunnel.url') { $u=(Get-Content '%DATA%\tunnel.url' -Raw).Trim() }; if (-not $u -and (Test-Path '%LOG%')) { $u=(Select-String -Path '%LOG%' -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' | Select-Object -Last 1).Matches.Value }; if ($u) { try { $tok = & node '%APP%\agent\dist\cli\login-url.js' $u; if ($tok) { Write-Host $tok; exit 0 } } catch {}; Write-Host $u } else { Write-Host 'Cloudflare Tunnel dang ket noi hoac chua bat.' }" & goto :eof )
 if /i "%ACT%"=="reset-password" ( cd /d "%APP%\agent" & set "ZENPANEL_DATA_DIR=%DATA%" & node dist\cli\reset-password.js %2 & goto :eof )
 if /i "%ACT%"=="update" (
   powershell -NoProfile -ExecutionPolicy Bypass -Command ^
