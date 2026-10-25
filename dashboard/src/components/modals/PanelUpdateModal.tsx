@@ -1,7 +1,7 @@
 // ZenPanel - Modal riêng cho cập nhật / quay lại phiên bản panel:
 // xem có gì mới (changelog thân thiện) → tải gói (tiến độ thật) → cài & khởi động lại → kết nối lại → hoàn tất
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, CheckCircle2, ChevronDown, Clock, Copy, Database, ExternalLink, GitCommit, Globe, KeyRound, Loader2, Rocket, RotateCcw, ShieldCheck, Sparkles, WifiOff, XCircle } from 'lucide-react';
+import { ArrowRight, AlertTriangle, CheckCircle2, ChevronDown, Clipboard, Clock, Copy, Database, ExternalLink, GitCommit, Globe, KeyRound, Loader2, Rocket, RotateCcw, ShieldCheck, Sparkles, WifiOff, XCircle } from 'lucide-react';
 import { get, getToken, post } from '../../lib/api';
 import { formatBytes, formatDuration, formatRelative } from '../../lib/format';
 import type { Job, UpdateChangelog, VersionPackage } from '../../lib/types';
@@ -203,16 +203,37 @@ export function PanelUpdateModal({
   const elapsed = startedAt ? Math.floor((now - startedAt) / 1000) : 0;
   const dlResult = (dl?.result ?? {}) as { received?: number; total?: number | null; speed?: number };
   const token = getToken();
-  const effectiveBase = (customInputUrl.trim() || newUrl || window.location.origin).replace(/\/+$/, '');
-  const autoLogin = token ? `${effectiveBase}/?token=${encodeURIComponent(token)}&auto_login=1` : effectiveBase;
+
+  // Bóc tách URL nếu người dùng dán cả link chứa ?token=...&auto_login=1
+  let customBase = customInputUrl.trim();
+  let extractedToken = '';
+  if (customBase) {
+    try {
+      const parsed = new URL(customBase);
+      customBase = parsed.origin;
+      extractedToken = parsed.searchParams.get('token') || '';
+    } catch {
+      // Giữ nguyên chuỗi nếu chưa parse được
+    }
+  }
+
+  // Khi đang dùng TryCloudflare mà agent khởi động lại nhưng trình duyệt chưa tự kết nối được URL mới
+  const isOldUrlDead = Boolean(tunnelRenewed && !newUrl && !customBase);
+
+  // Không bao giờ fallback về window.location.origin nếu domain cũ đã ngắt
+  const effectiveBase = (customBase || newUrl || (isOldUrlDead ? '' : window.location.origin)).replace(/\/+$/, '');
+  const activeToken = extractedToken || token;
+  const autoLogin = activeToken && effectiveBase ? `${effectiveBase}/?token=${encodeURIComponent(activeToken)}&auto_login=1` : effectiveBase;
 
   let urlChanged = false;
-  if (customInputUrl.trim() || newUrl) {
+  if (customBase || newUrl) {
     try {
       urlChanged = !initialOrigin.current.includes(new URL(effectiveBase).hostname);
     } catch {
       urlChanged = effectiveBase.replace(/\/+$/, '') !== initialOrigin.current.replace(/\/+$/, '');
     }
+  } else if (isOldUrlDead) {
+    urlChanged = true;
   }
 
   const stageIndex = order.indexOf(phase);
@@ -392,111 +413,158 @@ export function PanelUpdateModal({
                   <span className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
                     <Globe className="size-4 text-sky-400" /> Đường dẫn Website mới
                   </span>
-                  {urlChanged ? (
+                  {isOldUrlDead ? (
+                    <Badge tone="amber">Cần mở link mới</Badge>
+                  ) : urlChanged ? (
                     <Badge tone="green">Đường dẫn mới</Badge>
                   ) : (
                     <Badge tone="blue">Giữ nguyên URL</Badge>
                   )}
                 </div>
 
-                {/* 1. In URL công khai */}
-                <div className="space-y-1.5">
-                  <div className="text-[11px] font-medium text-slate-400">Đường dẫn truy cập (Public URL):</div>
-                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-3 py-2.5">
-                    <code className="mono flex-1 truncate text-xs sm:text-sm font-semibold text-emerald-300">{effectiveBase}</code>
-                    <CopyButton value={effectiveBase} />
-                  </div>
-                </div>
+                {isOldUrlDead ? (
+                  /* Trường hợp domain trycloudflare.com bị đổi sau khi restart */
+                  <div className="space-y-3 pt-1">
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3.5 space-y-2.5">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-amber-200">
+                        <AlertTriangle className="size-4 shrink-0 text-amber-400" />
+                        <span>Đường dẫn cũ đã đóng do Cloudflare Tunnel khởi động lại trên VPS</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        ZenPanel đã khởi động lại xong với phiên bản mới. Do đang dùng Quick Tunnel tạm thời, máy chủ đã được cấp một domain mới và ngắt domain cũ. Hãy dùng một trong các cách sau:
+                      </p>
 
-                {/* 2. In Link đăng nhập 1-Click tự động login */}
-                <div className="space-y-1.5">
-                  <div className="text-[11px] font-medium text-amber-300/90 flex items-center gap-1">
-                    <KeyRound className="size-3.5 text-amber-400" /> Link đăng nhập 1-Click (Tự động vào thẳng web mới không cần gõ lại mật khẩu):
-                  </div>
-                  <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-950/20 px-3 py-2.5">
-                    <code className="mono flex-1 truncate text-xs text-amber-200">{autoLogin}</code>
-                    <CopyButton value={autoLogin} />
-                  </div>
-                </div>
+                      <div className="space-y-2 pt-1 border-t border-amber-500/20">
+                        <div className="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                          <span className="flex size-4 items-center justify-center rounded-full bg-sky-500/20 text-[10px] font-bold text-sky-300">1</span>
+                          Lấy link mới từ terminal VPS (Chạy lệnh sau):
+                        </div>
+                        <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-3 py-2">
+                          <code className="mono flex-1 text-xs text-emerald-300 font-bold">zenpanel url</code>
+                          <CopyButton value="zenpanel url" />
+                        </div>
+                      </div>
 
-                {/* Nút hành động trực tiếp: Mở tab mới với URL mới đó và login sẵn */}
-                <div className="pt-1.5 flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="primary"
-                    size="md"
-                    className="flex-1 sm:flex-initial font-bold shadow-lg shadow-sky-500/25"
-                    icon={ExternalLink}
-                    onClick={() => window.open(autoLogin, '_blank')}
-                  >
-                    Mở tab mới & Tự đăng nhập ngay
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    icon={Copy}
-                    onClick={() => {
-                      void navigator.clipboard?.writeText(autoLogin);
-                    }}
-                  >
-                    Sao chép link đăng nhập
-                  </Button>
-                  {!urlChanged && (
-                    <Button
-                      variant="ghost"
-                      size="md"
-                      icon={RotateCcw}
-                      onClick={() => window.location.reload()}
-                    >
-                      Tải lại trang (F5)
-                    </Button>
-                  )}
-                </div>
+                      <div className="space-y-1.5 pt-1">
+                        <div className="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                          <span className="flex size-4 items-center justify-center rounded-full bg-sky-500/20 text-[10px] font-bold text-sky-300">2</span>
+                          Dán link vừa lấy vào đây để vào thẳng Web mới:
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={customInputUrl}
+                            onChange={(e) => setCustomInputUrl(e.target.value)}
+                            placeholder="Dán link (https://xxxx.trycloudflare.com/...)"
+                            className="flex-1 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none"
+                          />
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon={Clipboard}
+                            onClick={async () => {
+                              try {
+                                const clip = await navigator.clipboard?.readText();
+                                if (clip) setCustomInputUrl(clip.trim());
+                              } catch {}
+                            }}
+                          >
+                            Dán
+                          </Button>
+                        </div>
+                      </div>
 
-                {/* Nếu đang kết nối qua Quick Tunnel mà domain cấp mới */}
-                {tunnelRenewed && !newUrl && (
-                  <div className="mt-2 space-y-2.5 rounded-xl border border-sky-500/30 bg-sky-950/20 p-3.5">
-                    <div className="text-xs text-sky-200 font-semibold">
-                      💡 Domain Cloudflare Quick Tunnel đã cấp mới trên máy chủ VPS:
-                    </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
-                      Chạy lệnh <code className="mono text-emerald-300 font-bold bg-black/40 px-1.5 py-0.5 rounded">zenpanel url</code> trong terminal SSH để xem URL mới. Nếu có link mới từ terminal, dán vào ô dưới đây để mở ngay:
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={customInputUrl}
-                        onChange={(e) => setCustomInputUrl(e.target.value)}
-                        placeholder="https://xxxx.trycloudflare.com"
-                        className="flex-1 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none"
-                      />
-                      {customInputUrl.trim() && (
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          icon={ExternalLink}
-                          onClick={() => window.open(autoLogin, '_blank')}
-                        >
-                          Mở link vừa dán
-                        </Button>
+                      {initialDirectUrl && (
+                        <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
+                            <span className="flex size-4 items-center justify-center rounded-full bg-sky-500/20 text-[10px] font-bold text-sky-300">3</span>
+                            Hoặc mở qua IP máy chủ: <code className="text-emerald-300 font-mono font-semibold">{initialDirectUrl}</code>
+                          </div>
+                          <Button
+                            size="xs"
+                            variant="primary"
+                            icon={ExternalLink}
+                            onClick={() =>
+                              window.open(activeToken ? `${initialDirectUrl}/?token=${encodeURIComponent(activeToken)}&auto_login=1` : initialDirectUrl, '_blank')
+                            }
+                          >
+                            Mở qua IP ngay
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>
-                )}
+                ) : (
+                  <>
+                    {/* 1. In URL công khai */}
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] font-medium text-slate-400">Đường dẫn truy cập (Public URL):</div>
+                      <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-3 py-2.5">
+                        <code className="mono flex-1 truncate text-xs sm:text-sm font-semibold text-emerald-300">{effectiveBase}</code>
+                        <CopyButton value={effectiveBase} />
+                      </div>
+                    </div>
 
-                {initialDirectUrl && (
-                  <div className="mt-1 flex items-center justify-between gap-2 rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-xs">
-                    <span className="text-slate-400 truncate">Hoặc mở trực tiếp qua IP máy chủ: <code className="text-slate-300 font-mono">{initialDirectUrl}</code></span>
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      icon={ExternalLink}
-                      onClick={() =>
-                        window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
-                      }
-                    >
-                      Mở qua IP
-                    </Button>
-                  </div>
+                    {/* 2. In Link đăng nhập 1-Click tự động login */}
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] font-medium text-amber-300/90 flex items-center gap-1">
+                        <KeyRound className="size-3.5 text-amber-400" /> Link đăng nhập 1-Click (Tự động vào thẳng web mới không cần gõ lại mật khẩu):
+                      </div>
+                      <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-950/20 px-3 py-2.5">
+                        <code className="mono flex-1 truncate text-xs text-amber-200">{autoLogin}</code>
+                        <CopyButton value={autoLogin} />
+                      </div>
+                    </div>
+
+                    {/* Nút hành động trực tiếp */}
+                    <div className="pt-1.5 flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="primary"
+                        size="md"
+                        className="flex-1 sm:flex-initial font-bold shadow-lg shadow-sky-500/25"
+                        icon={ExternalLink}
+                        onClick={() => window.open(autoLogin, '_blank')}
+                      >
+                        Mở tab mới & Tự đăng nhập ngay
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="md"
+                        icon={Copy}
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(autoLogin);
+                        }}
+                      >
+                        Sao chép link đăng nhập
+                      </Button>
+                      {!urlChanged && (
+                        <Button
+                          variant="ghost"
+                          size="md"
+                          icon={RotateCcw}
+                          onClick={() => window.location.reload()}
+                        >
+                          Tải lại trang (F5)
+                        </Button>
+                      )}
+                    </div>
+
+                    {initialDirectUrl && (
+                      <div className="mt-1 flex items-center justify-between gap-2 rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-xs">
+                        <span className="text-slate-400 truncate">Hoặc mở trực tiếp qua IP máy chủ: <code className="text-slate-300 font-mono">{initialDirectUrl}</code></span>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          icon={ExternalLink}
+                          onClick={() =>
+                            window.open(activeToken ? `${initialDirectUrl}/?token=${encodeURIComponent(activeToken)}&auto_login=1` : initialDirectUrl, '_blank')
+                          }
+                        >
+                          Mở qua IP
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -541,13 +609,25 @@ export function PanelUpdateModal({
                 <Button variant="ghost" onClick={onClose}>
                   Đóng
                 </Button>
-                <Button
-                  variant="primary"
-                  icon={ExternalLink}
-                  onClick={() => window.open(autoLogin, '_blank')}
-                >
-                  Mở tab mới (Tự đăng nhập)
-                </Button>
+                {effectiveBase ? (
+                  <Button
+                    variant="primary"
+                    icon={ExternalLink}
+                    onClick={() => window.open(autoLogin, '_blank')}
+                  >
+                    Mở tab mới (Tự đăng nhập)
+                  </Button>
+                ) : initialDirectUrl ? (
+                  <Button
+                    variant="primary"
+                    icon={ExternalLink}
+                    onClick={() =>
+                      window.open(activeToken ? `${initialDirectUrl}/?token=${encodeURIComponent(activeToken)}&auto_login=1` : initialDirectUrl, '_blank')
+                    }
+                  >
+                    Mở qua IP ({initialDirectUrl})
+                  </Button>
+                ) : null}
               </>
             )}
           </div>

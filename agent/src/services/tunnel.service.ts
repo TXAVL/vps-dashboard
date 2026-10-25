@@ -1,9 +1,9 @@
-// ZenPanel - Cloudflare Quick Tunnel: mỗi lần agent chạy sẽ cấp 1 domain *.trycloudflare.com
-// trỏ về cổng panel, không cần tài khoản Cloudflare hay mở port tường lửa.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import type { OSAdapter } from '../adapters/base.adapter.js';
 import { resolveTool } from '../core/download.js';
+import { dataPath } from '../core/store.js';
 
 const RELEASE_BASE = 'https://github.com/cloudflare/cloudflared/releases/latest/download';
 const URL_PATTERN = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i;
@@ -20,6 +20,8 @@ export interface TunnelState {
 
 export class TunnelService extends EventEmitter {
   private child: ChildProcess | null = null;
+  private existingPid: number | null = null;
+  private pidCheckTimer: NodeJS.Timeout | null = null;
   private stopping = false;
   private restartDelay = 2_000;
   private state: TunnelState = { status: 'idle', url: null, error: null };
@@ -38,17 +40,76 @@ export class TunnelService extends EventEmitter {
     return { ...this.state };
   }
 
-  /** Khởi động tunnel, resolve khi nhận được URL công khai */
+  /** Khởi động tunnel, resolve khi nhận được URL công khai. Tái sử dụng tiến trình cũ nếu có */
   async start(): Promise<string> {
     this.stopping = false;
+    const existing = this.checkExistingTunnel();
+    if (existing) {
+      return existing;
+    }
     const binary = await this.resolveBinary();
     return this.spawnTunnel(binary);
   }
 
+  /** Kiểm tra xem có tiến trình cloudflared cũ nào còn đang chạy (sau khi restart agent hoặc update) */
+  private checkExistingTunnel(): string | null {
+    try {
+      const pidFile = dataPath('tunnel.pid');
+      const urlFile = dataPath('tunnel.url');
+      if (!existsSync(pidFile) || !existsSync(urlFile)) return null;
+
+      const pid = parseInt(readFileSync(pidFile, 'utf8').trim(), 10);
+      if (!pid || isNaN(pid)) return null;
+
+      // Signal 0 kiểm tra sự tồn tại của tiến trình
+      try {
+        process.kill(pid, 0);
+      } catch {
+        try { unlinkSync(pidFile); } catch {}
+        return null;
+      }
+
+      const rawUrl = readFileSync(urlFile, 'utf8').trim();
+      const match = rawUrl.match(URL_PATTERN);
+      if (!match) return null;
+
+      this.existingPid = pid;
+      this.setState({ status: 'online', url: match[0], error: null });
+
+      // Định kỳ kiểm tra tiến trình nền còn chạy không
+      if (this.pidCheckTimer) clearInterval(this.pidCheckTimer);
+      this.pidCheckTimer = setInterval(() => {
+        if (!this.existingPid || this.stopping) return;
+        try {
+          process.kill(this.existingPid, 0);
+        } catch {
+          this.existingPid = null;
+          if (this.pidCheckTimer) clearInterval(this.pidCheckTimer);
+          if (!this.stopping) {
+            void this.resolveBinary().then((bin) => this.spawnTunnel(bin)).catch(() => undefined);
+          }
+        }
+      }, 3000);
+
+      return match[0];
+    } catch {
+      return null;
+    }
+  }
+
   stop(): void {
     this.stopping = true;
+    if (this.pidCheckTimer) clearInterval(this.pidCheckTimer);
+    if (this.existingPid) {
+      try {
+        process.kill(this.existingPid, 'SIGTERM');
+      } catch {}
+      this.existingPid = null;
+    }
     this.child?.kill();
     this.child = null;
+    try { unlinkSync(dataPath('tunnel.pid')); } catch {}
+    try { unlinkSync(dataPath('tunnel.url')); } catch {}
     this.setState({ status: 'stopped', url: null, error: null });
   }
 
@@ -64,14 +125,22 @@ export class TunnelService extends EventEmitter {
       const child = spawn(binary, ['tunnel', '--no-autoupdate', ...this.extraArgs, '--url', this.localUrl], {
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
+        detached: process.platform !== 'win32',
       });
       this.child = child;
+      if (child.pid) {
+        try {
+          writeFileSync(dataPath('tunnel.pid'), String(child.pid), 'utf8');
+        } catch {}
+      }
 
       let settled = false;
       const timer = setTimeout(() => {
         if (settled) return;
         settled = true;
         child.kill();
+        try { unlinkSync(dataPath('tunnel.pid')); } catch {}
+        try { unlinkSync(dataPath('tunnel.url')); } catch {}
         this.setState({ status: 'error', url: null, error: 'Hết thời gian chờ Cloudflare cấp domain' });
         reject(new Error('Hết thời gian chờ Cloudflare cấp domain trycloudflare.com'));
       }, START_TIMEOUT_MS);
@@ -83,6 +152,9 @@ export class TunnelService extends EventEmitter {
         if (!match) return;
         this.restartDelay = 2_000;
         this.setState({ status: 'online', url: match[0], error: null });
+        try {
+          writeFileSync(dataPath('tunnel.url'), match[0], 'utf8');
+        } catch {}
         if (!settled) {
           settled = true;
           clearTimeout(timer);
@@ -96,12 +168,16 @@ export class TunnelService extends EventEmitter {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        try { unlinkSync(dataPath('tunnel.pid')); } catch {}
+        try { unlinkSync(dataPath('tunnel.url')); } catch {}
         this.setState({ status: 'error', url: null, error: err.message });
         reject(err);
       });
 
       child.on('exit', (code) => {
         if (this.child === child) this.child = null;
+        try { unlinkSync(dataPath('tunnel.pid')); } catch {}
+        try { unlinkSync(dataPath('tunnel.url')); } catch {}
         if (this.stopping) return;
         const message = `cloudflared đã thoát (code ${code ?? 'null'})`;
         this.setState({ status: 'error', url: null, error: message });

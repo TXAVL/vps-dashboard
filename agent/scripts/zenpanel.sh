@@ -107,7 +107,17 @@ update_website() {
 }
 
 case "$ACTION" in
-  start | stop | restart | status)
+  stop)
+    svc stop
+    if [ -f "$DATA_DIR/tunnel.pid" ]; then
+      pid=$(cat "$DATA_DIR/tunnel.pid" 2>/dev/null | tr -d '\r\n')
+      [ -n "$pid" ] && kill -15 "$pid" 2>/dev/null || true
+      rm -f "$DATA_DIR/tunnel.pid" "$DATA_DIR/tunnel.url"
+    fi
+    pkill -f "cloudflared tunnel" 2>/dev/null || true
+    echo "ZenPanel và Cloudflare Tunnel đã dừng."
+    ;;
+  start | restart | status)
     svc "$ACTION"
     if [ "$ACTION" = "status" ]; then
       echo ""

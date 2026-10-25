@@ -9,6 +9,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.9',
+    date: '2026-10-26',
+    highlights: [
+      {
+        title: '🔗 Giữ Nguyên 100% URL Cloudflare Quick Tunnel Khi Cập Nhật & Fix Modal',
+        items: [
+          'Không bị đổi URL khi update: Tiến trình Cloudflare Quick Tunnel được tách rời và bảo lưu qua các lần restart của dịch vụ (KillMode=process). Khi cập nhật phiên bản, tiến trình Node.js khởi động lại mà không làm ngắt kết nối Quick Tunnel, URL trycloudflare.com được giữ nguyên hoàn toàn.',
+          'Sửa lỗi Modal hiển thị link cũ: Khi Cloudflare cấp domain mới, hộp thoại cập nhật không còn lấy nhầm URL cũ đã chết và không còn báo "Giữ nguyên URL".',
+          'Tự nhận diện Link dán & 1-Click Login: Hộp thoại tự động bóc tách token và domain kể cả khi người dùng dán toàn bộ đường dẫn đăng nhập 1-Click, cho phép mở thẳng tab mới ngay lập tức.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.6.8',
     date: '2026-10-26',
     highlights: [

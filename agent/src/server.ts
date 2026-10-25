@@ -221,8 +221,8 @@ async function main() {
   printBanner({ osInfo, host: config.host, port: config.port, publicUrl, tunnelNote, credentials });
 
   const shutdown = async () => {
-    await saveTunnelUrl(null);
-    tunnel?.stop();
+    // Không xoá tunnel.url hay dừng tunnel khi tắt tiến trình Node để giữ nguyên kết nối & URL
+    // TryCloudflare khi agent được khởi động lại hoặc cập nhật phiên bản.
     metrics.stop();
     updates.stop();
     appTunnels.stopAll();

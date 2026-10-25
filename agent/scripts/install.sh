@@ -102,6 +102,7 @@ ExecStart=$NODE_BIN $APP_DIR/agent/dist/server.js
 Environment=ZENPANEL_PORT=$PORT
 Environment=ZENPANEL_TUNNEL=$TUNNEL
 Environment=ZENPANEL_DATA_DIR=$DATA_DIR
+KillMode=process
 Restart=always
 RestartSec=5
 
