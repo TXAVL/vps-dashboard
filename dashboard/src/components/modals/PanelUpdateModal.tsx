@@ -1,7 +1,7 @@
 // ZenPanel - Modal riêng cho cập nhật / quay lại phiên bản panel:
 // xem có gì mới (changelog thân thiện) → tải gói (tiến độ thật) → cài & khởi động lại → kết nối lại → hoàn tất
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, AlertTriangle, CheckCircle2, ChevronDown, Clipboard, Clock, Copy, Database, ExternalLink, GitCommit, Globe, KeyRound, Loader2, Rocket, RotateCcw, ShieldCheck, Sparkles, WifiOff, XCircle } from 'lucide-react';
+import { ArrowRight, AlertTriangle, CheckCircle2, ChevronDown, Clock, Copy, Database, ExternalLink, GitCommit, Globe, KeyRound, Loader2, Rocket, RotateCcw, ShieldCheck, Sparkles, WifiOff, XCircle } from 'lucide-react';
 import { get, getToken, post } from '../../lib/api';
 import { formatBytes, formatDuration, formatRelative } from '../../lib/format';
 import type { Job, UpdateChangelog, VersionPackage } from '../../lib/types';
@@ -58,7 +58,6 @@ export function PanelUpdateModal({
   const [newUrl, setNewUrl] = useState<string | null>(null);
   const [tunnelRenewed, setTunnelRenewed] = useState(false);
   const [initialDirectUrl, setInitialDirectUrl] = useState<string | null>(null);
-  const [customInputUrl, setCustomInputUrl] = useState('');
   const initialOrigin = useRef(window.location.origin);
   const cancelled = useRef(false);
   const downgrade = compare(target.version, current) < 0;
@@ -204,29 +203,15 @@ export function PanelUpdateModal({
   const dlResult = (dl?.result ?? {}) as { received?: number; total?: number | null; speed?: number };
   const token = getToken();
 
-  // Bóc tách URL nếu người dùng dán cả link chứa ?token=...&auto_login=1
-  let customBase = customInputUrl.trim();
-  let extractedToken = '';
-  if (customBase) {
-    try {
-      const parsed = new URL(customBase);
-      customBase = parsed.origin;
-      extractedToken = parsed.searchParams.get('token') || '';
-    } catch {
-      // Giữ nguyên chuỗi nếu chưa parse được
-    }
-  }
-
   // Khi đang dùng TryCloudflare mà agent khởi động lại nhưng trình duyệt chưa tự kết nối được URL mới
-  const isOldUrlDead = Boolean(tunnelRenewed && !newUrl && !customBase);
+  const isOldUrlDead = Boolean(tunnelRenewed && !newUrl);
 
   // Không bao giờ fallback về window.location.origin nếu domain cũ đã ngắt
-  const effectiveBase = (customBase || newUrl || (isOldUrlDead ? '' : window.location.origin)).replace(/\/+$/, '');
-  const activeToken = extractedToken || token;
-  const autoLogin = activeToken && effectiveBase ? `${effectiveBase}/?token=${encodeURIComponent(activeToken)}&auto_login=1` : effectiveBase;
+  const effectiveBase = (newUrl || (isOldUrlDead ? '' : window.location.origin)).replace(/\/+$/, '');
+  const autoLogin = token && effectiveBase ? `${effectiveBase}/?token=${encodeURIComponent(token)}&auto_login=1` : effectiveBase;
 
   let urlChanged = false;
-  if (customBase || newUrl) {
+  if (newUrl) {
     try {
       urlChanged = !initialOrigin.current.includes(new URL(effectiveBase).hostname);
     } catch {
@@ -431,12 +416,11 @@ export function PanelUpdateModal({
                         <span>Đường dẫn cũ đã đóng do Cloudflare Tunnel khởi động lại trên VPS</span>
                       </div>
                       <p className="text-[11px] text-slate-300 leading-relaxed">
-                        ZenPanel đã khởi động lại xong với phiên bản mới. Do đang dùng Quick Tunnel tạm thời, máy chủ đã được cấp một domain mới và ngắt domain cũ. Hãy dùng một trong các cách sau:
+                        ZenPanel đã khởi động lại xong với phiên bản mới. Do đang dùng Quick Tunnel tạm thời, máy chủ đã được cấp một domain mới và ngắt domain cũ:
                       </p>
 
                       <div className="space-y-2 pt-1 border-t border-amber-500/20">
                         <div className="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
-                          <span className="flex size-4 items-center justify-center rounded-full bg-sky-500/20 text-[10px] font-bold text-sky-300">1</span>
                           Lấy link mới từ terminal VPS (Chạy lệnh sau):
                         </div>
                         <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/60 px-3 py-2">
@@ -445,39 +429,9 @@ export function PanelUpdateModal({
                         </div>
                       </div>
 
-                      <div className="space-y-1.5 pt-1">
-                        <div className="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
-                          <span className="flex size-4 items-center justify-center rounded-full bg-sky-500/20 text-[10px] font-bold text-sky-300">2</span>
-                          Dán link vừa lấy vào đây để vào thẳng Web mới:
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={customInputUrl}
-                            onChange={(e) => setCustomInputUrl(e.target.value)}
-                            placeholder="Dán link (https://xxxx.trycloudflare.com/...)"
-                            className="flex-1 rounded-xl border border-slate-700 bg-black/60 px-3 py-2 text-xs text-white placeholder-slate-500 focus:border-sky-500 focus:outline-none"
-                          />
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            icon={Clipboard}
-                            onClick={async () => {
-                              try {
-                                const clip = await navigator.clipboard?.readText();
-                                if (clip) setCustomInputUrl(clip.trim());
-                              } catch {}
-                            }}
-                          >
-                            Dán
-                          </Button>
-                        </div>
-                      </div>
-
                       {initialDirectUrl && (
                         <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2">
                           <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
-                            <span className="flex size-4 items-center justify-center rounded-full bg-sky-500/20 text-[10px] font-bold text-sky-300">3</span>
                             Hoặc mở qua IP máy chủ: <code className="text-emerald-300 font-mono font-semibold">{initialDirectUrl}</code>
                           </div>
                           <Button
@@ -485,7 +439,7 @@ export function PanelUpdateModal({
                             variant="primary"
                             icon={ExternalLink}
                             onClick={() =>
-                              window.open(activeToken ? `${initialDirectUrl}/?token=${encodeURIComponent(activeToken)}&auto_login=1` : initialDirectUrl, '_blank')
+                              window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
                             }
                           >
                             Mở qua IP ngay
@@ -642,7 +596,7 @@ export function PanelUpdateModal({
                     variant="primary"
                     icon={ExternalLink}
                     onClick={() =>
-                      window.open(activeToken ? `${initialDirectUrl}/?token=${encodeURIComponent(activeToken)}&auto_login=1` : initialDirectUrl, '_blank')
+                      window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
                     }
                   >
                     Mở qua IP ({initialDirectUrl})
