@@ -9,6 +9,28 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.8',
+    date: '2026-10-26',
+    highlights: [
+      {
+        title: '⏰ Bộ Lập Lịch Tự Động Nội Bộ Cho Cron Job (In-Process Scheduler Daemon)',
+        items: [
+          'Tự động chạy tác vụ 100%: ZenPanel Agent được tích hợp bộ đếm scheduler ngầm chạy 24/7, tự động kích hoạt tác vụ định kỳ (mỗi N phút, hằng ngày, hằng tuần...) mà không phụ thuộc vào trạng thái dịch vụ cron của OS.',
+          'Ghi nhận lịch sử chạy thời gian thực: Lưu log chi tiết từng lần chạy tự động (thời gian, thời lượng, stdout, stderr, mã thoát) và cập nhật cột "Lần chạy gần nhất" trên Dashboard ngay lập tức.',
+          'Tự động bật cron của hệ điều hành: Tự động kích hoạt systemctl enable --now cron/crond và nạp đầy đủ biến môi trường PATH cho lệnh shell.',
+        ],
+      },
+      {
+        title: '🗑️ Nút Xóa Sạch Nhật Ký & 22 Bộ Màu Nhấn Giao Diện Mới',
+        items: [
+          'Xóa log 1-chạm an toàn: Nút "Xóa log" mới trong tab Nhật ký có hộp thoại xác nhận tránh bấm nhầm, làm rỗng file log về 0 byte an toàn và vacuum journalctl hệ thống.',
+          'Mở rộng 22 Theme màu nhấn: Bổ sung 10 bộ màu rực rỡ mới (Sky Blue, Deep Purple, Hot Pink, Solar Yellow, Neon Mint, Living Coral, Imperial Gold, Pastel Lavender, Deep Ruby, Cyber Matrix).',
+          'Lọc sạch phiên bản trùng lặp: Tab Cập nhật trong Cài đặt tự động gom nhóm theo phiên bản, chỉ hiển thị duy nhất bản mới nhất cho mỗi số hiệu.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.6.7',
     date: '2026-10-24',
     highlights: [

@@ -493,7 +493,7 @@ export default function Tasks() {
                 <tr>
                   <th className={th}>Tác vụ</th>
                   <th className={th}>Lịch chạy</th>
-                  <th className={th}>Lần chạy từ panel</th>
+                  <th className={th}>Lần chạy gần nhất</th>
                   <th className={th}>Bật</th>
                   <th className={cn(th, 'text-right')}>Thao tác</th>
                 </tr>
