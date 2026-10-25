@@ -720,7 +720,7 @@ function SystemToolsCard() {
     if (tool.latestVersion) setUpgrading(tool);
   };
 
-  const getToolIcon = (id: SystemToolItem['id']) => {
+  const getToolIcon = (id: string) => {
     switch (id) {
       case 'node':
         return Cpu;
@@ -731,7 +731,14 @@ function SystemToolsCard() {
       case 'cloudflared':
         return Cloud;
       case 'docker':
+      case 'compose':
         return Boxes;
+      case 'caddy':
+      case 'nginx':
+      case 'webserver':
+        return Globe;
+      case 'python':
+        return Terminal;
       default:
         return Wrench;
     }

@@ -3,16 +3,18 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import os from 'node:os';
+import { existsSync } from 'node:fs';
 import { jobLog, jobProgress, startJob, type JobView } from '../core/jobs.js';
 import { badRequest } from '../core/validate.js';
+import { dataPath } from '../core/store.js';
 import { nodeService } from './nodejs.service.js';
 
 const execAsync = promisify(exec);
 
 export interface SystemToolItem {
-  id: 'node' | 'npm' | 'git' | 'cloudflared' | 'docker';
+  id: string;
   name: string;
-  category: 'runtime' | 'package_manager' | 'vcs' | 'network' | 'container';
+  category: 'runtime' | 'package_manager' | 'vcs' | 'network' | 'container' | 'webserver' | 'utility' | string;
   description: string;
   installed: boolean;
   currentVersion: string | null;
@@ -33,21 +35,35 @@ export interface SystemToolsStatusResponse {
 
 let cachedToolsStatus: { at: number; data: SystemToolsStatusResponse } | null = null;
 
-/** So sánh phiên bản dạng X.Y.Z hoặc YYYY.M.D */
+/** Phân tách phiên bản thành các số semver [major, minor, patch] chuẩn xác, loại bỏ hậu tố build (.windows.1, -ubuntu...) */
+export function parseSemverParts(v: string | null | undefined): number[] {
+  if (!v) return [];
+  const clean = v.trim().replace(/^v/i, '');
+  const m = clean.match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+  if (!m) return [];
+  return [
+    Number.parseInt(m[1] || '0', 10),
+    Number.parseInt(m[2] || '0', 10),
+    Number.parseInt(m[3] || '0', 10),
+  ];
+}
+
+/** So sánh phiên bản dạng X.Y.Z hoặc YYYY.M.D chuẩn */
 export function isNewerVersion(currentVer: string | null, latestVer: string | null): boolean {
   if (!latestVer) return false;
   if (!currentVer) return true;
 
-  const clean = (v: string) => v.trim().replace(/^v/i, '').replace(/[^0-9.]/g, '');
-  const cParts = clean(currentVer).split('.').map(Number);
-  const lParts = clean(latestVer).split('.').map(Number);
+  const c = parseSemverParts(currentVer);
+  const l = parseSemverParts(latestVer);
 
-  const len = Math.max(cParts.length, lParts.length);
-  for (let i = 0; i < len; i++) {
-    const c = cParts[i] ?? 0;
-    const l = lParts[i] ?? 0;
-    if (l > c) return true;
-    if (l < c) return false;
+  if (l.length === 0) return false;
+  if (c.length === 0) return true;
+
+  for (let i = 0; i < 3; i++) {
+    const cv = c[i] ?? 0;
+    const lv = l[i] ?? 0;
+    if (lv > cv) return true;
+    if (lv < cv) return false;
   }
   return false;
 }
@@ -63,15 +79,39 @@ export class SystemToolsService {
       return cachedToolsStatus.data;
     }
 
-    const [nodeTool, npmTool, gitTool, cloudflaredTool, dockerTool] = await Promise.all([
+    const [
+      nodeTool,
+      npmTool,
+      gitTool,
+      cloudflaredTool,
+      dockerTool,
+      composeTool,
+      webTool,
+      pythonTool,
+      curlTarTool,
+    ] = await Promise.all([
       this.checkNode(forceRefresh),
       this.checkNpm(),
       this.checkGit(),
       this.checkCloudflared(),
       this.checkDocker(),
+      this.checkCompose(),
+      this.checkWebServer(),
+      this.checkPython(),
+      this.checkCurlTar(),
     ]);
 
-    const tools: SystemToolItem[] = [nodeTool, npmTool, gitTool, cloudflaredTool, dockerTool];
+    const tools: SystemToolItem[] = [
+      nodeTool,
+      npmTool,
+      gitTool,
+      cloudflaredTool,
+      dockerTool,
+      composeTool,
+      webTool,
+      pythonTool,
+      curlTarTool,
+    ];
     const totalWithUpdates = tools.filter((t) => t.hasUpdate).length;
 
     const result: SystemToolsStatusResponse = {
@@ -86,7 +126,7 @@ export class SystemToolsService {
 
   // 1. Kiểm tra Node.js Runtime
   private async checkNode(forceRefresh = false): Promise<SystemToolItem> {
-    const runningVer = process.version; // vd: v21.10.0
+    const runningVer = process.version; // vd: v22.10.0
     const nodeStatus = await nodeService.getStatus(forceRefresh).catch(() => null);
 
     const systemVer = nodeStatus?.installed?.systemVersion || runningVer;
@@ -162,7 +202,7 @@ export class SystemToolsService {
     };
   }
 
-  // 3. Kiểm tra Git
+  // 3. Kiểm tra Git Version Control
   private async checkGit(): Promise<SystemToolItem> {
     let current: string | null = null;
     try {
@@ -174,22 +214,75 @@ export class SystemToolsService {
     }
 
     let latest: string | null = null;
-    try {
-      const res = await fetch('https://api.github.com/repos/git-for-windows/git/releases/latest', {
-        headers: { 'User-Agent': 'ZenPanel' },
-        signal: AbortSignal.timeout(6000),
-      });
-      if (res.ok) {
-        const data = (await res.json()) as any;
-        const tag = data.tag_name || '';
-        const m = tag.match(/(\d+\.\d+\.\d+)/);
-        if (m) latest = m[1];
+    let hasUpdate = false;
+
+    if (process.platform === 'win32') {
+      try {
+        const res = await fetch('https://api.github.com/repos/git-for-windows/git/releases/latest', {
+          headers: { 'User-Agent': 'ZenPanel' },
+          signal: AbortSignal.timeout(6000),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as any;
+          const tag = data.tag_name || '';
+          const m = tag.match(/(\d+\.\d+\.\d+)/);
+          if (m) latest = m[1];
+        }
+      } catch {
+        // fallback
       }
-    } catch {
-      // fallback
+      hasUpdate = isNewerVersion(current, latest);
+    } else {
+      // Linux: kiểm tra chính xác với package manager
+      try {
+        const { stdout: aptPolicy } = await execAsync('apt-cache policy git 2>/dev/null', { timeout: 5000 });
+        const instMatch = aptPolicy.match(/Installed:\s*([^\s]+)/);
+        const candMatch = aptPolicy.match(/Candidate:\s*([^\s]+)/);
+        if (instMatch && candMatch) {
+          const installedPkg = instMatch[1];
+          const candidatePkg = candMatch[1];
+          if (installedPkg === candidatePkg) {
+            // Đã là bản mới nhất kho gói cung cấp
+            latest = current;
+            hasUpdate = false;
+          } else {
+            const candVerMatch = candidatePkg.match(/(\d+\.\d+\.\d+)/);
+            latest = candVerMatch ? candVerMatch[1] : candidatePkg;
+            hasUpdate = isNewerVersion(current, latest);
+          }
+        }
+      } catch {
+        // Không phải hệ thống APT
+      }
+
+      // Nếu chưa xác định được và chưa có update, kiểm tra qua git upstream
+      if (!latest && current) {
+        try {
+          const res = await fetch('https://api.github.com/repos/git/git/tags?per_page=1', {
+            headers: { 'User-Agent': 'ZenPanel' },
+            signal: AbortSignal.timeout(6000),
+          });
+          if (res.ok) {
+            const tags = (await res.json()) as any[];
+            const tag = tags[0]?.name || '';
+            const m = tag.match(/(\d+\.\d+\.\d+)/);
+            if (m) {
+              const upstream = m[1];
+              // Trên Linux, chỉ báo hasUpdate khi thực sự có bản mới hơn
+              if (isNewerVersion(current, upstream)) {
+                latest = upstream;
+                hasUpdate = true;
+              } else {
+                latest = current;
+                hasUpdate = false;
+              }
+            }
+          }
+        } catch {}
+      }
     }
 
-    const hasUpdate = isNewerVersion(current, latest);
+    if (!latest && current) latest = current;
 
     return {
       id: 'git',
@@ -199,21 +292,32 @@ export class SystemToolsService {
       installed: current !== null,
       currentVersion: current ? `v${current}` : null,
       latestVersion: latest ? `v${latest}` : null,
-      hasUpdate,
+      hasUpdate: Boolean(hasUpdate && current && latest && isNewerVersion(current, latest)),
       isCrucialForZenPanel: true,
-      changelogUrl: 'https://github.com/git-for-windows/git/releases',
+      changelogUrl: process.platform === 'win32' ? 'https://github.com/git-for-windows/git/releases' : 'https://github.com/git/git/releases',
     };
   }
 
   // 4. Kiểm tra Cloudflared Tunnel
   private async checkCloudflared(): Promise<SystemToolItem> {
     let current: string | null = null;
+    let binaryPath = 'cloudflared';
+
     try {
       const { stdout } = await execAsync('cloudflared --version', { timeout: 5000 });
       const m = stdout.match(/(\d{4}\.\d+\.\d+)/);
       if (m) current = m[1];
     } catch {
-      current = null;
+      // Tìm trong thư mục bin cục bộ của ZenPanel
+      try {
+        const localBin = path.join(dataPath('bin'), process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared');
+        if (existsSync(localBin)) {
+          binaryPath = localBin;
+          const { stdout } = await execAsync(`"${localBin}" --version`, { timeout: 5000 });
+          const m = stdout.match(/(\d{4}\.\d+\.\d+)/);
+          if (m) current = m[1];
+        }
+      } catch {}
     }
 
     let latest: string | null = null;
@@ -245,10 +349,11 @@ export class SystemToolsService {
       hasUpdate,
       isCrucialForZenPanel: false,
       changelogUrl: 'https://github.com/cloudflare/cloudflared/releases',
+      notes: binaryPath !== 'cloudflared' ? 'Đang chạy từ bộ cài nội bộ ZenPanel' : undefined,
     };
   }
 
-  // 5. Kiểm tra Docker
+  // 5. Kiểm tra Docker Engine
   private async checkDocker(): Promise<SystemToolItem> {
     let current: string | null = null;
     try {
@@ -266,10 +371,139 @@ export class SystemToolsService {
       description: 'Nền tảng container hóa dùng để triển khai các ứng dụng App Store (MySQL, Nginx, Redis...)',
       installed: current !== null,
       currentVersion: current ? `v${current}` : null,
-      latestVersion: null, // docker upgrade thường qua desktop hoặc package manager OS
+      latestVersion: current ? `v${current}` : null,
+      hasUpdate: false,
+      isCrucialForZenPanel: false,
+      notes: current ? 'Đang hoạt động trên hệ thống' : 'Chưa cài đặt (Cần cho các app container)',
+      changelogUrl: 'https://docs.docker.com/engine/release-notes/',
+    };
+  }
+
+  // 6. Kiểm tra Docker Compose
+  private async checkCompose(): Promise<SystemToolItem> {
+    let current: string | null = null;
+    try {
+      const { stdout } = await execAsync('docker compose version 2>/dev/null || docker-compose --version', { timeout: 5000 });
+      const m = stdout.match(/(\d+\.\d+\.\d+)/);
+      if (m) current = m[1];
+    } catch {
+      current = null;
+    }
+
+    return {
+      id: 'compose',
+      name: 'Docker Compose',
+      category: 'container',
+      description: 'Công cụ điều phối và quản lý multi-container cho các ứng dụng stack phức tạp',
+      installed: current !== null,
+      currentVersion: current ? `v${current}` : null,
+      latestVersion: current ? `v${current}` : null,
+      hasUpdate: false,
+      isCrucialForZenPanel: false,
+      notes: current ? 'Đang hoạt động trên hệ thống' : 'Chưa cài đặt',
+      changelogUrl: 'https://docs.docker.com/compose/release-notes/',
+    };
+  }
+
+  // 7. Kiểm tra Web Server (Caddy / Nginx)
+  private async checkWebServer(): Promise<SystemToolItem> {
+    let current: string | null = null;
+    let name = 'Web Server (Caddy / Nginx)';
+    let id: 'caddy' | 'nginx' | 'webserver' = 'webserver';
+
+    try {
+      const { stdout: caddyOut } = await execAsync('caddy version', { timeout: 5000 });
+      const m = caddyOut.match(/v?(\d+\.\d+\.\d+)/);
+      if (m) {
+        current = m[1];
+        name = 'Caddy Web Server';
+        id = 'caddy';
+      }
+    } catch {}
+
+    if (!current) {
+      try {
+        const { stderr: nginxOut } = await execAsync('nginx -v', { timeout: 5000 });
+        const m = (nginxOut || '').match(/nginx\/(\d+\.\d+\.\d+)/);
+        if (m) {
+          current = m[1];
+          name = 'Nginx Web Server';
+          id = 'nginx';
+        }
+      } catch {}
+    }
+
+    return {
+      id,
+      name,
+      category: 'webserver',
+      description: 'Máy chủ Web HTTP/HTTPS và Reverse Proxy tự động cấp phát SSL Let\'s Encrypt',
+      installed: current !== null,
+      currentVersion: current ? `v${current}` : null,
+      latestVersion: current ? `v${current}` : null,
+      hasUpdate: false,
+      isCrucialForZenPanel: false,
+      notes: current ? `${name} đang sẵn sàng trên máy chủ` : 'Chưa cài đặt (ZenPanel tự quản lý)',
+    };
+  }
+
+  // 8. Kiểm tra Python
+  private async checkPython(): Promise<SystemToolItem> {
+    let current: string | null = null;
+    try {
+      const { stdout } = await execAsync('python3 --version 2>/dev/null || python --version', { timeout: 5000 });
+      const m = stdout.match(/(\d+\.\d+\.\d+)/);
+      if (m) current = m[1];
+    } catch {
+      current = null;
+    }
+
+    return {
+      id: 'python',
+      name: 'Python Runtime',
+      category: 'runtime',
+      description: 'Môi trường thông dịch Python dùng cho các kịch bản tự động hóa, tác vụ nền và AI',
+      installed: current !== null,
+      currentVersion: current ? `v${current}` : null,
+      latestVersion: current ? `v${current}` : null,
       hasUpdate: false,
       isCrucialForZenPanel: false,
       notes: current ? 'Đang hoạt động trên hệ thống' : 'Chưa cài đặt (Tùy chọn)',
+      changelogUrl: 'https://www.python.org/downloads/',
+    };
+  }
+
+  // 9. Kiểm tra Tiện ích hệ thống (cURL & Tar)
+  private async checkCurlTar(): Promise<SystemToolItem> {
+    let curlVer: string | null = null;
+    let tarVer: string | null = null;
+    try {
+      const { stdout } = await execAsync('curl --version', { timeout: 5000 });
+      const m = stdout.match(/curl\s+(\d+\.\d+\.\d+)/i);
+      if (m) curlVer = m[1];
+    } catch {}
+    try {
+      const { stdout } = await execAsync('tar --version', { timeout: 5000 });
+      const m = stdout.match(/(\d+\.\d+(?:\.\d+)?)/);
+      if (m) tarVer = m[1];
+    } catch {}
+
+    const installed = curlVer !== null || tarVer !== null;
+    const parts: string[] = [];
+    if (curlVer) parts.push(`curl v${curlVer}`);
+    if (tarVer) parts.push(`tar v${tarVer}`);
+
+    return {
+      id: 'curl_tar',
+      name: 'Tiện ích hệ thống (cURL & Tar)',
+      category: 'utility',
+      description: 'Bộ công cụ tải file mạng và nén/giải nén sao lưu dữ liệu cốt lõi của hệ thống',
+      installed,
+      currentVersion: parts.length > 0 ? parts.join(', ') : null,
+      latestVersion: parts.length > 0 ? parts.join(', ') : null,
+      hasUpdate: false,
+      isCrucialForZenPanel: true,
+      notes: installed ? 'Đã cài đặt sẵn trên máy' : 'Cần cài đặt để tải và giải nén sao lưu',
     };
   }
 
@@ -357,16 +591,27 @@ export class SystemToolsService {
         }
       } else {
         // Linux
-        jobProgress(30, 'Nâng cấp Git trên Linux qua apt-get...');
-        jobLog('Thực thi: apt-get update && apt-get install --only-upgrade git -y');
-        const { stdout } = await execAsync('apt-get update && apt-get install --only-upgrade git -y', { timeout: 120_000 });
-        if (stdout) jobLog(stdout);
+        jobProgress(30, 'Nâng cấp Git trên Linux...');
+        try {
+          const isUbuntu = await execAsync('[ -f /etc/os-release ] && grep -qi ubuntu /etc/os-release && echo "ubuntu" || echo "other"');
+          if (isUbuntu.stdout.includes('ubuntu')) {
+            jobLog('Phát hiện Ubuntu: Cấu hình official Git PPA để nhận bản mới nhất...');
+            await execAsync('export DEBIAN_FRONTEND=noninteractive; apt-get update -y && apt-get install -y software-properties-common && add-apt-repository -y ppa:git-core/ppa && apt-get update -y && apt-get install -y git', { timeout: 180_000 }).catch(() => null);
+          }
+        } catch {}
+
+        jobLog('Thực thi cập nhật qua trình quản lý gói hệ điều hành...');
+        try {
+          await execAsync('which apt-get >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade git || which dnf >/dev/null 2>&1 && dnf upgrade -y git || which yum >/dev/null 2>&1 && yum update -y git || which apk >/dev/null 2>&1 && apk add --upgrade git', { timeout: 180_000 });
+        } catch (e: any) {
+          jobLog(`Ghi nhận: ${e.message}`);
+        }
       }
 
       jobProgress(85, 'Kiểm tra phiên bản Git sau khi nâng cấp...');
       const { stdout: finalVer } = await execAsync('git --version');
-      jobLog(`✓ Kết quả: ${finalVer.trim()}`);
-      jobProgress(100, 'Nâng cấp Git thành công.');
+      jobLog(`✓ Kết quả phiên bản trên máy: ${finalVer.trim()}`);
+      jobProgress(100, 'Nâng cấp Git hoàn tất.');
       cachedToolsStatus = null;
     });
   }
@@ -376,17 +621,43 @@ export class SystemToolsService {
     return startJob('Nâng cấp Cloudflare Tunnel (cloudflared)', 'system_tool_upgrade', async () => {
       jobProgress(10, 'Chuẩn bị nâng cấp cloudflared...');
       jobLog('▶ Bắt đầu tiến trình nâng cấp Cloudflare Tunnel client...');
-      jobLog('Thực thi lệnh chính thức của Cloudflare: cloudflared update');
 
-      jobProgress(40, 'Đang tải bản cập nhật cloudflared...');
-      const { stdout, stderr } = await execAsync('cloudflared update', { timeout: 180_000 });
-      if (stdout) jobLog(stdout);
-      if (stderr) jobLog(stderr);
+      let updated = false;
+      try {
+        jobLog('Thực thi lệnh nâng cấp chính thức: cloudflared update');
+        const { stdout, stderr } = await execAsync('cloudflared update', { timeout: 180_000 });
+        if (stdout) jobLog(stdout);
+        if (stderr) jobLog(stderr);
+        updated = true;
+      } catch (err: any) {
+        jobLog(`Lệnh cloudflared update báo: ${err.message}. Thử phương thức tải nhị phân trực tiếp...`);
+      }
+
+      if (!updated) {
+        jobProgress(50, 'Đang tải bản cập nhật cloudflared từ GitHub...');
+        const localBin = path.join(dataPath('bin'), process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared');
+        jobLog(`Ghi đè bản mới vào: ${localBin}`);
+        // Tải qua curl
+        const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
+        const osName = process.platform === 'win32' ? 'windows' : 'linux';
+        const ext = process.platform === 'win32' ? '.exe' : '';
+        const url = `https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-${osName}-${arch}${ext}`;
+        jobLog(`Đang tải từ: ${url}`);
+        if (process.platform === 'win32') {
+          await execAsync(`powershell -NoProfile -Command "Invoke-WebRequest -Uri '${url}' -OutFile '${localBin}' -UseBasicParsing"`, { timeout: 120_000 });
+        } else {
+          await execAsync(`curl -fsSL "${url}" -o "${localBin}" && chmod +x "${localBin}"`, { timeout: 120_000 });
+        }
+        jobLog(`✓ Đã tải và cập nhật nhị phân cloudflared mới thành công.`);
+      }
 
       jobProgress(85, 'Kiểm tra phiên bản cloudflared sau nâng cấp...');
-      const { stdout: newVer } = await execAsync('cloudflared --version');
+      const { stdout: newVer } = await execAsync('cloudflared --version').catch(async () => {
+        const localBin = path.join(dataPath('bin'), process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared');
+        return execAsync(`"${localBin}" --version`);
+      });
       jobLog(`✓ Phiên bản mới: ${newVer.trim()}`);
-      jobProgress(100, 'Nâng cấp cloudflared thành công.');
+      jobProgress(100, 'Nâng cấp cloudflared hoàn tất.');
       cachedToolsStatus = null;
     });
   }

@@ -582,9 +582,9 @@ export interface NodeStatusResponse {
 }
 
 export interface SystemToolItem {
-  id: 'node' | 'npm' | 'git' | 'cloudflared' | 'docker';
+  id: string;
   name: string;
-  category: 'runtime' | 'package_manager' | 'vcs' | 'network' | 'container';
+  category: 'runtime' | 'package_manager' | 'vcs' | 'network' | 'container' | 'webserver' | 'utility' | string;
   description: string;
   installed: boolean;
   currentVersion: string | null;
