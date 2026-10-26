@@ -25,6 +25,11 @@ import { phpRoutes } from './routes/php.routes.js';
 import { siteRoutes } from './routes/sites.routes.js';
 import { systemRoutes } from './routes/system.routes.js';
 import { opsRoutes } from './routes/ops.routes.js';
+import { accessRoutes } from './routes/access.routes.js';
+import { AccessService } from './services/access.service.js';
+import { AlertService } from './services/alerts.service.js';
+import { AuditService } from './services/audit.service.js';
+import { MalwareService } from './services/malware.service.js';
 import { BackupService } from './services/backup.service.js';
 import { LogService } from './services/logs.service.js';
 import { AiService } from './services/ai.service.js';
@@ -81,6 +86,10 @@ async function main() {
   const php = new PhpService(adapter);
   const backups = new BackupService(adapter, sites, databases, docker);
   const logs = new LogService(adapter, sites);
+  const access = new AccessService(adapter);
+  const alerts = new AlertService(adapter, metrics);
+  const audit = new AuditService();
+  const malware = new MalwareService(sites);
 
   const app = Fastify({ logger: { level: process.env.ZENPANEL_LOG_LEVEL ?? 'warn' }, bodyLimit: 10 * 1024 * 1024 });
 
@@ -124,6 +133,7 @@ async function main() {
   // Mọi API còn lại bắt buộc đăng nhập
   await app.register(async (secured) => {
     secured.addHook('preHandler', requireAuth);
+    audit.attach(secured);
     await systemRoutes(secured, ctx, { clean });
     await fileRoutes(secured, ctx);
     await dockerRoutes(secured, ctx, { docker, apps, databases, stacks, hub });
@@ -134,6 +144,7 @@ async function main() {
     await siteRoutes(secured, ctx, { sites, cloudflare });
     await panelRoutes(secured, ctx, { updates, tasks, ai, speedtest });
     await opsRoutes(secured, { backups, logs, clean, databases });
+    await accessRoutes(secured, { access, alerts, audit, malware });
   });
   // WebSocket tự xác thực bằng ?token= (trình duyệt không gửi được header Authorization)
   await app.register(async (wsScope) => realtimeRoutes(wsScope, ctx));
@@ -177,6 +188,7 @@ async function main() {
   void sites.bootstrap();
   updates.startAuto();
   clean.startAuto();
+  alerts.start();
   backups.startScheduler();
   appTunnels.bootstrap();
   void procs.bootstrap();

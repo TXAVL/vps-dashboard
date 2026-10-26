@@ -77,7 +77,8 @@ export async function panelRoutes(
 
   // ------------------------------------------------------------ Speedtest
   app.get('/api/speedtest', async () => ({ state: speedtest.getState(), history: speedtest.history() }));
-  app.post('/api/speedtest', async () => speedtest.start());
+  app.get('/api/speedtest/servers', async () => speedtest.servers());
+  app.post('/api/speedtest', async (req) => speedtest.start((req.body ?? {}) as { serverId?: string; connections?: string }));
 
   // ------------------------------------------------------------ Jobs
   app.get('/api/jobs', async () => listJobs());

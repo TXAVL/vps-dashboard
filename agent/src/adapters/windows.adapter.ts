@@ -693,25 +693,27 @@ public class MemoryCleaner {
   // ---------------------------------------------------------------- Tối ưu RAM
 
   async memoryDetail(): Promise<MemoryDetail> {
-    const d = await this.psJson<{ total: number; free: number; standby: number; modified: number; cache: number; swapTotal: number; swapUsed: number }>(
+    const d = await this.psJson<{ total: number; avail: number; trueFree: number; standby: number; modified: number; cache: number; swapTotal: number; swapUsed: number }>(
       [
         '$os = Get-CimInstance Win32_OperatingSystem;',
         '$pm = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory -ErrorAction SilentlyContinue;',
         '$pf = Get-CimInstance Win32_PageFileUsage -ErrorAction SilentlyContinue | Measure-Object -Property AllocatedBaseSize,CurrentUsage -Sum;',
         '$standby = 0; if ($pm) { $standby = [int64]$pm.StandbyCacheCoreBytes + [int64]$pm.StandbyCacheNormalPriorityBytes + [int64]$pm.StandbyCacheReserveBytes };',
+        '$avail = [int64]$os.FreePhysicalMemory*1024;',
         'ConvertTo-Json -Compress -InputObject @{',
-        ' total=[int64]$os.TotalVisibleMemorySize*1024; free=[int64]$os.FreePhysicalMemory*1024; standby=$standby;',
+        ' total=[int64]$os.TotalVisibleMemorySize*1024; avail=$avail; trueFree=$(if ($pm) { [int64]$pm.FreeAndZeroPageListBytes } else { $avail }); standby=$standby;',
         ' modified=$(if ($pm) { [int64]$pm.ModifiedPageListBytes } else { 0 }); cache=$(if ($pm) { [int64]$pm.CacheBytes } else { 0 });',
         ' swapTotal=$(if ($pf) { [int64]$pf[0].Sum*1MB } else { 0 }); swapUsed=$(if ($pf) { [int64]$pf[1].Sum*1MB } else { 0 }) }',
       ].join(' '),
     );
-    // Windows: "Available" = Free + Standby
-    const available = d.free + d.standby;
+    // FreePhysicalMemory của Windows đã gồm Standby (giống cột "Available" của Task Manager)
+    const available = Math.min(d.total, d.avail);
     return {
       total: d.total,
       available,
-      used: d.total - available,
-      cache: d.standby,
+      free: Math.min(available, d.trueFree),
+      used: Math.max(0, d.total - available),
+      cache: Math.min(available, d.standby),
       buffers: d.cache,
       shared: 0,
       swapTotal: d.swapTotal,

@@ -73,6 +73,8 @@ export interface LogSource {
 export interface MemoryDetail {
   total: number;
   available: number;
+  /** RAM trống thật (chưa bị cache chiếm): MemFree (Linux) / Free+Zero page list (Windows) - dùng để đo kết quả tối ưu */
+  free: number;
   used: number;
   /** Cache có thể thu hồi: PageCache + Buffers + SReclaimable (Linux) / Standby (Windows) */
   cache: number;

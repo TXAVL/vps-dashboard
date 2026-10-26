@@ -78,7 +78,8 @@ export async function systemRoutes(app: FastifyInstance, ctx: AppContext, servic
   app.get('/api/services/:name/logs', async (req) => {
     const { name } = req.params as { name: string };
     if (!isServiceName(name)) throw badRequest('Tên dịch vụ không hợp lệ');
-    return { logs: await adapter.serviceLogs(name, 200) };
+    const lines = Math.min(2000, Math.max(20, Number((req.query as { lines?: string }).lines) || 200));
+    return { logs: await adapter.serviceLogs(name, lines) };
   });
 
   // ------------------------------------------------------------ Tường lửa

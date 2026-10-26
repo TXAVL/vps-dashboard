@@ -68,6 +68,8 @@ export interface ServiceInfo {
   description: string;
   state: 'running' | 'stopped' | 'starting' | 'stopping' | 'failed' | 'unknown';
   startup: 'auto' | 'manual' | 'disabled' | 'static' | 'unknown';
+  pid?: number | null;
+  memory?: number | null;
 }
 
 export interface FirewallStatus {
@@ -468,6 +470,11 @@ export interface SpeedResult {
   upload: number;
   server: { colo: string; city: string; country: string };
   client: { ip: string; isp: string };
+  serverId?: string;
+  serverName?: string;
+  connections?: 'multi' | 'single';
+  loadedPingDown?: number | null;
+  loadedPingUp?: number | null;
 }
 
 export interface SpeedState {
@@ -481,6 +488,9 @@ export interface SpeedState {
   upload: number | null;
   error: string | null;
   last: SpeedResult | null;
+  serverId?: string;
+  connections?: 'multi' | 'single';
+  loadedPing?: number | null;
 }
 
 export interface CfPermission {

@@ -1,7 +1,10 @@
 // ZenPanel - Cấu trúc điều hướng: nhóm theo công việc, có mục con (tab), từ khoá tìm kiếm
 import {
   Archive,
+  Bell,
   Bot,
+  Bug,
+  KeyRound,
   Boxes,
   CalendarClock,
   Cog,
@@ -51,6 +54,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/', label: 'Tổng quan', icon: Gauge, description: 'CPU, RAM, Disk, Network realtime', keywords: 'dashboard overview cpu ram disk' },
       { to: '/processes', label: 'Tiến trình', icon: Cpu, description: 'Task Manager - xem và dừng tiến trình', keywords: 'task manager process kill' },
+      { to: '/alerts', label: 'Cảnh báo', icon: Bell, description: 'Báo Telegram / Discord khi VPS có sự cố, nhật ký thao tác trên panel', keywords: 'alert telegram discord notify audit canh bao thao tac' },
       { to: '/logs', label: 'Nhật ký', icon: ScrollText, description: 'Log hệ thống, web server, ZenPanel và lịch sử đăng nhập', keywords: 'log journal syslog nginx error access' },
     ],
   },
@@ -100,6 +104,20 @@ export const NAV_SECTIONS: NavSection[] = [
     title: 'Mạng & Bảo mật',
     items: [
       { to: '/firewall', label: 'Tường lửa', icon: Shield, description: 'Mở cổng, chặn IP, cổng đang lắng nghe', keywords: 'firewall port ufw iptables' },
+      {
+        to: '/access',
+        label: 'Truy cập SSH',
+        icon: KeyRound,
+        description: 'Khoá SSH, chặn IP dò mật khẩu (Fail2ban), lịch sử đăng nhập, hostname / DNS / múi giờ',
+        keywords: 'ssh key fail2ban hostname dns timezone login mui gio',
+        children: [
+          { to: '/access', label: 'SSH' },
+          { to: '/access?tab=fail2ban', label: 'Fail2ban' },
+          { to: '/access?tab=logins', label: 'Đăng nhập' },
+          { to: '/access?tab=host', label: 'Hostname & DNS' },
+        ],
+      },
+      { to: '/malware', label: 'Quét mã độc', icon: Bug, description: 'Tìm webshell / backdoor trong website, cách ly file nhiễm', keywords: 'malware virus webshell backdoor scan ma doc' },
       { to: '/security', label: 'Bảo mật & WAF', icon: ShieldCheck, description: 'Cloudflare Anti-DDoS, chặn IP', keywords: 'waf cloudflare ddos' },
       { to: '/speedtest', label: 'Speedtest', icon: Wifi, description: 'Đo tốc độ mạng thật của VPS', keywords: 'speed test mang ping' },
     ],

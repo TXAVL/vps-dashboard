@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, EmptyState, PageHeader, Progress, cn, td, th, tr } from '../components/ui';
+import { useApi, useLocalStorage } from '../lib/hooks';
 import { get, post } from '../lib/api';
 import { formatDate, formatRate } from '../lib/format';
 import { usePanel } from '../lib/panel';
@@ -348,6 +349,9 @@ function MetricCard({
 export default function Speedtest() {
   const { prefs } = usePanel();
   const [state, setState] = useState<SpeedState | null>(null);
+  const servers = useApi<{ id: string; name: string; location: string; upload: string | null }[]>('/api/speedtest/servers');
+  const [serverId, setServerId] = useLocalStorage('zenpanel.speedtest.server', 'cloudflare');
+  const [connections, setConnections] = useLocalStorage<'multi' | 'single'>('zenpanel.speedtest.conn', 'multi');
   const [history, setHistory] = useState<SpeedResult[]>([]);
   const { run } = useFeedback();
   const unit = prefs.networkUnit;
@@ -489,7 +493,7 @@ export default function Speedtest() {
     currentSpeedRef.current = 0;
     lastValidSpeedRef.current = 0;
     targetSpeedRef.current = 5_000_000; // Tăng dần ngay từ lúc kích hoạt
-    const next = await run(() => post<SpeedState>('/api/speedtest'));
+    const next = await run(() => post<SpeedState>('/api/speedtest', { serverId, connections }));
     if (next) setState(next);
   };
 
@@ -567,6 +571,48 @@ export default function Speedtest() {
             unit={unit}
             onStart={() => void start()}
           />
+
+          {/* Chọn máy chủ & kiểu kết nối (giống speedtest.net) */}
+          <div className="mt-4 flex w-full max-w-md flex-wrap items-center justify-center gap-2">
+            <select
+              className="input h-9 max-w-[240px] py-0 text-xs"
+              value={serverId}
+              disabled={running}
+              onChange={(e) => setServerId(e.target.value)}
+            >
+              {(servers.data ?? [{ id: 'cloudflare', name: 'Cloudflare', location: 'gần nhất', upload: '' }]).map((sv) => (
+                <option key={sv.id} value={sv.id}>
+                  {sv.name} · {sv.location}
+                  {sv.upload ? '' : ' (chỉ download)'}
+                </option>
+              ))}
+            </select>
+            <div className="flex rounded-xl border border-slate-700/60 bg-ink-950/70 p-1 text-xs">
+              {(['multi', 'single'] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  disabled={running}
+                  onClick={() => setConnections(c)}
+                  className={cn('rounded-lg px-2.5 py-1 font-semibold transition', connections === c ? 'bg-zen-blue text-white' : 'text-slate-400 hover:text-white')}
+                >
+                  {c === 'multi' ? 'Đa luồng' : 'Đơn luồng'}
+                </button>
+              ))}
+            </div>
+          </div>
+          {(running ? state?.loadedPing : null) != null && (
+            <div className="mt-2 text-xs text-slate-400">
+              Độ trễ khi đang tải: <b className="mono text-amber-300">{state!.loadedPing!.toFixed(0)} ms</b>
+            </div>
+          )}
+          {!running && last?.loadedPingDown != null && (
+            <div className="mt-2 flex gap-4 text-xs text-slate-400">
+              <span>Loaded ↓ <b className="mono text-emerald-300">{last.loadedPingDown.toFixed(0)} ms</b></span>
+              {last.loadedPingUp != null && <span>Loaded ↑ <b className="mono text-amber-300">{last.loadedPingUp.toFixed(0)} ms</b></span>}
+              {last.serverName && <span className="truncate">· {last.serverName}</span>}
+            </div>
+          )}
 
           {/* Biểu đồ sóng thời gian thực dưới đồng hồ */}
           {running && waveSamples.length > 2 && (

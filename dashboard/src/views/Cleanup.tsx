@@ -22,6 +22,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
+import { RamOptimizer } from './RamOptimizer';
 import { Badge, Button, Card, EmptyState, Modal, Notice, PageHeader, Progress, Spinner, cn } from '../components/ui';
 import { get, post } from '../lib/api';
 import { formatBytes, formatPercent } from '../lib/format';
@@ -197,7 +198,14 @@ export default function CleanupView() {
     }
   };
 
-  if (loading && !data) return <Spinner label="Đang quét tài nguyên máy chủ..." />;
+  if (loading && !data) {
+    return (
+      <div className="space-y-6">
+        <RamOptimizer />
+        <Spinner label="Đang quét rác & tài nguyên máy chủ (có thể mất vài chục giây)..." />
+      </div>
+    );
+  }
 
   const isCpuOverloaded = (data?.cpu.usage ?? 0) >= 70;
   const mainDisk = data?.disks?.[0];
@@ -224,6 +232,8 @@ export default function CleanupView() {
       />
 
       {error && <Notice tone="red">{error}</Notice>}
+
+      <RamOptimizer />
 
       {/* Cảnh báo nếu CPU hoặc Ổ đĩa quá tải */}
       {isCpuOverloaded && (

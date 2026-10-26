@@ -74,8 +74,10 @@ export class CleanService {
     return disks.reduce((n, d) => n + Math.max(0, d.total - d.used), 0);
   }
 
+  /** RAM trống thật (không tính cache) - chỉ số duy nhất tăng lên khi thu hồi cache / standby */
   private async ramAvailable(): Promise<number> {
-    return (await this.adapter.memoryDetail().catch(() => null))?.available ?? os.freemem();
+    const detail = await this.adapter.memoryDetail().catch(() => null);
+    return detail?.free ?? os.freemem();
   }
 
   async memory(): Promise<MemoryView> {
@@ -98,12 +100,12 @@ export class CleanService {
     this.optimizing = true;
     try {
       const before = await this.ramAvailable();
-      jobLog(`RAM khả dụng trước: ${(before / 1048576).toFixed(0)} MB`);
+      jobLog(`RAM trống thật trước: ${(before / 1048576).toFixed(0)} MB`);
       await this.adapter.optimizeRam(options, (msg) => jobLog(`  ${msg}`));
       await new Promise((r) => setTimeout(r, 1500));
       const after = await this.ramAvailable();
       const result: RamOptimizeResult = { before, after, freed: Math.max(0, after - before), at: new Date().toISOString(), auto };
-      jobLog(`RAM khả dụng sau: ${(after / 1048576).toFixed(0)} MB → giải phóng ${(result.freed / 1048576).toFixed(0)} MB`);
+      jobLog(`RAM trống thật sau: ${(after / 1048576).toFixed(0)} MB → giải phóng ${(result.freed / 1048576).toFixed(0)} MB`);
       this.lastOptimize = result;
       return result;
     } finally {

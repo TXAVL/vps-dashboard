@@ -1,6 +1,6 @@
 {
   "name": "zenpanel-dashboard",
-  "version": "0.6.9",
+  "version": "0.7.0",
   "private": true,
   "description": "ZenPanel Dashboard - Giao diện Jupiter Style + Dark Glassmorphism",
   "type": "module",

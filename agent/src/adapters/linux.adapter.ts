@@ -1022,6 +1022,7 @@ export class LinuxAdapter implements OSAdapter {
     return {
       total,
       available,
+      free: m.MemFree ?? available,
       used: total - available,
       cache: (m.Cached ?? 0) + (m.SReclaimable ?? 0),
       buffers: m.Buffers ?? 0,

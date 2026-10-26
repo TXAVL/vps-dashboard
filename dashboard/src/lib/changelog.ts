@@ -9,6 +9,81 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.7.0',
+    date: '2026-10-26',
+    highlights: [
+      {
+        title: '🔐 Khoá Cửa SSH & Chặn IP Dò Mật Khẩu — Học Từ 1Panel & vPanel',
+        items: [
+          'Trang "Truy cập SSH" mới: đổi cổng SSH, cấm root đăng nhập bằng mật khẩu, tắt đăng nhập mật khẩu để chỉ dùng SSH key. ZenPanel tự sao lưu file cấu hình, kiểm tra trước khi áp dụng và hoàn tác nếu lỗi, để bạn không bị khoá khỏi VPS.',
+          'Quản lý SSH key ngay trên web: thêm key của máy bạn, xoá key cũ, hoặc để ZenPanel tạo sẵn một cặp key (private key chỉ hiện đúng 1 lần để bạn lưu).',
+          'Xem ai đang đăng nhập và IP nào đang dò mật khẩu nhiều nhất, chặn ngay bằng 1 nút. Có tab Fail2ban để xem và bỏ chặn các IP đã bị tự động chặn.',
+        ],
+      },
+      {
+        title: '🔔 Cảnh Báo Chủ Động Qua Telegram & Discord',
+        items: [
+          'VPS gặp sự cố là bạn biết ngay: CPU hoặc RAM cao kéo dài, ổ đĩa gần đầy, dịch vụ (nginx, docker, mysql...) bị dừng, VPS sắp hết hạn.',
+          'Tự báo "đã phục hồi" khi hết sự cố và không gửi lặp liên tục. Có nút gửi thử để chắc chắn kênh nhận được tin.',
+        ],
+      },
+      {
+        title: '🛡️ Quét Mã Độc Website & Nhật Ký Thao Tác',
+        items: [
+          'Quét webshell, backdoor và file PHP lạ trong mọi website. Xem đúng dòng code đáng ngờ, rồi cách ly (khôi phục được nếu báo nhầm) hoặc xoá.',
+          'Nhật ký thao tác ghi lại mọi việc thay đổi trên panel: ai làm gì, lúc nào, từ IP nào. Biết ngay nếu có người lạ vào panel.',
+        ],
+      },
+      {
+        title: '🖥️ Hostname, DNS & Múi Giờ',
+        items: [
+          'Đổi tên máy chủ, đặt DNS (có sẵn Cloudflare, Google, Quad9), chọn múi giờ (có nút giờ Việt Nam) và đồng bộ giờ ngay trên web, không cần gõ lệnh.',
+          'Tab Cập nhật có thêm "Lịch sử cập nhật" để xem lại từng phiên bản đã đổi gì.',
+        ],
+      },
+      {
+        title: '🧠 Tối Ưu RAM Thật — Đo Trước & Sau, Không Còn Con Số Ảo',
+        items: [
+          'Bảng RAM mới trong "Dọn dẹp & RAM": thấy rõ bao nhiêu là ứng dụng, bao nhiêu là cache có thể thu hồi, swap đang dùng bao nhiêu.',
+          'Bấm "Tối ưu RAM ngay": Linux xả PageCache và gom bộ nhớ phân mảnh, Windows xả Standby list và thu gọn bộ nhớ các chương trình. Xong việc ZenPanel báo đúng số MB vừa lấy lại được.',
+          'Thu gọn RAM từng chương trình (Windows), chỉnh swappiness một chạm (Linux), và bật "Tự tối ưu khi RAM cao" để panel tự lo khi RAM vượt ngưỡng bạn chọn.',
+          'Dọn dẹp thêm: cắt log container Docker phình to, xoá core dump, cache npm/pip/yarn, kernel & gói cũ. Kết quả dọn hiển thị dung lượng thật vừa giải phóng.',
+        ],
+      },
+      {
+        title: '⚙️ Tab Dịch Vụ Gọn & Mạnh Hơn',
+        items: [
+          'Mặc định chỉ hiện các dịch vụ quan trọng (web server, Docker, database, SSH, cron...) thay vì hàng trăm dịch vụ hệ thống.',
+          'Xem RAM và PID của từng dịch vụ, sắp xếp theo RAM để tìm ngay dịch vụ ngốn bộ nhớ.',
+          'Ghim dịch vụ hay dùng lên đầu, chọn nhiều dịch vụ để khởi động / dừng cùng lúc, xem log với số dòng tuỳ chọn.',
+        ],
+      },
+      {
+        title: '🚀 Speedtest Chuẩn Speedtest.net',
+        items: [
+          'Chọn máy chủ đo: Cloudflare gần nhất, Singapore, Tokyo, Frankfurt, Pháp, Mỹ... để biết VPS đi quốc tế nhanh tới đâu.',
+          'Chọn Đa luồng hoặc Đơn luồng như Speedtest.net.',
+          'Đo thêm "độ trễ khi đang tải" (loaded latency) — chỉ số cho biết mạng có bị nghẽn khi dùng nặng hay không.',
+        ],
+      },
+      {
+        title: '🔌 AI Gateway Như 9Router / OpenRouter / Ollama',
+        items: [
+          'Tab "Combo & Kết nối": tạo combo model (vd "coding" = Claude → GPT → Gemini miễn phí), tự chuyển model khi lỗi hoặc chia đều tải.',
+          'Dùng ngay với Claude Code qua chuẩn Anthropic, với Open WebUI / Continue qua chuẩn Ollama, và mọi app chuẩn OpenAI — chỉ cần 1 API key.',
+          'Đặt giới hạn cho từng API key: số request mỗi phút, số token mỗi ngày, danh sách model được phép dùng.',
+        ],
+      },
+      {
+        title: '🗄️ Mở Database Ra Internet Thật Sự',
+        items: [
+          'Nút "Mở truy cập từ xa" tự làm hết: cho phép tài khoản đăng nhập từ xa, sửa cấu hình PostgreSQL/Redis, mở tường lửa.',
+          'ZenPanel kiểm tra từng lớp (Docker → database → tường lửa → Internet thật) và chỉ rõ chỗ đang bị chặn, kể cả khi do Security Group của nhà cung cấp VPS.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.6.9',
     date: '2026-10-26',
     highlights: [

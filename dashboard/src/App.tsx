@@ -32,6 +32,9 @@ const ApiTester = lazy(() => import('./views/ApiTester'));
 const Cleanup = lazy(() => import('./views/Cleanup'));
 const Backups = lazy(() => import('./views/Backups'));
 const Logs = lazy(() => import('./views/Logs'));
+const Access = lazy(() => import('./views/Access'));
+const Alerts = lazy(() => import('./views/Alerts'));
+const Malware = lazy(() => import('./views/Malware'));
 
 export function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -54,6 +57,9 @@ export function App() {
                 <Route path="/cleanup" element={<Cleanup />} />
                 <Route path="/backups" element={<Backups />} />
                 <Route path="/logs" element={<Logs />} />
+                <Route path="/access" element={<Access />} />
+                <Route path="/alerts" element={<Alerts />} />
+                <Route path="/malware" element={<Malware />} />
                 <Route path="/processes" element={<Processes />} />
                 <Route path="/services" element={<Services />} />
                 <Route path="/firewall" element={<Firewall />} />

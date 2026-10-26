@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { PanelUpdateModal, type UpdateTarget } from '../components/modals/PanelUpdateModal';
 import { ToolUpgradeModal } from '../components/modals/ToolUpgradeModal';
+import { CHANGELOG } from '../lib/changelog';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Notice, PageHeader, Select, Spinner, StatusDot, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
 import { del, post, setToken, logout } from '../lib/api';
@@ -930,6 +931,7 @@ function UpdateCard() {
   const [checking, setChecking] = useState(false);
   const [target, setTarget] = useState<{ target: UpdateTarget; pkg?: VersionPackage } | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const { confirm, run } = useFeedback();
 
   const check = async () => {
@@ -1130,6 +1132,42 @@ function UpdateCard() {
           </Card>
         </div>
       </div>
+
+
+      <Card title="Lịch sử cập nhật" icon={Sparkles} bodyClassName="p-0">
+        <div className="divide-y divide-slate-800/80">
+          {CHANGELOG.slice(0, historyOpen ? CHANGELOG.length : 4).map((entry, idx) => (
+            <details key={entry.version} open={idx === 0} className="group px-4 py-3">
+              <summary className="flex cursor-pointer list-none items-center gap-3">
+                <Badge tone={entry.version === update?.current ? 'green' : 'slate'}>v{entry.version}</Badge>
+                <span className="text-xs text-slate-500">{entry.date}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-slate-300">{entry.highlights[0]?.title}</span>
+                {entry.version === update?.current && <span className="text-[11px] font-semibold text-emerald-300">đang dùng</span>}
+              </summary>
+              <div className="mt-3 space-y-3 pl-1">
+                {entry.highlights.map((h) => (
+                  <div key={h.title}>
+                    <div className="text-sm font-semibold text-slate-100">{h.title}</div>
+                    <ul className="mt-1 space-y-1">
+                      {h.items.map((item) => (
+                        <li key={item} className="flex gap-2 text-xs leading-relaxed text-slate-400">
+                          <span className="mt-1.5 size-1 shrink-0 rounded-full bg-sky-400" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
+        {CHANGELOG.length > 4 && (
+          <button type="button" onClick={() => setHistoryOpen(!historyOpen)} className="w-full border-t border-slate-800/80 py-2.5 text-xs font-semibold text-blue-300 hover:bg-slate-800/40">
+            {historyOpen ? 'Thu gọn' : `Xem toàn bộ ${CHANGELOG.length} phiên bản`}
+          </button>
+        )}
+      </Card>
 
       {target && update && (
         <PanelUpdateModal
