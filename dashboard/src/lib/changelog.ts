@@ -9,17 +9,36 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    version: '0.8.0',
+    version: '0.8.1',
     date: '2026-10-28',
     highlights: [
       {
-        title: '🔧 Sửa Lỗi: Phiên Đăng Nhập & Kiểm Tra Cập Nhật',
+        title: '🔧 Nâng Cấp Cloudflare Tunnel Đúng Cách',
         items: [
-          'Danh sách "Phiên đăng nhập" luôn hiện thiết bị bạn đang dùng, kể cả khi vào bằng link đăng nhập 1-Click sau khi cập nhật. Thiết bị cũ tự được nâng cấp, đăng xuất thu hồi đúng phiên.',
-          'Kiểm tra cập nhật báo rõ lý do khi VPS không kết nối được GitHub (trước đây im lặng như "không có bản mới" và có thể treo rất lâu).',
-          'Sau khi cập nhật qua link Cloudflare tạm, bấm "Hỏi IP lấy link mới": ZenPanel mở cửa sổ nhỏ tới IP máy chủ, tự chờ tunnel cấp link rồi gửi link mới về tab cũ (có nút Sao chép / Mở panel dự phòng).',
+          'Sửa lỗi nút nâng cấp cloudflared báo "Hoàn tất" dù thực tế không lên bản mới (khi cài bằng apt, lệnh cập nhật tự động bị từ chối nhưng trước đây vẫn tính là thành công).',
+          'Giờ ZenPanel nhận biết cloudflared cài bằng apt / dnf để nâng bằng chính trình quản lý gói, hoặc tải bản mới và thay file tại chỗ nếu cài tay. Sau đó kiểm tra lại số phiên bản; không lên thì báo lỗi kèm cách làm tay, không còn báo thành công giả.',
         ],
       },
+      {
+        title: '🌐 Lấy Link Mới Sau Cập Nhật Dễ Hơn',
+        items: [
+          'Cập nhật qua link Cloudflare tạm thì link cũ chết. Nút "Hỏi IP lấy link mới" mở cửa sổ nhỏ tới IP máy chủ, tự chờ tunnel cấp link rồi gửi về tab cũ (có sẵn nút Sao chép / Mở panel dự phòng).',
+          'Kiểm tra cập nhật báo rõ lý do khi VPS không kết nối được GitHub (trước đây im lặng như "không có bản mới" và có thể treo rất lâu). Màn hình cập nhật phản hồi tức thì, không còn kẹt ở bước chờ tunnel.',
+        ],
+      },
+      {
+        title: '🔐 Phiên Đăng Nhập Luôn Hiện Thiết Bị Hiện Tại',
+        items: [
+          'Đăng nhập bằng link 1-Click (installer, "zenpanel url", nút mở tab mới sau cập nhật) giờ có phiên riêng nên thiết bị hiện trong danh sách "Phiên đăng nhập".',
+          'Thiết bị đang dùng token cũ tự được nâng cấp, không phải đăng nhập lại; Đăng xuất thu hồi đúng phiên.',
+        ],
+      },
+    ],
+  },
+  {
+    version: '0.8.0',
+    date: '2026-10-28',
+    highlights: [
       {
         title: '💬 Playground AI: Hiển Thị Đẹp & Chạy Thử Code Ngay',
         items: [

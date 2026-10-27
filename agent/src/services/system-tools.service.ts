@@ -4,7 +4,9 @@ import { promisify } from 'node:util';
 import path from 'node:path';
 import os from 'node:os';
 import { existsSync } from 'node:fs';
-import { jobLog, jobProgress, startJob, type JobView } from '../core/jobs.js';
+import { chmod, copyFile, mkdir, realpath, rename, rm } from 'node:fs/promises';
+import { jobLog, jobProgress, jobStep, startJob, type JobView } from '../core/jobs.js';
+import { downloadFile } from '../core/download.js';
 import { badRequest } from '../core/validate.js';
 import { dataPath } from '../core/store.js';
 import { nodeService } from './nodejs.service.js';
@@ -617,48 +619,129 @@ export class SystemToolsService {
   }
 
   // Thực thi nâng cấp Cloudflared
+  /** Bản cloudflared mới nhất trên GitHub (null nếu không hỏi được) */
+  private async latestCloudflaredVersion(): Promise<string | null> {
+    try {
+      const res = await fetch('https://api.github.com/repos/cloudflare/cloudflared/releases/latest', { headers: { 'User-Agent': 'ZenPanel' }, signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) return null;
+      return /(\d{4}\.\d+\.\d+)/.exec(String(((await res.json()) as { tag_name?: string }).tag_name ?? ''))?.[1] ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Nâng cấp cloudflared đúng cách theo nơi nó được cài và KIỂM TRA LẠI phiên bản (không thành công thì báo lỗi):
+   * - Cài bằng apt / dnf / yum: nâng bằng chính trình quản lý gói (cloudflared update từ chối và vẫn thoát mã 0)
+   * - Cài tay / bản ZenPanel tự tải: tải bản mới, thay file tại chỗ (đổi tên file để thay được cả khi đang chạy)
+   */
   private async upgradeCloudflared(): Promise<JobView> {
     return startJob('Nâng cấp Cloudflare Tunnel (cloudflared)', 'system_tool_upgrade', async () => {
-      jobProgress(10, 'Chuẩn bị nâng cấp cloudflared...');
-      jobLog('▶ Bắt đầu tiến trình nâng cấp Cloudflare Tunnel client...');
-
-      let updated = false;
-      try {
-        jobLog('Thực thi lệnh nâng cấp chính thức: cloudflared update');
-        const { stdout, stderr } = await execAsync('cloudflared update', { timeout: 180_000 });
-        if (stdout) jobLog(stdout);
-        if (stderr) jobLog(stderr);
-        updated = true;
-      } catch (err: any) {
-        jobLog(`Lệnh cloudflared update báo: ${err.message}. Thử phương thức tải nhị phân trực tiếp...`);
-      }
-
-      if (!updated) {
-        jobProgress(50, 'Đang tải bản cập nhật cloudflared từ GitHub...');
-        const localBin = path.join(dataPath('bin'), process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared');
-        jobLog(`Ghi đè bản mới vào: ${localBin}`);
-        // Tải qua curl
-        const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-        const osName = process.platform === 'win32' ? 'windows' : 'linux';
-        const ext = process.platform === 'win32' ? '.exe' : '';
-        const url = `https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-${osName}-${arch}${ext}`;
-        jobLog(`Đang tải từ: ${url}`);
-        if (process.platform === 'win32') {
-          await execAsync(`powershell -NoProfile -Command "Invoke-WebRequest -Uri '${url}' -OutFile '${localBin}' -UseBasicParsing"`, { timeout: 120_000 });
-        } else {
-          await execAsync(`curl -fsSL "${url}" -o "${localBin}" && chmod +x "${localBin}"`, { timeout: 120_000 });
+      const win = process.platform === 'win32';
+      const versionOf = async (bin: string): Promise<string | null> => {
+        try {
+          const { stdout } = await execAsync(`"${bin}" --version`, { timeout: 10_000 });
+          return /(\d{4}\.\d+\.\d+)/.exec(stdout)?.[1] ?? null;
+        } catch {
+          return null;
         }
-        jobLog(`✓ Đã tải và cập nhật nhị phân cloudflared mới thành công.`);
+      };
+
+      jobStep('Xác định bản đang dùng');
+      jobProgress(5);
+      let bin = '';
+      try {
+        const { stdout } = await execAsync(win ? 'where cloudflared' : 'command -v cloudflared', { timeout: 8000 });
+        bin = stdout.split(/\r?\n/)[0].trim();
+      } catch {
+        bin = '';
+      }
+      if (!bin) bin = path.join(dataPath('bin'), win ? 'cloudflared.exe' : 'cloudflared');
+      if (existsSync(bin)) bin = await realpath(bin).catch(() => bin);
+      const before = existsSync(bin) ? await versionOf(bin) : null;
+      const latest = await this.latestCloudflaredVersion();
+      jobLog(`Đang dùng: ${bin} · phiên bản ${before ?? 'không đọc được'} · bản mới nhất trên GitHub: ${latest ?? 'không hỏi được'}`);
+      if (before && latest && !isNewerVersion(before, latest)) {
+        jobLog('✔ Đã là bản mới nhất, không cần nâng cấp.');
+        return;
       }
 
-      jobProgress(85, 'Kiểm tra phiên bản cloudflared sau nâng cấp...');
-      const { stdout: newVer } = await execAsync('cloudflared --version').catch(async () => {
-        const localBin = path.join(dataPath('bin'), process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared');
-        return execAsync(`"${localBin}" --version`);
-      });
-      jobLog(`✓ Phiên bản mới: ${newVer.trim()}`);
-      jobProgress(100, 'Nâng cấp cloudflared hoàn tất.');
+      // ---- 1. Cài bằng trình quản lý gói
+      let manager: 'apt' | 'rpm' | null = null;
+      if (!win && existsSync(bin)) {
+        if ((await execAsync(`dpkg -S "${bin}"`, { timeout: 8000 }).then(() => true).catch(() => false))) manager = 'apt';
+        else if ((await execAsync(`rpm -qf "${bin}"`, { timeout: 8000 }).then(() => true).catch(() => false))) manager = 'rpm';
+      }
+      if (manager) {
+        jobStep(`Nâng bằng ${manager === 'apt' ? 'apt' : 'dnf / yum'}`);
+        jobProgress(25);
+        const cmd =
+          manager === 'apt'
+            ? 'export DEBIAN_FRONTEND=noninteractive; apt-get update -qq 2>&1 | tail -n 6; apt-get install -y --only-upgrade cloudflared 2>&1'
+            : '(dnf upgrade -y cloudflared || yum upgrade -y cloudflared) 2>&1';
+        jobLog(`$ ${cmd}`);
+        // "apt-get update" có thể lỗi vì kho khác trên máy: vẫn thử cài (dùng ; chứ không dùng &&)
+        const out = await execAsync(cmd, { timeout: 300_000, shell: '/bin/bash', maxBuffer: 8 * 1024 * 1024 }).then((r) => r.stdout + r.stderr).catch((e: { stdout?: string; stderr?: string; message: string }) => `${e.stdout ?? ''}${e.stderr ?? ''}${e.message}`);
+        jobLog(out.trim().slice(-1500));
+      }
+
+      let after = existsSync(bin) ? await versionOf(bin) : null;
+      const upgraded = () => Boolean(after && (!before || isNewerVersion(before, after)));
+
+      // ---- 2. Tải trực tiếp & thay file tại chỗ
+      if (!upgraded() || (latest && after && isNewerVersion(after, latest))) {
+        jobStep('Tải bản mới từ GitHub');
+        jobProgress(55);
+        const asset = win ? 'cloudflared-windows-amd64.exe' : `cloudflared-linux-${process.arch === 'arm64' ? 'arm64' : process.arch === 'arm' ? 'arm' : 'amd64'}`;
+        const url = `https://github.com/cloudflare/cloudflared/releases/latest/download/${asset}`;
+        const fresh = path.join(dataPath('bin'), win ? 'cloudflared.new.exe' : 'cloudflared.new');
+        await mkdir(dataPath('bin'), { recursive: true });
+        jobLog(`Tải ${url}`);
+        await downloadFile(url, fresh);
+        if (!win) await chmod(fresh, 0o755);
+        const freshVer = await versionOf(fresh);
+        if (!freshVer) throw new Error('File vừa tải không chạy được (sai kiến trúc CPU hoặc tải hỏng)');
+        jobLog(`Bản vừa tải: ${freshVer}`);
+        if (before && !isNewerVersion(before, freshVer)) {
+          await rm(fresh, { force: true });
+          throw new Error(`GitHub chỉ có ${freshVer}, không mới hơn bản đang dùng (${before})`);
+        }
+
+        jobStep('Thay file cũ bằng bản mới');
+        jobProgress(80);
+        try {
+          if (win) {
+            // Windows cho đổi tên file .exe đang chạy nhưng không cho ghi đè
+            const old = `${bin}.old`;
+            await rm(old, { force: true }).catch(() => undefined);
+            if (existsSync(bin)) await rename(bin, old);
+            await copyFile(fresh, bin);
+          } else {
+            // Ghi file cạnh bên rồi rename (nguyên tử): không lỗi "text file busy" dù tiến trình tunnel đang chạy
+            const side = `${bin}.zpnew`;
+            await copyFile(fresh, side);
+            await chmod(side, 0o755);
+            await rename(side, bin);
+          }
+        } catch (err) {
+          throw new Error(`Không ghi đè được ${bin}: ${(err as Error).message}. Chạy ZenPanel bằng root / Administrator, hoặc tự thay file.`);
+        } finally {
+          await rm(fresh, { force: true }).catch(() => undefined);
+        }
+        after = await versionOf(bin);
+      }
+
+      jobStep('Kiểm tra lại phiên bản');
+      jobProgress(95);
       cachedToolsStatus = null;
+      if (!upgraded()) {
+        throw new Error(
+          `Phiên bản vẫn là ${after ?? 'không đọc được'} (trước đó ${before ?? '?'}). ${manager ? `Hãy chạy tay: sudo apt-get update && sudo apt-get install --only-upgrade cloudflared (kho Cloudflare phải còn trong /etc/apt/sources.list.d).` : ''}`,
+        );
+      }
+      jobLog(`✔ Đã nâng cấp cloudflared: ${before ?? '?'} → ${after}`);
+      jobLog('ℹ Tunnel đang chạy vẫn dùng bản cũ trong bộ nhớ. Bản mới có hiệu lực ở lần khởi động tunnel kế tiếp (khởi động lại ZenPanel sẽ cấp link Cloudflare mới: dùng nút "Hỏi IP lấy link mới" để lấy).');
+      jobProgress(100);
     });
   }
 }
