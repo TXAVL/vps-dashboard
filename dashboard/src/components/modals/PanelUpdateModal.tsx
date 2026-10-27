@@ -62,6 +62,55 @@ export function PanelUpdateModal({
   const cancelled = useRef(false);
   const downgrade = compare(target.version, current) < 0;
 
+  // Hỏi thẳng IP máy chủ để lấy link Cloudflare mới: link cũ (https) không gọi được http://IP vì bị chặn mixed content,
+  // nên mở cửa sổ tới http://IP:cổng/zp-bridge, cửa sổ đó hỏi server rồi gửi link về tab này bằng postMessage
+  const [bridge, setBridge] = useState<{ status: 'idle' | 'waiting' | 'ok' | 'fail'; message?: string }>({ status: 'idle' });
+  const askServerIp = () => {
+    const sessionToken = getToken();
+    if (!initialDirectUrl || !sessionToken) return;
+    let base: string;
+    try {
+      base = new URL(initialDirectUrl).origin;
+    } catch {
+      return;
+    }
+    const popup = window.open(`${base}/zp-bridge?origin=${encodeURIComponent(window.location.origin)}#token=${encodeURIComponent(sessionToken)}`, 'zp-bridge', 'width=480,height=440');
+    setBridge(popup ? { status: 'waiting' } : { status: 'fail', message: 'Trình duyệt chặn cửa sổ bật lên. Hãy cho phép pop-up cho trang này rồi bấm lại.' });
+  };
+  useEffect(() => {
+    if (!initialDirectUrl) return;
+    let directOrigin = '';
+    try {
+      directOrigin = new URL(initialDirectUrl).origin;
+    } catch {
+      return;
+    }
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== directOrigin || !e.data?.zpBridge) return;
+      if (e.data.tunnelUrl) {
+        setNewUrl(String(e.data.tunnelUrl));
+        setBridge({ status: 'ok' });
+        setPhase('done');
+        onFinished();
+      } else {
+        setBridge({ status: 'fail', message: String(e.data.error ?? 'Máy chủ không có link Cloudflare (tunnel tắt hoặc lỗi). Hãy dùng địa chỉ IP.') });
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDirectUrl]);
+  const bridgeButton =
+    initialDirectUrl && getToken() ? (
+      <div className="flex flex-col items-end gap-1">
+        <Button size="xs" variant="primary" icon={Globe} loading={bridge.status === 'waiting'} onClick={askServerIp}>
+          Hỏi IP lấy link mới
+        </Button>
+        {bridge.status === 'fail' && <span className="max-w-[260px] text-right text-[11px] text-rose-300">{bridge.message}</span>}
+        {bridge.status === 'waiting' && <span className="text-[11px] text-slate-400">Đang hỏi máy chủ ở cửa sổ vừa mở...</span>}
+      </div>
+    ) : null;
+
   useEffect(() => {
     void get<UpdateChangelog>(`/api/update/changelog?ref=${encodeURIComponent(target.sha)}`)
       .then(setChangelog)
@@ -434,16 +483,19 @@ export function PanelUpdateModal({
                           <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
                             Hoặc mở qua IP máy chủ: <code className="text-emerald-300 font-mono font-semibold">{initialDirectUrl}</code>
                           </div>
-                          <Button
-                            size="xs"
-                            variant="primary"
-                            icon={ExternalLink}
-                            onClick={() =>
-                              window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
-                            }
-                          >
-                            Mở qua IP ngay
-                          </Button>
+                          <div className="flex flex-wrap items-start justify-end gap-2">
+                            {bridgeButton}
+                            <Button
+                              size="xs"
+                              variant="soft"
+                              icon={ExternalLink}
+                              onClick={() =>
+                                window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
+                              }
+                            >
+                              Mở qua IP ngay
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -518,16 +570,19 @@ export function PanelUpdateModal({
                     {initialDirectUrl && (
                       <div className="mt-1 flex items-center justify-between gap-2 rounded-xl border border-slate-700/60 bg-black/40 px-3 py-2 text-xs">
                         <span className="text-slate-400 truncate">Hoặc mở trực tiếp qua IP máy chủ: <code className="text-slate-300 font-mono">{initialDirectUrl}</code></span>
-                        <Button
-                          size="xs"
-                          variant="ghost"
-                          icon={ExternalLink}
-                          onClick={() =>
-                            window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
-                          }
-                        >
-                          Mở qua IP
-                        </Button>
+                        <div className="flex shrink-0 items-start gap-2">
+                          {bridgeButton}
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            icon={ExternalLink}
+                            onClick={() =>
+                              window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
+                            }
+                          >
+                            Mở qua IP
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </>
@@ -592,15 +647,18 @@ export function PanelUpdateModal({
                     Mở tab mới (Tự đăng nhập)
                   </Button>
                 ) : initialDirectUrl ? (
-                  <Button
-                    variant="primary"
-                    icon={ExternalLink}
-                    onClick={() =>
-                      window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
-                    }
-                  >
-                    Mở qua IP ({initialDirectUrl})
-                  </Button>
+                  <div className="flex flex-wrap items-start justify-end gap-2">
+                    {bridgeButton}
+                    <Button
+                      variant="soft"
+                      icon={ExternalLink}
+                      onClick={() =>
+                        window.open(token ? `${initialDirectUrl}/?token=${encodeURIComponent(token)}&auto_login=1` : initialDirectUrl, '_blank')
+                      }
+                    >
+                      Mở qua IP ({initialDirectUrl})
+                    </Button>
+                  </div>
                 ) : null}
               </>
             )}

@@ -144,8 +144,9 @@ export async function panelRoutes(
   app.get('/api/update/status', async () => {
     const tunnel = ctx.tunnel?.getState() ?? null;
     refreshPublicIpInBackground();
-    const ipv4 = publicIpCache?.ipv4 ?? localPublicIpv4();
-    const directUrl = ipv4 ? `http://${ipv4}:${ctx.port}` : null;
+    // Ưu tiên địa chỉ người dùng tự đặt (Cài đặt → Public host), rồi IP tra được, rồi IP trên card mạng
+    const host = getPrefs().publicHost.trim() || publicIpCache?.ipv4 || localPublicIpv4();
+    const directUrl = host ? `http://${host}:${ctx.port}` : null;
     return {
       version: updates.getState().current,
       tunnelUrl: tunnel?.url ?? null,

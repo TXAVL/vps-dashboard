@@ -26,6 +26,7 @@ import { siteRoutes } from './routes/sites.routes.js';
 import { systemRoutes } from './routes/system.routes.js';
 import { opsRoutes } from './routes/ops.routes.js';
 import { accessRoutes } from './routes/access.routes.js';
+import { bridgeRoutes } from './routes/bridge.routes.js';
 import { AccessService } from './services/access.service.js';
 import { AlertService } from './services/alerts.service.js';
 import { AuditService } from './services/audit.service.js';
@@ -133,6 +134,8 @@ async function main() {
   // API chuẩn Anthropic dưới /zen (ANTHROPIC_BASE_URL=https://<host>/zen -> /zen/v1/messages đã có ở trên)
   for (const prefix of ['/ollama', '/ollama/k/:key']) await app.register(async (scope) => ollamaRoutes(scope, { gateway }), { prefix });
 
+  // Trang cầu nối lấy link mới sau cập nhật (xem bridge.routes.ts)
+  await app.register(bridgeRoutes);
   // MCP server (JSON-RPC qua HTTP) xác thực bằng API token riêng
   new McpService({ adapter, metrics, docker, sites, logs, clean, backups, audit, version: pkg.version }).register(app);
 

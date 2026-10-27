@@ -17,6 +17,7 @@ export const CHANGELOG: ChangelogEntry[] = [
         items: [
           'Danh sách "Phiên đăng nhập" luôn hiện thiết bị bạn đang dùng, kể cả khi vào bằng link đăng nhập 1-Click sau khi cập nhật. Thiết bị cũ tự được nâng cấp, đăng xuất thu hồi đúng phiên.',
           'Kiểm tra cập nhật báo rõ lý do khi VPS không kết nối được GitHub (trước đây im lặng như "không có bản mới" và có thể treo rất lâu).',
+          'Sau khi cập nhật qua link Cloudflare tạm, bấm "Hỏi IP lấy link mới": ZenPanel mở cửa sổ nhỏ tới IP máy chủ, tự chờ tunnel cấp link rồi gửi link mới về tab cũ (có nút Sao chép / Mở panel dự phòng).',
         ],
       },
       {
