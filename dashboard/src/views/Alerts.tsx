@@ -1,5 +1,5 @@
 // ZenPanel - Cảnh báo chủ động (Telegram / Discord / Webhook) + Nhật ký thao tác trên panel
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Bell, ClipboardList, Cpu, HardDrive, MemoryStick, Save, Send, Trash2, CalendarClock, ListTree, CheckCircle2, XCircle, Wifi, UserSearch, BadgeCheck, ChevronDown } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
@@ -64,21 +64,50 @@ function AlertsTab() {
     void checkNet();
   }, []);
 
+  // ---- Tự động lưu: mọi thay đổi được lưu sau ~1 giây không gõ thêm, không cần bấm nút
+  const [saveState, setSaveState] = useState<{ status: 'idle' | 'saving' | 'saved' | 'error'; at?: number; message?: string }>({ status: 'idle' });
+  const lastSaved = useRef('');
+  const buildBody = (c: Config, svc: string) => ({ ...c, rules: { ...c.rules, services: { ...c.rules.services, names: svc.split(/[,\n]+/).map((x) => x.trim()).filter(Boolean) } } });
+  const persist = async (c: Config, svc: string): Promise<boolean> => {
+    const body = buildBody(c, svc);
+    setSaveState((prev) => ({ ...prev, status: 'saving' }));
+    try {
+      await put('/api/alerts', body);
+      lastSaved.current = JSON.stringify(body);
+      setSaveState({ status: 'saved', at: Date.now() });
+      return true;
+    } catch (err) {
+      // Lỗi nhập dở dang (token chưa đủ ký tự...) hiện cạnh nút lưu, không bật toast liên tục khi đang gõ
+      setSaveState({ status: 'error', message: (err as Error).message });
+      return false;
+    }
+  };
+
   useEffect(() => {
     if (data.data) {
       setCfg(data.data.config);
       setServices(data.data.config.rules.services.names.join(', '));
+      lastSaved.current = JSON.stringify(buildBody(data.data.config, data.data.config.rules.services.names.join(', ')));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.data]);
+
+  useEffect(() => {
+    if (!cfg || JSON.stringify(buildBody(cfg, services)) === lastSaved.current) return;
+    setSaveState((prev) => (prev.status === 'saving' ? prev : { status: 'idle', message: 'Có thay đổi, sắp tự lưu...' }));
+    const timer = setTimeout(() => void persist(cfg, services), 1000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg, services]);
 
   if (data.error) return <ErrorBox message={data.error} onRetry={data.reload} />;
   if (!data.data || !cfg) return <Spinner />;
 
   const save = async () => {
     setSaving(true);
-    const body = { ...cfg, rules: { ...cfg.rules, services: { ...cfg.rules.services, names: services.split(/[,\n]+/).map((s) => s.trim()).filter(Boolean) } } };
-    await run(() => put('/api/alerts', body), 'Đã lưu cấu hình cảnh báo');
+    const ok = await persist(cfg, services);
     setSaving(false);
+    if (ok) toast('Đã lưu cấu hình cảnh báo', 'success');
     await data.reload();
   };
 
@@ -96,10 +125,22 @@ function AlertsTab() {
   };
 
   const test = async (channel: 'telegram' | 'discord' | 'webhook') => {
-    await save();
+    if (!(await persist(cfg, services))) {
+      toast(`Chưa lưu được cấu hình: ${saveState.message ?? 'kiểm tra lại các ô đã nhập'}`, 'error');
+      return;
+    }
     try {
       await post(`/api/alerts/test/${channel}`);
-      toast('Đã gửi tin nhắn thử, hãy kiểm tra kênh của bạn', 'success');
+      const label = channel === 'telegram' ? 'Telegram' : channel === 'discord' ? 'Discord' : 'Webhook';
+      if (!cfg[channel].enabled) {
+        // Gửi thử được nghĩa là cấu hình đúng: tự bật kênh để cảnh báo thật cũng về đây (trước đây công tắc vẫn tắt)
+        const next = { ...cfg, [channel]: { ...cfg[channel], enabled: true } } as Config;
+        setCfg(next);
+        await persist(next, services);
+        toast(`Gửi thử ${label} OK. Đã tự bật và lưu kênh ${label}, từ giờ cảnh báo thật sẽ về đây.`, 'success');
+      } else {
+        toast(`Gửi thử ${label} OK. Kênh đã được lưu.`, 'success');
+      }
     } catch (err) {
       toast((err as Error).message, 'error');
     }
@@ -193,7 +234,7 @@ function AlertsTab() {
               steps={[
                 <>Trong server Discord, bấm biểu tượng bánh răng cạnh kênh nhận tin → <b className="text-slate-200">Tích hợp (Integrations)</b> → <b className="text-slate-200">Webhooks</b> → <b className="text-slate-200">Webhook mới</b>.</>,
                 <>Đặt tên (vd ZenPanel), chọn kênh, bấm <b className="text-slate-200">Sao chép URL Webhook</b>.</>,
-                <>Dán URL vào ô bên dưới, bấm "Lưu cấu hình" rồi "Gửi thử". Cần quyền <i>Quản lý Webhook</i> trong server.</>,
+                <>Dán URL vào ô bên dưới, bấm "Gửi thử" (cấu hình tự lưu, gửi OK thì kênh tự bật). Cần quyền <i>Quản lý Webhook</i> trong server.</>,
               ]}
             />
             <Field label="Webhook URL" hint="Dạng https://discord.com/api/webhooks/số/mã"><input className="input mono" value={cfg.discord.webhookUrl} onChange={(e) => setCfg({ ...cfg, discord: { ...cfg.discord, webhookUrl: e.target.value } })} placeholder="https://discord.com/api/webhooks/..." /></Field>
@@ -208,7 +249,14 @@ function AlertsTab() {
         </Card>
       </div>
 
-      <Card title="Khi nào báo?" icon={Bell} actions={<Button size="sm" variant="primary" icon={Save} loading={saving} onClick={() => void save()}>Lưu cấu hình</Button>}>
+      <Card title="Khi nào báo?" icon={Bell} actions={
+        <div className="flex items-center gap-3">
+          <span className={cn('text-xs', saveState.status === 'error' ? 'max-w-[280px] truncate text-rose-300' : saveState.status === 'saved' ? 'text-emerald-300' : 'text-slate-500')} data-tip={saveState.message}>
+            {saveState.status === 'saving' ? 'Đang lưu...' : saveState.status === 'saved' ? `✓ Đã tự động lưu lúc ${new Date(saveState.at ?? Date.now()).toLocaleTimeString('vi-VN')}` : saveState.status === 'error' ? `⚠ Chưa lưu: ${saveState.message}` : (saveState.message ?? 'Tự động lưu khi bạn thay đổi')}
+          </span>
+          <Button size="sm" variant="soft" icon={Save} loading={saving} onClick={() => void save()}>Lưu ngay</Button>
+        </div>
+      }>
         <div className="grid gap-3 lg:grid-cols-2">
           {rule(Cpu, 'CPU cao', cfg.rules.cpu.enabled, (v) => setCfg({ ...cfg, rules: { ...cfg.rules, cpu: { ...cfg.rules.cpu, enabled: v } } }), <>
             Vượt {num(cfg.rules.cpu.threshold, (n) => setCfg({ ...cfg, rules: { ...cfg.rules, cpu: { ...cfg.rules.cpu, threshold: n } } }))} % trong {num(cfg.rules.cpu.minutes, (n) => setCfg({ ...cfg, rules: { ...cfg.rules, cpu: { ...cfg.rules.cpu, minutes: n } } }))} phút liên tục</>)}

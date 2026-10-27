@@ -13,6 +13,13 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-28',
     highlights: [
       {
+        title: '💾 Cảnh Báo Tự Động Lưu',
+        items: [
+          'Mọi thay đổi ở trang Cảnh báo (công tắc, ngưỡng, URL Discord / Telegram) tự được lưu sau khoảng 1 giây, rời trang không còn mất. Có dòng trạng thái "Đã tự động lưu lúc..." cạnh nút "Lưu ngay".',
+          'Bấm "Gửi thử" thành công thì kênh đó tự được bật và lưu, nên cảnh báo thật sẽ về đúng kênh (trước đây gửi thử OK nhưng công tắc vẫn tắt).',
+        ],
+      },
+      {
         title: '🔧 Nâng Cấp Cloudflare Tunnel Đúng Cách',
         items: [
           'Sửa lỗi nút nâng cấp cloudflared báo "Hoàn tất" dù thực tế không lên bản mới (khi cài bằng apt, lệnh cập nhật tự động bị từ chối nhưng trước đây vẫn tính là thành công).',
