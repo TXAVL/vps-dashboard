@@ -28,6 +28,7 @@ export interface SshKey {
 }
 
 export interface LoginEvent {
+  /** Thời điểm chuẩn ISO-8601 (UTC) - dashboard tự đổi sang múi giờ máy chủ */
   time: string;
   user: string;
   ip: string;
@@ -43,9 +44,20 @@ export interface Fail2banJail {
   bannedIps: string[];
 }
 
+export interface TimezoneOption {
+  id: string;
+  label: string;
+  /** vd "UTC+07:00" */
+  offset: string;
+  group: string;
+}
+
 export interface HostConfig {
   hostname: string;
   timezone: string;
+  /** Tên IANA để định dạng giờ trên trình duyệt (Windows dùng tên riêng nên cần bản IANA tương ứng) */
+  timezoneIana: string;
+  utcOffset: string;
   time: string;
   ntpSynced: boolean | null;
   dns: string[];
@@ -61,6 +73,23 @@ const SSH_KEYS: [string, string][] = [
   ['MaxAuthTries', 'maxAuthTries'],
   ['ClientAliveInterval', 'clientAliveInterval'],
 ];
+
+/** "UTC+07:00" của 1 múi giờ IANA ở thời điểm hiện tại */
+function utcOffsetOf(zone: string): string {
+  try {
+    const name = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value ?? 'GMT';
+    return name === 'GMT' ? 'UTC+00:00' : name.replace('GMT', 'UTC');
+  } catch {
+    return '';
+  }
+}
+
+/** Chuỗi thời gian của journal / last / PowerShell -> ISO UTC (chuỗi không có múi giờ được hiểu theo giờ máy chủ) */
+function toIso(raw: string): string {
+  const trimmed = raw.trim().replace(/(\.\d{3})\d+/, '$1');
+  const ms = Date.parse(trimmed);
+  return Number.isNaN(ms) ? raw.trim() : new Date(ms).toISOString();
+}
 
 const sh = (v: string) => `'${v.replace(/'/g, `'\\''`)}'`;
 const ps = (v: string) => `'${v.replace(/'/g, "''")}'`;
@@ -284,21 +313,22 @@ ${tail}` : head;
 
   // ------------------------------------------------------------------ Lịch sử đăng nhập
 
-  async logins(): Promise<{ events: LoginEvent[]; topAttackers: { ip: string; count: number }[]; supported: boolean }> {
+  async logins(): Promise<{ events: LoginEvent[]; topAttackers: { ip: string; count: number }[]; supported: boolean; timezone: string; utcOffset: string }> {
     if (this.windows) {
       const res = await this.run(
         "$e = Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4624,4625} -MaxEvents 300 -ErrorAction SilentlyContinue; if ($e) { $e | ForEach-Object { $x=[xml]$_.ToXml(); $d=@{}; $x.Event.EventData.Data | ForEach-Object { $d[$_.Name]=$_.'#text' }; if ($d['LogonType'] -in '3','10') { '{0:yyyy-MM-ddTHH:mm:ss}|{1}|{2}|{3}|{4}' -f $_.TimeCreated, $d['TargetUserName'], $d['IpAddress'], $(if ($d['LogonType'] -eq '10') {'rdp'} else {'network'}), $(if ($_.Id -eq 4624) {'ok'} else {'fail'}) } } }",
         60_000,
       );
-      const events = res.out.split('\n').map((l) => l.trim().split('|')).filter((p) => p.length === 5).map(([time, user, ip, method, ok]): LoginEvent => ({ time, user, ip: ip === '-' ? '' : ip, method, ok: ok === 'ok' }));
-      return { events: events.slice(0, 100), topAttackers: this.topFailed(events), supported: true };
+      const events = res.out.split('\n').map((l) => l.trim().split('|')).filter((p) => p.length === 5).map(([time, user, ip, method, ok]): LoginEvent => ({ time: toIso(time), user, ip: ip === '-' ? '' : ip, method, ok: ok === 'ok' }));
+      return { events: events.slice(0, 100), topAttackers: this.topFailed(events), supported: true, timezone: await this.ianaZone(), utcOffset: utcOffsetOf(await this.ianaZone()) };
     }
     const events: LoginEvent[] = [];
-    const ok = await this.run("last -n 40 -i -w 2>/dev/null | grep -v '^reboot\\|^wtmp\\|^$' | head -40");
+    // -F: ngày giờ đầy đủ kèm năm, -i: IP dạng số
+    const ok = await this.run("last -n 40 -i -w -F 2>/dev/null | grep -v '^reboot\\|^wtmp\\|^$' | head -40");
     for (const line of ok.out.split('\n')) {
-      const m = /^(\S+)\s+(\S+)\s+(\S+)\s+(.+?)\s{2,}/.exec(line) ?? /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+\s+\S+\s+\d+\s+[\d:]+)/.exec(line);
+      const m = /^(\S+)\s+(\S+)\s+(\S+)\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d+\s+[\d:]{8}\s+\d{4})/.exec(line);
       if (!m) continue;
-      events.push({ user: m[1], method: m[2].startsWith('pts') ? 'ssh' : m[2], ip: /^[\d.:a-f]+$/i.test(m[3]) && m[3] !== '0.0.0.0' ? m[3] : '', time: m[4].trim(), ok: true });
+      events.push({ user: m[1], method: m[2].startsWith('pts') ? 'ssh' : m[2], ip: /^[\d.:a-f]+$/i.test(m[3]) && m[3] !== '0.0.0.0' ? m[3] : '', time: toIso(m[4]), ok: true });
     }
     // Đăng nhập thất bại: journal (ssh/sshd) hoặc auth.log / secure
     const failed = await this.run(
@@ -308,9 +338,11 @@ ${tail}` : head;
     const fails: LoginEvent[] = [];
     for (const line of failed.out.split('\n')) {
       const m = /^(\S+).*?(?:Failed \w+ for (?:invalid user )?(\S+)|Invalid user (\S+)) from ([\da-f.:]+)/i.exec(line);
-      if (m) fails.push({ time: m[1], user: m[2] ?? m[3], ip: m[4], method: 'ssh', ok: false });
+      if (m) fails.push({ time: toIso(m[1]), user: m[2] ?? m[3], ip: m[4], method: 'ssh', ok: false });
     }
-    return { events: [...fails.slice(-60).reverse(), ...events], topAttackers: this.topFailed(fails), supported: true };
+    const all = [...fails.slice(-60), ...events].sort((a, b) => b.time.localeCompare(a.time));
+    const zone = await this.ianaZone();
+    return { events: all, topAttackers: this.topFailed(fails), supported: true, timezone: zone, utcOffset: utcOffsetOf(zone) };
   }
 
   private topFailed(events: LoginEvent[]) {
@@ -346,35 +378,68 @@ ${tail}` : head;
 
   // ------------------------------------------------------------------ Hostname / múi giờ / DNS
 
+  /** Múi giờ IANA hiện tại của máy chủ (đọc từ hệ điều hành, không dựa vào cache của tiến trình Node) */
+  async ianaZone(): Promise<string> {
+    if (!this.windows) {
+      const r = await this.run('timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null');
+      const zone = r.out.split('\n')[0]?.trim();
+      if (zone && zone.includes('/')) return zone;
+      if (zone === 'UTC' || zone === 'Etc/UTC') return 'UTC';
+    }
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
+
   async host(): Promise<HostConfig> {
     if (this.windows) {
       const r = await this.run(
         "$tz=(Get-TimeZone).Id; $dns=(Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object {$_.ServerAddresses} | ForEach-Object {$_.ServerAddresses} | Select-Object -Unique) -join ','; \"$env:COMPUTERNAME|$tz|$dns|\" + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')",
       );
       const [hostname, timezone, dns, time] = r.out.split('|');
-      return { hostname, timezone, dns: (dns ?? '').split(',').filter(Boolean), time: time ?? '', ntpSynced: null, uptimeSec: os.uptime(), kernel: os.release() };
+      const iana = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return { hostname, timezone, timezoneIana: iana, utcOffset: utcOffsetOf(iana), dns: (dns ?? '').split(',').filter(Boolean), time: time ?? '', ntpSynced: null, uptimeSec: os.uptime(), kernel: os.release() };
     }
-    const [tz, dns] = await Promise.all([
-      this.run('timedatectl show -p Timezone -p NTPSynchronized --value 2>/dev/null || cat /etc/timezone 2>/dev/null'),
+    const [zone, extra, dns, now] = await Promise.all([
+      this.ianaZone(),
+      this.run('timedatectl show -p NTPSynchronized --value 2>/dev/null'),
       this.run("(resolvectl dns 2>/dev/null | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[0-9a-f:]{6,}' ; grep -E '^nameserver' /etc/resolv.conf | awk '{print $2}') | sort -u"),
+      this.run("date '+%Y-%m-%d %H:%M:%S'"),
     ]);
-    const [timezone, ntp] = tz.out.split('\n');
     const nameservers = dns.out.split('\n').map((s) => s.trim()).filter((s) => s && !s.startsWith('127.') && s !== '::1');
     return {
       hostname: os.hostname(),
-      timezone: timezone?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone,
-      time: new Date().toLocaleString('sv-SE'),
-      ntpSynced: ntp ? ntp.trim() === 'yes' : null,
+      timezone: zone,
+      timezoneIana: zone,
+      utcOffset: utcOffsetOf(zone),
+      time: now.out.trim() || new Date().toLocaleString('sv-SE'),
+      ntpSynced: extra.out.trim() ? extra.out.trim() === 'yes' : null,
       dns: nameservers.length ? nameservers : dns.out.split('\n').filter(Boolean),
       uptimeSec: os.uptime(),
       kernel: os.release(),
     };
   }
 
-  async timezones(): Promise<string[]> {
-    if (this.windows) return (await this.run('tzutil /l | Where-Object { $_ -and $_ -notmatch "^\\(UTC" }')).out.split('\n').map((s) => s.trim()).filter(Boolean);
+  /** Danh sách múi giờ CÓ THẬT trên máy này: timedatectl (Linux) hoặc tzutil (Windows) */
+  async timezones(): Promise<TimezoneOption[]> {
+    if (this.windows) {
+      const out = (await this.run('tzutil /l')).out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const list: TimezoneOption[] = [];
+      for (let i = 0; i < out.length - 1; i++) {
+        const m = /^\((UTC[^)]*)\)\s*(.*)$/.exec(out[i]);
+        if (m && !out[i + 1].startsWith('(UTC')) {
+          list.push({ id: out[i + 1], label: m[2] || out[i + 1], offset: m[1].replace(/^UTC$/, 'UTC+00:00'), group: 'Windows' });
+          i++;
+        }
+      }
+      return list;
+    }
     const res = await this.run('timedatectl list-timezones 2>/dev/null');
-    return res.out ? res.out.split('\n').map((s) => s.trim()).filter(Boolean) : Intl.supportedValuesOf('timeZone');
+    let ids = res.out ? res.out.split('\n').map((s) => s.trim()).filter(Boolean) : [];
+    if (!ids.length) {
+      // Máy không có timedatectl (Alpine...): đọc thư mục zoneinfo thật
+      const found = await this.run("cd /usr/share/zoneinfo 2>/dev/null && find . -type f | sed 's|^\\./||' | grep -E '^[A-Z][A-Za-z_]+/[A-Za-z_/+-]+$|^UTC$' | sort");
+      ids = found.out ? found.out.split('\n').map((s) => s.trim()).filter(Boolean) : Intl.supportedValuesOf('timeZone');
+    }
+    return ids.map((id) => ({ id, label: id.replace(/_/g, ' '), offset: utcOffsetOf(id), group: id.includes('/') ? id.split('/')[0] : 'Khác' }));
   }
 
   async setHostname(hostname: string): Promise<{ rebootRequired: boolean }> {

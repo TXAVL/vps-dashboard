@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import {
   Activity,
+  FileCode,
   AlertTriangle,
   ArrowDown,
   ArrowUp,
@@ -49,6 +50,7 @@ import { useApi } from '../lib/hooks';
 import { useNow, usePanel, usePublicHost } from '../lib/panel';
 import type { AiAccountKey, AiProvider } from '../lib/types';
 import { ConnectTab, type Combo } from './AiConnectTab';
+import { RichText } from '../components/rich/RichText';
 
 interface AiModel {
   id: string;
@@ -803,6 +805,7 @@ function PlaygroundTab({ initialModel, models }: { initialModel: string; models:
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<{ ms: number; chars: number } | null>(null);
+  const [rawView, setRawView] = useState<Set<number>>(new Set());
   const abort = useRef<AbortController | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
@@ -923,7 +926,8 @@ function PlaygroundTab({ initialModel, models }: { initialModel: string; models:
                 </div>
                 <div
                   className={cn(
-                    'max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-sm',
+                    'rounded-2xl px-4 py-2.5 text-sm',
+                    m.role === 'user' ? 'max-w-[85%] whitespace-pre-wrap break-words' : 'min-w-0 max-w-[92%] flex-1',
                     m.role === 'user'
                       ? 'bg-zen-blue/15 text-slate-100 shadow-sm'
                       : m.error
@@ -954,9 +958,29 @@ function PlaygroundTab({ initialModel, models }: { initialModel: string; models:
                         </button>
                       </div>
                     </div>
-                  ) : (
-                    m.content || (streaming && i === messages.length - 1 ? <span className="animate-pulse text-slate-500">Đang trả lời...</span> : '')
-                  )}
+                  ) : m.role === 'user' ? (
+                    m.content
+                  ) : m.content ? (
+                    <>
+                      {rawView.has(i) ? <pre className="mono whitespace-pre-wrap break-words text-[12.5px] text-slate-300">{m.content}</pre> : <RichText content={m.content} streaming={streaming && i === messages.length - 1} />}
+                      {!(streaming && i === messages.length - 1) && (
+                        <div className="mt-2 flex items-center gap-1 border-t border-slate-700/40 pt-1.5 text-[11px]">
+                          <button type="button" onClick={() => void navigator.clipboard.writeText(m.content)} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-slate-500 hover:bg-slate-800 hover:text-white">
+                            <Copy className="size-3" /> Sao chép
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRawView((prev) => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next; })}
+                            className={cn('flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-slate-800 hover:text-white', rawView.has(i) ? 'text-blue-300' : 'text-slate-500')}
+                          >
+                            <FileCode className="size-3" /> {rawView.has(i) ? 'Xem đã render' : 'Xem Markdown gốc'}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : streaming && i === messages.length - 1 ? (
+                    <span className="animate-pulse text-slate-500">Đang trả lời...</span>
+                  ) : null}
                 </div>
               </div>
             ))

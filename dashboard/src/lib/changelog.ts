@@ -13,6 +13,31 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-28',
     highlights: [
       {
+        title: '💬 Playground AI: Hiển Thị Đẹp & Chạy Thử Code Ngay',
+        items: [
+          'Câu trả lời của AI giờ được hiển thị đầy đủ: tiêu đề, bảng, danh sách việc, trích dẫn, link, ảnh, và HTML nhúng (đã lọc sạch mã độc nên an toàn).',
+          'Khối code có tô màu cú pháp cho hơn 25 ngôn ngữ, đếm dòng, nút Sao chép, Tải xuống, Xuống dòng, tự thu gọn khi quá dài.',
+          'Bấm "Chạy" để chạy thử ngay: JavaScript, Python, HTML, SVG và sơ đồ Mermaid. Code chạy trong khung cô lập hoàn toàn, không đọc được đăng nhập hay dữ liệu của panel; vòng lặp vô hạn tự bị cắt sau 10 giây.',
+          'Có nút "Xem Markdown gốc" để đối chiếu và sao chép nguyên bản câu trả lời.',
+        ],
+      },
+      {
+        title: '🛡️ Quét Mã Độc Chi Tiết & Chính Xác Hơn',
+        items: [
+          'Báo cáo có kết luận rõ ràng (Sạch / Cần xem / Nhiễm), điểm rủi ro cho từng mục và giải thích bằng tiếng Việt: vì sao bị báo, chắc chắn đến đâu, nên làm gì.',
+          'Đối chiếu lõi WordPress với checksum chính thức của wordpress.org: phát hiện file lõi bị sửa hoặc file lạ trong wp-admin / wp-includes, kiểu hack hay gặp nhất mà quét chữ ký không thấy.',
+          'Thêm nhiều dấu hiệu: reverse shell, đào tiền ảo, chuyển hướng .htaccess, spam SEO ẩn, file đuôi kép, file PHP trong thư mục upload, dòng mã hoá bất thường.',
+          'Nút "An toàn" cho file của bạn bị báo nhầm (gắn với mã băm, file bị sửa lại sẽ báo lại). Có thống kê theo website, độ phủ, và xuất báo cáo .md / .json.',
+        ],
+      },
+      {
+        title: '🕒 Múi Giờ & Giờ Đăng Nhập Chuẩn Hơn',
+        items: [
+          'Dropdown múi giờ liệt kê đúng các múi giờ có trên máy chủ của bạn (Linux hoặc Windows), tự chọn múi giờ hiện tại và gắn nhãn "Default" bên cạnh.',
+          'Tab Đăng nhập hiển thị giờ theo múi giờ máy chủ, dễ đọc, thay cho chuỗi giờ thô trước đây.',
+        ],
+      },
+      {
         title: '🤖 Nối Claude, Cursor, n8n Với VPS Qua MCP & API Token',
         items: [
           'Trang "API & MCP" mới: tạo token riêng cho từng ứng dụng, không cần đưa mật khẩu panel. Token chỉ lưu dạng băm, hiện đúng 1 lần lúc tạo, thu hồi là mất quyền ngay.',

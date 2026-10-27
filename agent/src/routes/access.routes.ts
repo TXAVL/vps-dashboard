@@ -101,9 +101,14 @@ export async function accessRoutes(app: FastifyInstance, deps: { access: AccessS
   });
 
   // ---- Quét mã độc
-  app.get('/api/security/malware', async () => ({ last: malware.last(), quarantine: malware.quarantined(), roots: malware.roots() }));
+  app.get('/api/security/malware', async () => ({ last: malware.last(), quarantine: malware.quarantined(), roots: malware.roots(), ignored: malware.ignored() }));
   app.post('/api/security/malware/scan', async (req) => malware.scan(body(req) as { paths?: string[] }));
   app.post('/api/security/malware/preview', async (req) => malware.preview(String(body(req).file ?? '')));
+  app.post('/api/security/malware/mark-safe', async (req) => ({ count: malware.markSafe(((body(req).files as string[]) ?? []).map(String)) }));
+  app.delete('/api/security/malware/ignore/:id', async (req) => {
+    malware.unignore((req.params as { id: string }).id);
+    return { ok: true };
+  });
   app.post('/api/security/malware/quarantine', async (req) => ({ count: await malware.quarantine(((body(req).files as string[]) ?? []).map(String)) }));
   app.post('/api/security/malware/delete', async (req) => ({ count: await malware.remove(((body(req).files as string[]) ?? []).map(String)) }));
   app.post('/api/security/malware/restore/:id', async (req) => {

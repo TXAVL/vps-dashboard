@@ -12,7 +12,8 @@ interface Ssh { installed: boolean; running: boolean; configFile: string; port: 
 interface SshKey { fingerprint: string; type: string; comment: string; bits: string }
 interface LoginEvent { time: string; user: string; ip: string; method: string; ok: boolean }
 interface Jail { name: string; currentlyBanned: number; totalBanned: number; currentlyFailed: number; bannedIps: string[] }
-interface Host { hostname: string; timezone: string; time: string; ntpSynced: boolean | null; dns: string[]; uptimeSec: number; kernel: string }
+interface Host { hostname: string; timezone: string; timezoneIana: string; utcOffset: string; time: string; ntpSynced: boolean | null; dns: string[]; uptimeSec: number; kernel: string }
+interface Zone { id: string; label: string; offset: string; group: string }
 
 function SshTab() {
   const ssh = useApi<Ssh>('/api/access/ssh');
@@ -222,16 +223,37 @@ function Fail2banTab() {
 }
 
 function LoginsTab() {
-  const data = useApi<{ events: LoginEvent[]; topAttackers: { ip: string; count: number }[] }>('/api/access/logins');
+  const data = useApi<{ events: LoginEvent[]; topAttackers: { ip: string; count: number }[]; timezone: string; utcOffset: string }>('/api/access/logins');
   const { run } = useFeedback();
   if (data.error) return <ErrorBox message={data.error} onRetry={data.reload} />;
   if (!data.data) return <Spinner label="Đang đọc nhật ký đăng nhập..." />;
   const block = async (ip: string) => {
     await run(() => post('/api/firewall/rules', { action: 'deny', port: null, protocol: 'any', source: ip, description: `ZenPanel chặn ${ip}` }), `Đã chặn ${ip} ở tường lửa`);
   };
+  const zone = data.data.timezone;
+  // Hiện giờ theo múi giờ của MÁY CHỦ (không phải của trình duyệt) để khớp với log trên VPS
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    try {
+      return d.toLocaleString('vi-VN', { timeZone: zone, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch {
+      return d.toLocaleString('vi-VN', { hour12: false });
+    }
+  };
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
-      <Card title="Đăng nhập gần đây" icon={Lock} bodyClassName="p-0" actions={<IconButton icon={RefreshCw} title="Tải lại" onClick={() => void data.reload()} />}>
+      <Card
+        title="Đăng nhập gần đây"
+        icon={Lock}
+        bodyClassName="p-0"
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge tone="slate">Giờ máy chủ: {zone} ({data.data.utcOffset})</Badge>
+            <IconButton icon={RefreshCw} title="Tải lại" onClick={() => void data.reload()} />
+          </div>
+        }
+      >
         {data.data.events.length === 0 ? (
           <EmptyState icon={Lock} title="Chưa có dữ liệu đăng nhập" description="Cần quyền root/Administrator để đọc nhật ký xác thực." />
         ) : (
@@ -241,7 +263,7 @@ function LoginsTab() {
               <tbody>
                 {data.data.events.map((e, i) => (
                   <tr key={i} className={tr}>
-                    <td className={cn(td, 'mono text-xs text-slate-400')}>{e.time}</td>
+                    <td className={cn(td, 'mono whitespace-nowrap text-xs text-slate-400')}>{fmt(e.time)}</td>
                     <td className={cn(td, 'font-semibold text-slate-200')}>{e.user}</td>
                     <td className={cn(td, 'mono text-xs text-slate-300')}>{e.ip || '—'}</td>
                     <td className={td}><Badge tone={e.ok ? 'green' : 'red'}>{e.ok ? 'Thành công' : 'Thất bại'}</Badge> <span className="text-xs text-slate-500">{e.method}</span></td>
@@ -273,7 +295,7 @@ function LoginsTab() {
 
 function HostTab() {
   const host = useApi<Host>('/api/access/host');
-  const zones = useApi<string[]>('/api/access/host/timezones');
+  const zones = useApi<Zone[]>('/api/access/host/timezones');
   const [hostname, setHostname] = useState('');
   const [tz, setTz] = useState('');
   const [dns, setDns] = useState('');
@@ -310,14 +332,33 @@ function HostTab() {
             {host.data.ntpSynced !== null && <Badge tone={host.data.ntpSynced ? 'green' : 'amber'}>{host.data.ntpSynced ? 'Đã đồng bộ NTP' : 'Chưa đồng bộ'}</Badge>}
           </div>
           <div className="flex items-end gap-2">
-            <Field label="Múi giờ">
-              <input className="input mono w-64" list="zp-zones" value={tz} onChange={(e) => setTz(e.target.value)} />
-              <datalist id="zp-zones">{(zones.data ?? []).map((z) => <option key={z} value={z} />)}</datalist>
+            <Field label={`Múi giờ (${zones.data ? `${zones.data.length} múi giờ trên máy này` : 'đang tải...'})`}>
+              <Select className="w-full" value={tz} disabled={!zones.data} onChange={(e) => setTz(e.target.value)}>
+                {!zones.data && <option value={tz}>{tz}</option>}
+                {zones.data &&
+                  [...new Set(zones.data.map((z) => z.group))].map((group) => (
+                    <optgroup key={group} label={group === 'Windows' ? 'Múi giờ Windows' : group}>
+                      {zones.data!.filter((z) => z.group === group).map((z) => (
+                        <option key={z.id} value={z.id}>
+                          {z.label} ({z.offset}){z.id === host.data!.timezone ? '  ★ Default' : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+              </Select>
+              <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                <Badge tone="green">Default</Badge> hiện tại: <span className="mono text-slate-300">{host.data.timezone}</span> ({host.data.utcOffset})
+              </div>
             </Field>
             <Button variant="primary" icon={Save} disabled={tz === host.data.timezone} onClick={async () => { await run(() => put('/api/access/host/timezone', { timezone: tz }), 'Đã đổi múi giờ'); await host.reload(); }}>Lưu</Button>
             <Button variant="ghost" icon={RefreshCw} onClick={async () => { await run(() => post('/api/access/host/sync-time'), 'Đã yêu cầu đồng bộ giờ'); await host.reload(); }}>Đồng bộ giờ</Button>
           </div>
-          <button type="button" className="text-xs font-semibold text-blue-300 hover:underline" onClick={() => setTz(host.data!.timezone.includes('/') ? 'Asia/Ho_Chi_Minh' : 'SE Asia Standard Time')}>Dùng giờ Việt Nam (UTC+7)</button>
+          {zones.data && (() => {
+            const vn = zones.data.find((z) => z.id === 'Asia/Ho_Chi_Minh') ?? zones.data.find((z) => z.id === 'SE Asia Standard Time');
+            return vn && vn.id !== host.data.timezone ? (
+              <button type="button" className="text-xs font-semibold text-blue-300 hover:underline" onClick={() => setTz(vn.id)}>Chọn giờ Việt Nam ({vn.offset})</button>
+            ) : null;
+          })()}
         </div>
       </Card>
       <Card title="DNS resolver" icon={Globe} className="lg:col-span-2">
