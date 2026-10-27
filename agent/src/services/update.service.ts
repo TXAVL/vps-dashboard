@@ -144,6 +144,9 @@ export function compareVersions(a: string, b: string): number {
 async function github<T>(pathname: string): Promise<T> {
   const res = await fetch(`https://api.github.com/repos/${config.updateRepo}${pathname}`, {
     headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'ZenPanel-Agent' },
+    signal: AbortSignal.timeout(15_000),
+  }).catch((err: Error) => {
+    throw new HttpError(502, `Không kết nối được GitHub (${err.name === 'TimeoutError' ? 'quá 15 giây, VPS có thể đang chặn kết nối ra ngoài' : err.message})`);
   });
   if (res.status === 403 || res.status === 429) throw new HttpError(502, 'GitHub API đang giới hạn lượt gọi, hãy thử lại sau ít phút');
   if (!res.ok) throw new HttpError(502, `GitHub API lỗi ${res.status}`);
@@ -151,9 +154,17 @@ async function github<T>(pathname: string): Promise<T> {
 }
 
 async function versionAt(sha: string): Promise<string> {
-  const res = await fetch(`https://raw.githubusercontent.com/${config.updateRepo}/${sha}/agent/package.json`, { headers: { 'User-Agent': 'ZenPanel-Agent' } });
-  if (!res.ok) return '0.0.0';
-  return ((await res.json()) as { version?: string }).version ?? '0.0.0';
+  // Lỗi mạng / GitHub phải báo ra giao diện, KHÔNG được coi là "0.0.0" (sẽ thành "không có bản mới" mà không ai biết)
+  const res = await fetch(`https://raw.githubusercontent.com/${config.updateRepo}/${sha}/agent/package.json`, {
+    headers: { 'User-Agent': 'ZenPanel-Agent' },
+    signal: AbortSignal.timeout(15_000),
+  }).catch((err: Error) => {
+    throw new HttpError(502, `Không tải được thông tin phiên bản từ GitHub (${err.name === 'TimeoutError' ? 'quá 15 giây, VPS có thể đang chặn kết nối ra ngoài' : err.message}). Kiểm tra mạng / DNS của VPS rồi bấm "Kiểm tra".`);
+  });
+  if (!res.ok) throw new HttpError(502, `GitHub trả lỗi ${res.status} khi đọc phiên bản (bản vừa đẩy có thể chưa kịp cập nhật, thử lại sau 1–2 phút)`);
+  const version = ((await res.json().catch(() => ({}))) as { version?: string }).version;
+  if (!version) throw new HttpError(502, 'Không đọc được số phiên bản trong package.json trên GitHub');
+  return version;
 }
 
 export class UpdateService {

@@ -285,12 +285,12 @@ function sign(payload: string, secret: string): string {
   return createHmac('sha256', secret).update(payload).digest('base64url');
 }
 
-/** Tạo session mới khi đăng nhập */
-export function createSession(req: FastifyRequest, username: string, expiresAt: number): UserSession {
-  const ip = clientIp(req);
-  const country = clientCountry(req);
-  const ua = (req.headers['user-agent'] as string) || '';
-  const parsed = parseUserAgent(ua);
+/** Tạo session mới khi đăng nhập. Không có request (CLI) thì gắn nhãn "Link đăng nhập nhanh" để vẫn hiện trong danh sách phiên */
+export function createSession(req: FastifyRequest | null, username: string, expiresAt: number, label = 'Link đăng nhập nhanh (CLI)'): UserSession {
+  const ip = req ? clientIp(req) : 'máy chủ';
+  const country = req ? clientCountry(req) : undefined;
+  const ua = req ? ((req.headers['user-agent'] as string) || '') : 'zenpanel-cli';
+  const parsed: ParsedClientInfo = req ? parseUserAgent(ua) : { browser: 'ZenPanel CLI', os: 'Dòng lệnh', device: label, deviceType: 'other' };
   const sid = `sid_${randomBytes(12).toString('hex')}`;
   const now = new Date().toISOString();
 
@@ -496,5 +496,30 @@ export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Pro
   }
   if (decoded.sid) {
     touchSession(decoded.sid);
+    return;
   }
+  // Token cũ không gắn phiên (do link đăng nhập nhanh / bản cũ cấp): tự tạo phiên để thiết bị hiện trong danh sách,
+  // đăng xuất thu hồi được, rồi báo token mới qua header để dashboard thay token trong localStorage
+  if (token && req.method !== 'OPTIONS') {
+    let upgraded = legacyUpgrades.get(token);
+    if (!upgraded || upgraded.at < Date.now() - 120_000) {
+      const session = createSession(req, decoded.u, decoded.exp);
+      upgraded = { token: issueToken(session).token, at: Date.now() };
+      legacyUpgrades.set(token, upgraded);
+      if (legacyUpgrades.size > 50) legacyUpgrades.delete(legacyUpgrades.keys().next().value as string);
+    }
+    reply.header('x-zp-new-token', upgraded.token);
+  }
+}
+
+/** Token cũ (không có sid) -> token mới đã tạo phiên; giữ 2 phút để các request song song không tạo nhiều phiên */
+const legacyUpgrades = new Map<string, { token: string; at: number }>();
+
+/** Phiên của request hiện tại: sid trong token, hoặc phiên vừa được tạo khi nâng cấp token cũ */
+export function resolveSid(token: string | undefined): string | undefined {
+  if (!token) return undefined;
+  const decoded = decodeToken(token);
+  if (decoded?.sid) return decoded.sid;
+  const upgraded = legacyUpgrades.get(token);
+  return upgraded ? decodeToken(upgraded.token)?.sid : undefined;
 }

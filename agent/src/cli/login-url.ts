@@ -1,5 +1,5 @@
 // ZenPanel CLI - In đường dẫn đăng nhập nhanh kèm token
-import { issueToken, ensureAdminAccount, getSettings } from '../core/auth.js';
+import { createSession, issueToken, ensureAdminAccount, getSettings } from '../core/auth.js';
 
 try {
   ensureAdminAccount();
@@ -8,7 +8,8 @@ try {
     console.error('Lỗi: Không tìm thấy tài khoản admin ZenPanel');
     process.exit(1);
   }
-  const { token } = issueToken();
+  // Có phiên riêng: thiết bị mở link này hiện trong "Phiên đăng nhập" và thu hồi / đăng xuất được
+  const { token } = issueToken(createSession(null, settings.username, Date.now() + 7 * 24 * 60 * 60 * 1000));
   const base = (process.argv[2] || '').trim().replace(/\/+$/, '');
   if (base) {
     console.log(`${base}/?token=${encodeURIComponent(token)}&auto_login=1`);

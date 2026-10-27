@@ -6,7 +6,6 @@ import {
   clientCountry,
   clientIp,
   createSession,
-  decodeToken,
   generatePassword,
   getSettings,
   issueToken,
@@ -15,6 +14,7 @@ import {
   parseUserAgent,
   recordLoginFailure,
   requireAuth,
+  resolveSid,
   revokeAllSessions,
   revokeOtherSessions,
   revokeSession,
@@ -96,11 +96,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   // Đăng xuất phiên hiện tại: vô hiệu hóa session trên server (logout thật)
   app.post('/api/auth/logout', async (req) => {
-    const token = tokenFromRequest(req);
-    const decoded = decodeToken(token);
-    if (decoded?.sid) {
-      revokeSession(decoded.sid);
-    }
+    const sid = resolveSid(tokenFromRequest(req));
+    if (sid) revokeSession(sid);
     return { ok: true, message: 'Đã đăng xuất thành công' };
   });
 
@@ -108,18 +105,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   // Danh sách các phiên đăng nhập đang hoạt động
   app.get('/api/auth/sessions', { preHandler: requireAuth }, async (req) => {
-    const token = tokenFromRequest(req);
-    const decoded = decodeToken(token);
-    return listActiveSessions(decoded?.sid);
+    return listActiveSessions(resolveSid(tokenFromRequest(req)));
   });
 
   // Đăng xuất 1 phiên thiết bị cụ thể (chặn không cho thu hồi phiên hiện tại từ danh sách)
   app.post('/api/auth/sessions/:id/revoke', { preHandler: requireAuth }, async (req) => {
     const params = req.params as { id: string };
     const targetSid = params.id;
-    const token = tokenFromRequest(req);
-    const decoded = decodeToken(token);
-    const currentSid = decoded?.sid;
+    const currentSid = resolveSid(tokenFromRequest(req));
 
     if (currentSid && targetSid === currentSid) {
       throw badRequest('Không thể đăng xuất phiên hiện tại từ danh sách. Để đăng xuất phiên này, vui lòng dùng nút Đăng xuất trên thanh điều hướng.');
@@ -153,14 +146,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   // Đăng xuất mọi thiết bị khác: giữ lại phiên hiện tại
   app.post('/api/auth/logout-all', { preHandler: requireAuth }, async (req) => {
-    const token = tokenFromRequest(req);
-    const decoded = decodeToken(token);
-    if (decoded?.sid) {
-      revokeOtherSessions(decoded.sid);
+    const sid = resolveSid(tokenFromRequest(req));
+    if (sid) {
+      revokeOtherSessions(sid);
       return { ok: true, message: 'Đã đăng xuất mọi thiết bị khác' };
     }
     revokeAllSessions();
-    const next = issueToken();
+    // Token cũ không có phiên: cấp phiên mới cho thiết bị này để không tự đăng xuất mình
+    const next = issueToken(createSession(req, getSettings()!.username, Date.now() + TOKEN_TTL_MS));
     return { ok: true, token: next.token };
   });
 

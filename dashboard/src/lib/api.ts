@@ -93,6 +93,9 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
 
   try {
     const res = await fetch(path, { ...init, headers, body, signal });
+    // Agent nâng cấp token cũ (không gắn phiên) lên token có phiên: thay luôn để thiết bị hiện trong danh sách phiên
+    const upgraded = res.headers.get('x-zp-new-token');
+    if (upgraded && upgraded !== token) setToken(upgraded);
     const data = res.headers.get('content-type')?.includes('application/json') ? await res.json() : await res.text();
     if (!res.ok) {
       if (res.status === 401 && token && !path.startsWith('/api/auth/login')) setToken(null);

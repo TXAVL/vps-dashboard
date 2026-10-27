@@ -13,6 +13,13 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: '2026-10-28',
     highlights: [
       {
+        title: '🔧 Sửa Lỗi: Phiên Đăng Nhập & Kiểm Tra Cập Nhật',
+        items: [
+          'Danh sách "Phiên đăng nhập" luôn hiện thiết bị bạn đang dùng, kể cả khi vào bằng link đăng nhập 1-Click sau khi cập nhật. Thiết bị cũ tự được nâng cấp, đăng xuất thu hồi đúng phiên.',
+          'Kiểm tra cập nhật báo rõ lý do khi VPS không kết nối được GitHub (trước đây im lặng như "không có bản mới" và có thể treo rất lâu).',
+        ],
+      },
+      {
         title: '💬 Playground AI: Hiển Thị Đẹp & Chạy Thử Code Ngay',
         items: [
           'Câu trả lời của AI giờ được hiển thị đầy đủ: tiêu đề, bảng, danh sách việc, trích dẫn, link, ảnh, và HTML nhúng (đã lọc sạch mã độc nên an toàn).',
