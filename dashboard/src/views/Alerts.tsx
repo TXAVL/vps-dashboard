@@ -1,15 +1,15 @@
 // ZenPanel - Cảnh báo chủ động (Telegram / Discord / Webhook) + Nhật ký thao tác trên panel
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Bell, ClipboardList, Cpu, HardDrive, MemoryStick, Save, Send, Trash2, CalendarClock, ListTree } from 'lucide-react';
+import { Bell, ClipboardList, Cpu, HardDrive, MemoryStick, Save, Send, Trash2, CalendarClock, ListTree, CheckCircle2, XCircle, Wifi, UserSearch, BadgeCheck, ChevronDown } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, IconButton, PageHeader, SearchInput, Select, Spinner, Tabs, Toggle, cn, td, th, tr } from '../components/ui';
-import { del, post, put } from '../lib/api';
+import { del, get, post, put } from '../lib/api';
 import { formatDate, formatRelative } from '../lib/format';
 import { useApi } from '../lib/hooks';
 
 interface Config {
-  telegram: { enabled: boolean; botToken: string; chatId: string; hasToken: boolean };
+  telegram: { enabled: boolean; botToken: string; chatId: string; apiBase: string; hasToken: boolean };
   discord: { enabled: boolean; webhookUrl: string; hasUrl: boolean };
   webhook: { enabled: boolean; url: string; hasUrl: boolean };
   rules: {
@@ -21,15 +21,48 @@ interface Config {
   };
   cooldownMinutes: number;
 }
+interface ChannelCheck { channel: 'telegram' | 'discord'; host: string; reachable: boolean; ms: number | null; detail: string }
 interface AlertEvent { at: string; rule: string; level: 'warn' | 'recovered' | 'test'; message: string; sent: string[]; errors: string[] }
 interface AuditEntry { at: string; user: string; ip: string; method: string; path: string; status: number; action: string; ms: number }
+
+function Steps({ title, steps }: { title: string; steps: React.ReactNode[] }) {
+  return (
+    <details className="group rounded-xl border border-slate-700/50 bg-ink-950/40">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-semibold text-blue-300">
+        <ChevronDown className="size-3.5 transition group-open:rotate-180" /> {title}
+      </summary>
+      <ol className="space-y-1.5 px-3 pb-3 text-xs leading-relaxed text-slate-400">
+        {steps.map((step, i) => (
+          <li key={i} className="flex gap-2">
+            <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[10px] font-bold text-slate-300">{i + 1}</span>
+            <span>{step}</span>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
 
 function AlertsTab() {
   const data = useApi<{ config: Config; history: AlertEvent[] }>('/api/alerts', 30_000);
   const [cfg, setCfg] = useState<Config | null>(null);
   const [services, setServices] = useState('');
   const [saving, setSaving] = useState(false);
+  const [checks, setChecks] = useState<ChannelCheck[] | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [bot, setBot] = useState<{ username: string; name: string } | null>(null);
+  const [chats, setChats] = useState<{ id: string; type: string; title: string }[] | null>(null);
   const { run, toast } = useFeedback();
+
+  const checkNet = async () => {
+    setChecking(true);
+    setChecks(await get<ChannelCheck[]>('/api/alerts/connectivity').catch(() => null));
+    setChecking(false);
+  };
+
+  useEffect(() => {
+    void checkNet();
+  }, []);
 
   useEffect(() => {
     if (data.data) {
@@ -47,6 +80,19 @@ function AlertsTab() {
     await run(() => put('/api/alerts', body), 'Đã lưu cấu hình cảnh báo');
     setSaving(false);
     await data.reload();
+  };
+
+  const verifyBot = async () => {
+    const res = await run(() => post<{ username: string; name: string }>('/api/alerts/telegram/verify', { botToken: cfg!.telegram.botToken }));
+    if (res) setBot(res);
+  };
+
+  const detectChats = async () => {
+    const res = await run(() => post<{ id: string; type: string; title: string }[]>('/api/alerts/telegram/chats', { botToken: cfg!.telegram.botToken }));
+    if (res) {
+      setChats(res);
+      if (res.length === 1) setCfg({ ...cfg!, telegram: { ...cfg!.telegram, chatId: res[0].id } });
+    }
   };
 
   const test = async (channel: 'telegram' | 'discord' | 'webhook') => {
@@ -78,17 +124,79 @@ function AlertsTab() {
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-700/50 bg-ink-950/50 px-4 py-3">
+        <Wifi className="size-5 text-sky-300" />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-white">Đường mạng từ VPS ra Telegram / Discord</div>
+          <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1 text-xs">
+            {!checks ? (
+              <span className="text-slate-500">{checking ? 'Đang kiểm tra...' : 'Chưa kiểm tra'}</span>
+            ) : (
+              checks.map((c) => (
+                <span key={c.channel} className={cn('flex items-start gap-1.5', c.reachable ? 'text-emerald-300' : 'text-rose-300')}>
+                  {c.reachable ? <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" /> : <XCircle className="mt-0.5 size-3.5 shrink-0" />}
+                  <span>{c.detail}</span>
+                </span>
+              ))
+            )}
+          </div>
+        </div>
+        <Button size="sm" variant="ghost" icon={Wifi} loading={checking} onClick={() => void checkNet()}>Kiểm tra lại</Button>
+      </div>
       <div className="grid gap-4 xl:grid-cols-3">
         <Card title="Telegram" icon={Send} actions={<Toggle checked={cfg.telegram.enabled} onChange={(v) => setCfg({ ...cfg, telegram: { ...cfg.telegram, enabled: v } })} />}>
           <div className="space-y-3">
-            <Field label="Bot token" hint="Tạo bot qua @BotFather"><input className="input mono" value={cfg.telegram.botToken} onChange={(e) => setCfg({ ...cfg, telegram: { ...cfg.telegram, botToken: e.target.value } })} placeholder="123456:ABC-DEF..." /></Field>
-            <Field label="Chat ID" hint="ID của bạn hoặc nhóm (dùng @userinfobot để lấy)"><input className="input mono" value={cfg.telegram.chatId} onChange={(e) => setCfg({ ...cfg, telegram: { ...cfg.telegram, chatId: e.target.value } })} /></Field>
+            <Steps
+              title="Hướng dẫn cấu hình (3 bước, 2 phút)"
+              steps={[
+                <>Mở Telegram, chat với <b className="text-slate-200">@BotFather</b> → gửi <code className="mono">/newbot</code> → đặt tên → nhận <b className="text-slate-200">Bot token</b> dạng <code className="mono">123456789:AAF...</code>, dán vào ô bên dưới rồi bấm "Xác thực".</>,
+                <>Mở bot vừa tạo (link <code className="mono">t.me/tên_bot</code>) và bấm <b className="text-slate-200">Start</b>. Muốn nhận trong nhóm: thêm bot vào nhóm rồi nhắn 1 tin bất kỳ.</>,
+                <>Bấm <b className="text-slate-200">"Tự lấy Chat ID"</b>: ZenPanel tìm cuộc trò chuyện của bạn, chọn là xong. Cuối cùng bấm "Gửi thử".</>,
+              ]}
+            />
+            <Field label="Bot token" hint="Tạo bot qua @BotFather">
+              <div className="flex gap-2">
+                <input className="input mono min-w-0 flex-1" value={cfg.telegram.botToken} onChange={(e) => { setBot(null); setCfg({ ...cfg, telegram: { ...cfg.telegram, botToken: e.target.value } }); }} placeholder="123456789:AAF..." />
+                <Button size="sm" variant="soft" icon={BadgeCheck} disabled={!cfg.telegram.botToken} onClick={() => void verifyBot()}>Xác thực</Button>
+              </div>
+              {bot && <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-300"><CheckCircle2 className="size-3.5" /> Đúng bot: {bot.name} (@{bot.username})</div>}
+            </Field>
+            <Field label="Chat ID" hint="Số ID của bạn / nhóm (nhóm thường bắt đầu bằng -100...)">
+              <div className="flex gap-2">
+                <input className="input mono min-w-0 flex-1" value={cfg.telegram.chatId} onChange={(e) => setCfg({ ...cfg, telegram: { ...cfg.telegram, chatId: e.target.value } })} placeholder="123456789" />
+                <Button size="sm" variant="soft" icon={UserSearch} disabled={!cfg.telegram.botToken} onClick={() => void detectChats()}>Tự lấy Chat ID</Button>
+              </div>
+              {chats && chats.length > 1 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {chats.map((c) => (
+                    <button key={c.id} type="button" onClick={() => { setCfg({ ...cfg, telegram: { ...cfg.telegram, chatId: c.id } }); setChats(null); }} className="rounded-lg border border-slate-700 bg-ink-950/60 px-2 py-1 text-left text-xs text-slate-300 hover:border-zen-blue">
+                      <b>{c.title}</b> <span className="text-slate-500">{c.type} · {c.id}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Field>
+            <details className="text-xs text-slate-500">
+              <summary className="cursor-pointer font-semibold text-slate-400">Nâng cao: VPS bị chặn Telegram?</summary>
+              <div className="mt-2 space-y-1">
+                <input className="input mono" value={cfg.telegram.apiBase} onChange={(e) => setCfg({ ...cfg, telegram: { ...cfg.telegram, apiBase: e.target.value } })} placeholder="https://api.telegram.org (để trống = mặc định)" />
+                <p>Nếu mục kiểm tra mạng ở trên báo Telegram không kết nối được, hãy nhập địa chỉ relay (Cloudflare Worker / reverse proxy của <code className="mono">api.telegram.org</code>) hoặc dùng Discord / Webhook thay thế.</p>
+              </div>
+            </details>
             <Button size="sm" variant="soft" icon={Send} onClick={() => void test('telegram')}>Gửi thử</Button>
           </div>
         </Card>
         <Card title="Discord" icon={Send} actions={<Toggle checked={cfg.discord.enabled} onChange={(v) => setCfg({ ...cfg, discord: { ...cfg.discord, enabled: v } })} />}>
           <div className="space-y-3">
-            <Field label="Webhook URL" hint="Kênh → Cài đặt → Tích hợp → Webhook"><input className="input mono" value={cfg.discord.webhookUrl} onChange={(e) => setCfg({ ...cfg, discord: { ...cfg.discord, webhookUrl: e.target.value } })} placeholder="https://discord.com/api/webhooks/..." /></Field>
+            <Steps
+              title="Hướng dẫn cấu hình (3 bước)"
+              steps={[
+                <>Trong server Discord, bấm biểu tượng bánh răng cạnh kênh nhận tin → <b className="text-slate-200">Tích hợp (Integrations)</b> → <b className="text-slate-200">Webhooks</b> → <b className="text-slate-200">Webhook mới</b>.</>,
+                <>Đặt tên (vd ZenPanel), chọn kênh, bấm <b className="text-slate-200">Sao chép URL Webhook</b>.</>,
+                <>Dán URL vào ô bên dưới, bấm "Lưu cấu hình" rồi "Gửi thử". Cần quyền <i>Quản lý Webhook</i> trong server.</>,
+              ]}
+            />
+            <Field label="Webhook URL" hint="Dạng https://discord.com/api/webhooks/số/mã"><input className="input mono" value={cfg.discord.webhookUrl} onChange={(e) => setCfg({ ...cfg, discord: { ...cfg.discord, webhookUrl: e.target.value } })} placeholder="https://discord.com/api/webhooks/..." /></Field>
             <Button size="sm" variant="soft" icon={Send} onClick={() => void test('discord')}>Gửi thử</Button>
           </div>
         </Card>

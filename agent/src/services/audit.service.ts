@@ -71,7 +71,7 @@ export class AuditService {
       if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return;
       const path = req.url.split('?')[0];
       if (SKIP.test(path) || !path.startsWith('/api/')) return;
-      const user = decodeToken(tokenFromRequest(req))?.u ?? 'admin';
+      const user = (req as unknown as { zpActor?: string }).zpActor ?? decodeToken(tokenFromRequest(req))?.u ?? 'admin';
       this.entries().unshift({
         at: new Date().toISOString(),
         user,
@@ -87,6 +87,13 @@ export class AuditService {
     });
     // Ghi đĩa gộp mỗi 5 giây thay vì mỗi request
     this.timer = setInterval(() => this.flush(), 5000);
+  }
+
+  /** Ghi 1 dòng thủ công (dùng cho MCP, không đi qua hook của scope đã đăng nhập) */
+  record(entry: Omit<AuditEntry, 'at'>): void {
+    this.entries().unshift({ at: new Date().toISOString(), ...entry });
+    if (this.entries().length > MAX) this.entries().length = MAX;
+    this.dirty = true;
   }
 
   flush(): void {

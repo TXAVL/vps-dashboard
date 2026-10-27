@@ -299,6 +299,19 @@ export class BackupService {
     records.remove(id);
   }
 
+  /** Xoá nhiều bản cùng lúc, bỏ qua bản không còn tồn tại */
+  async removeMany(ids: string[]): Promise<number> {
+    let n = 0;
+    for (const id of new Set(ids)) {
+      const record = records.get(id);
+      if (!record) continue;
+      await rm(record.file, { force: true }).catch(() => undefined);
+      records.remove(id);
+      n++;
+    }
+    return n;
+  }
+
   // ------------------------------------------------------------------ Lịch sao lưu tự động
   listSchedules(): BackupSchedule[] {
     return schedules.all().sort((a, b) => a.name.localeCompare(b.name));

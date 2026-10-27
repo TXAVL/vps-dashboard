@@ -117,6 +117,7 @@ export default function Backups() {
   const { data, error, reload } = useApi<Data>('/api/backups', 15000);
   const [creating, setCreating] = useState<Target | null>(null);
   const [scheduling, setScheduling] = useState<Partial<Schedule> & { target: Target } | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [restoring, setRestoring] = useState<{ item: BackupItem; dest: string } | null>(null);
   const { confirm, run } = useFeedback();
   const { runJob } = useJobs();
@@ -138,6 +139,16 @@ export default function Backups() {
     await run(() => del(`/api/backups/${b.id}`), 'Đã xoá bản sao lưu');
     await reload();
   };
+  const bulkDelete = async () => {
+    const list = (data?.items ?? []).filter((b) => picked.has(b.id));
+    if (!list.length) return;
+    const total = list.reduce((n, b) => n + (b.exists ? b.size : 0), 0);
+    if (!(await confirm({ title: `Xoá ${list.length} bản sao lưu`, message: `Giải phóng ${formatBytes(total)}. Không thể khôi phục sau khi xoá.`, danger: true, confirmLabel: 'Xoá tất cả' }))) return;
+    await run(() => post('/api/backups/bulk-delete', { ids: [...picked] }), `Đã xoá ${list.length} bản sao lưu`);
+    setPicked(new Set());
+    await reload();
+  };
+
   const restore = async () => {
     if (!restoring) return;
     const { item, dest } = restoring;
@@ -213,16 +224,22 @@ export default function Backups() {
             </Card>
           )}
 
-          <Card title="Các bản sao lưu" icon={Archive} bodyClassName="p-0">
+          <Card
+            title="Các bản sao lưu"
+            icon={Archive}
+            bodyClassName="p-0"
+            actions={picked.size > 0 && <Button size="xs" variant="danger" icon={Trash2} onClick={() => void bulkDelete()}>Xoá {picked.size} bản đã chọn</Button>}
+          >
             {data.items.length === 0 ? (
               <EmptyState icon={Archive} title="Chưa có bản sao lưu" description={`File lưu tại ${data.sources.backupDir}`} />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[720px] text-sm">
-                  <thead><tr><th className={th}>Nội dung</th><th className={th}>Dung lượng</th><th className={th}>Thời gian</th><th className={cn(th, 'text-right')}>Thao tác</th></tr></thead>
+                  <thead><tr><th className={cn(th, 'w-10')}><input type="checkbox" className="accent-zen-blue size-4" checked={picked.size > 0 && picked.size === data.items.length} onChange={(e) => setPicked(e.target.checked ? new Set(data.items.map((b) => b.id)) : new Set())} /></th><th className={th}>Nội dung</th><th className={th}>Dung lượng</th><th className={th}>Thời gian</th><th className={cn(th, 'text-right')}>Thao tác</th></tr></thead>
                   <tbody>
                     {data.items.map((b) => (
                       <tr key={b.id} className={cn(tr, !b.exists && 'opacity-50')}>
+                        <td className={td}><input type="checkbox" className="accent-zen-blue size-4" checked={picked.has(b.id)} onChange={() => { const next = new Set(picked); if (next.has(b.id)) next.delete(b.id); else next.add(b.id); setPicked(next); }} /></td>
                         <td className={td}>
                           <div className="flex items-center gap-2 font-semibold text-slate-100">
                             {b.name} <Badge tone="slate">{KIND_LABEL[b.target.kind]}</Badge>

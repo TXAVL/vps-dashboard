@@ -35,6 +35,7 @@ const Logs = lazy(() => import('./views/Logs'));
 const Access = lazy(() => import('./views/Access'));
 const Alerts = lazy(() => import('./views/Alerts'));
 const Malware = lazy(() => import('./views/Malware'));
+const ApiAccess = lazy(() => import('./views/ApiAccess'));
 
 export function App() {
   const [authed, setAuthed] = useState(Boolean(getToken()));
@@ -60,6 +61,7 @@ export function App() {
                 <Route path="/access" element={<Access />} />
                 <Route path="/alerts" element={<Alerts />} />
                 <Route path="/malware" element={<Malware />} />
+                <Route path="/integrations" element={<ApiAccess />} />
                 <Route path="/processes" element={<Processes />} />
                 <Route path="/services" element={<Services />} />
                 <Route path="/firewall" element={<Firewall />} />

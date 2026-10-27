@@ -2,6 +2,7 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../config.js';
+import { checkApiToken, isApiToken } from './apitokens.js';
 import { readJson, writeJson } from './store.js';
 
 const SETTINGS_FILE = 'settings.json';
@@ -477,6 +478,17 @@ export function tokenFromRequest(req: FastifyRequest, allowQuery = false): strin
 
 export async function requireAuth(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   const token = tokenFromRequest(req);
+  // API token dài hạn (zpt_...): có phạm vi quyền riêng, không dùng được cho đăng nhập / quản lý token
+  if (isApiToken(token)) {
+    const check = checkApiToken(token, req.method, req.url.split('?')[0], req.ip);
+    if (!check.ok) {
+      if (check.name) (req as unknown as { zpActor: string }).zpActor = `token:${check.name}`;
+      await reply.code(check.status).send({ error: check.message });
+      return;
+    }
+    (req as unknown as { zpActor: string }).zpActor = `token:${check.name}`;
+    return;
+  }
   const decoded = decodeToken(token);
   if (!decoded) {
     await reply.code(401).send({ error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn' });

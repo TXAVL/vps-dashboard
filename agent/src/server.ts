@@ -30,6 +30,8 @@ import { AccessService } from './services/access.service.js';
 import { AlertService } from './services/alerts.service.js';
 import { AuditService } from './services/audit.service.js';
 import { MalwareService } from './services/malware.service.js';
+import { McpService } from './services/mcp.service.js';
+import { SecureFolderService } from './services/securefolder.service.js';
 import { BackupService } from './services/backup.service.js';
 import { LogService } from './services/logs.service.js';
 import { AiService } from './services/ai.service.js';
@@ -90,6 +92,7 @@ async function main() {
   const alerts = new AlertService(adapter, metrics);
   const audit = new AuditService();
   const malware = new MalwareService(sites);
+  const secure = new SecureFolderService(adapter);
 
   const app = Fastify({ logger: { level: process.env.ZENPANEL_LOG_LEVEL ?? 'warn' }, bodyLimit: 10 * 1024 * 1024 });
 
@@ -130,6 +133,9 @@ async function main() {
   // API chuẩn Anthropic dưới /zen (ANTHROPIC_BASE_URL=https://<host>/zen -> /zen/v1/messages đã có ở trên)
   for (const prefix of ['/ollama', '/ollama/k/:key']) await app.register(async (scope) => ollamaRoutes(scope, { gateway }), { prefix });
 
+  // MCP server (JSON-RPC qua HTTP) xác thực bằng API token riêng
+  new McpService({ adapter, metrics, docker, sites, logs, clean, backups, audit, version: pkg.version }).register(app);
+
   // Mọi API còn lại bắt buộc đăng nhập
   await app.register(async (secured) => {
     secured.addHook('preHandler', requireAuth);
@@ -144,7 +150,7 @@ async function main() {
     await siteRoutes(secured, ctx, { sites, cloudflare });
     await panelRoutes(secured, ctx, { updates, tasks, ai, speedtest });
     await opsRoutes(secured, { backups, logs, clean, databases });
-    await accessRoutes(secured, { access, alerts, audit, malware });
+    await accessRoutes(secured, { access, alerts, audit, malware, secure });
   });
   // WebSocket tự xác thực bằng ?token= (trình duyệt không gửi được header Authorization)
   await app.register(async (wsScope) => realtimeRoutes(wsScope, ctx));
@@ -160,7 +166,7 @@ async function main() {
     // SPA: mọi đường dẫn không phải API trả về index.html; các đường dẫn gateway trả về lỗi JSON chuẩn OpenAI
     app.setNotFoundHandler((req, reply) => {
       const url = req.url;
-      const isGateway = url.startsWith('/ollama') || url.startsWith('/zen/') || url.startsWith('/ai/') || url.startsWith('/v1/') || url === '/v1' || url === '/zen/v1' || url === '/ai/v1';
+      const isGateway = url.startsWith('/mcp') || url.startsWith('/zen/mcp') || url.startsWith('/ollama') || url.startsWith('/zen/') || url.startsWith('/ai/') || url.startsWith('/v1/') || url === '/v1' || url === '/zen/v1' || url === '/ai/v1';
       if (isGateway) {
         return reply
           .code(404)

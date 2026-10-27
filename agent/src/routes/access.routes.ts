@@ -1,13 +1,15 @@
 // ZenPanel - API bảo mật truy cập (SSH, Fail2ban, hostname/DNS/múi giờ), cảnh báo, nhật ký thao tác, quét mã độc
 import type { FastifyInstance } from 'fastify';
+import { createApiToken, listApiTokens, revokeApiToken } from '../core/apitokens.js';
 import { badRequest } from '../core/validate.js';
 import type { AccessService } from '../services/access.service.js';
 import type { AlertService } from '../services/alerts.service.js';
 import type { AuditService } from '../services/audit.service.js';
 import type { MalwareService } from '../services/malware.service.js';
+import type { SecureFolderService } from '../services/securefolder.service.js';
 
-export async function accessRoutes(app: FastifyInstance, deps: { access: AccessService; alerts: AlertService; audit: AuditService; malware: MalwareService }): Promise<void> {
-  const { access, alerts, audit, malware } = deps;
+export async function accessRoutes(app: FastifyInstance, deps: { access: AccessService; alerts: AlertService; audit: AuditService; malware: MalwareService; secure: SecureFolderService }): Promise<void> {
+  const { access, alerts, audit, malware, secure } = deps;
   const body = (req: { body: unknown }) => (req.body ?? {}) as Record<string, unknown>;
 
   // ---- SSH
@@ -58,8 +60,19 @@ export async function accessRoutes(app: FastifyInstance, deps: { access: AccessS
     if (channel !== 'telegram' && channel !== 'discord' && channel !== 'webhook') throw badRequest('Kênh không hợp lệ');
     return alerts.test(channel);
   });
+  app.get('/api/alerts/connectivity', async () => alerts.connectivity());
+  app.post('/api/alerts/telegram/verify', async (req) => alerts.telegramVerify(String(body(req).botToken ?? '')));
+  app.post('/api/alerts/telegram/chats', async (req) => alerts.telegramDetectChats(String(body(req).botToken ?? '')));
   app.delete('/api/alerts/history', async () => {
     alerts.clearHistory();
+    return { ok: true };
+  });
+
+  // ---- API token (token API không tự quản lý được: bị chặn ở requireAuth)
+  app.get('/api/tokens', async () => listApiTokens());
+  app.post('/api/tokens', async (req) => createApiToken(body(req) as { name?: string; scope?: string; expiresInDays?: number | null }));
+  app.delete('/api/tokens/:id', async (req) => {
+    revokeApiToken((req.params as { id: string }).id);
     return { ok: true };
   });
 
@@ -70,6 +83,20 @@ export async function accessRoutes(app: FastifyInstance, deps: { access: AccessS
   });
   app.delete('/api/audit', async () => {
     audit.clear();
+    return { ok: true };
+  });
+
+  // ---- SecureFolder (khoá chống sửa)
+  app.get('/api/security/secure-folders', async () => secure.list());
+  app.post('/api/security/secure-folders', async (req) => secure.add(body(req) as { path: string; note?: string }));
+  app.post('/api/security/secure-folders/:id/:action', async (req) => {
+    const { id, action } = req.params as { id: string; action: string };
+    if (action !== 'lock' && action !== 'unlock') throw badRequest('Thao tác không hợp lệ');
+    await secure.setLocked(id, action === 'lock');
+    return { ok: true };
+  });
+  app.delete('/api/security/secure-folders/:id', async (req) => {
+    await secure.remove((req.params as { id: string }).id);
     return { ok: true };
   });
 

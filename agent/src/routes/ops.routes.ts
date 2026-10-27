@@ -27,6 +27,11 @@ export async function opsRoutes(app: FastifyInstance, deps: { backups: BackupSer
     await backups.remove((req.params as Params).id);
     return { ok: true };
   });
+  app.post('/api/backups/bulk-delete', async (req) => {
+    const ids = (((req.body ?? {}) as { ids?: string[] }).ids ?? []).map(String);
+    if (!ids.length || ids.length > 500) throw badRequest('Chọn từ 1 đến 500 bản sao lưu');
+    return { deleted: await backups.removeMany(ids) };
+  });
   app.post('/api/backups/:id/restore', async (req) => backups.restore((req.params as Params).id, (req.body ?? {}) as { destination?: string }));
   app.post('/api/backups/:id/download', async (req) => {
     const item = backups.list().find((b) => b.id === (req.params as Params).id);

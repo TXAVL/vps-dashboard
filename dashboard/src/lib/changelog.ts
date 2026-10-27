@@ -9,6 +9,41 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.8.0',
+    date: '2026-10-28',
+    highlights: [
+      {
+        title: '🤖 Nối Claude, Cursor, n8n Với VPS Qua MCP & API Token',
+        items: [
+          'Trang "API & MCP" mới: tạo token riêng cho từng ứng dụng, không cần đưa mật khẩu panel. Token chỉ lưu dạng băm, hiện đúng 1 lần lúc tạo, thu hồi là mất quyền ngay.',
+          'Hai mức quyền: "Chỉ đọc" (xem trạng thái, tiến trình, container, log) và "Đầy đủ" (thêm khởi động lại dịch vụ, container, tối ưu RAM, sao lưu). Mọi thao tác thay đổi đều ghi vào Nhật ký thao tác kèm tên token.',
+          'Hỏi AI bằng tiếng Việt: "RAM đang bị tiến trình nào ngốn?", "đọc log nginx lỗi 100 dòng", "khởi động lại docker". Có sẵn lệnh dán vào Claude Code và file cấu hình cho Cursor.',
+          'An toàn: không có công cụ chạy lệnh tuỳ ý; token không đổi được mật khẩu, không tắt máy, không dừng ZenPanel.',
+        ],
+      },
+      {
+        title: '🔒 SecureFolder: Khoá Website Chống Sửa File Trái Phép',
+        items: [
+          'Khoá thư mục website ở chế độ chỉ đọc ngay trong hệ điều hành. Dù website bị cài webshell, kẻ xấu cũng không sửa, xoá hay thêm được file nào.',
+          'Cần cập nhật code: mở khoá, deploy, khoá lại chỉ bằng 1 nút. Trạng thái khoá được đọc lại từ hệ thống nên luôn đúng thực tế. Thư mục hệ thống bị chặn không cho khoá nhầm.',
+        ],
+      },
+      {
+        title: '🔔 Cảnh Báo Telegram & Discord Dễ Cấu Hình Hơn',
+        items: [
+          'Hướng dẫn từng bước ngay trên giao diện cho Telegram (BotFather) và Discord (Webhook).',
+          'Nút "Xác thực" hiện đúng tên bot; nút "Tự lấy Chat ID" tìm sẵn cuộc trò chuyện của bạn, chỉ cần chọn. Không phải mò ID thủ công nữa.',
+          'Kiểm tra đường mạng từ VPS ra Telegram / Discord và báo rõ nguyên nhân nếu bị chặn; có ô "địa chỉ API relay" cho VPS bị chặn Telegram.',
+          'Lỗi được dịch ra tiếng Việt kèm cách sửa (token sai, chưa bấm Start, webhook đã bị xoá...). Token và webhook không bao giờ lộ trong thông báo lỗi.',
+        ],
+      },
+      {
+        title: '🗂️ Xoá Sao Lưu Hàng Loạt',
+        items: ['Tick chọn nhiều bản sao lưu cũ và xoá một lần, hiện sẵn dung lượng sẽ được giải phóng.'],
+      },
+    ],
+  },
+  {
     version: '0.7.0',
     date: '2026-10-26',
     highlights: [
