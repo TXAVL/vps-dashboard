@@ -42,7 +42,11 @@ async function resolvePublicIpv4(): Promise<string | null> {
     }
   }
 
-  // Fallback: Tìm IP public từ network interfaces trên card mạng ngoài WAN
+  return localPublicIpv4();
+}
+
+/** IP public lấy từ card mạng (đồng bộ, không dùng mạng): đúng với VPS gắn IP public trực tiếp */
+function localPublicIpv4(): string | null {
   for (const addrs of Object.values(os.networkInterfaces())) {
     for (const a of addrs ?? []) {
       if (a.family === 'IPv4' && !a.internal) {
@@ -54,6 +58,21 @@ async function resolvePublicIpv4(): Promise<string | null> {
     }
   }
   return null;
+}
+
+let ipRefresh: Promise<void> | null = null;
+
+/** Làm mới IP public ở nền (tối đa 1 lần chạy cùng lúc, giới hạn 8 giây), không bao giờ chặn request */
+function refreshPublicIpInBackground(): void {
+  if (ipRefresh || (publicIpCache?.ipv4 && Date.now() - publicIpCache.at < 10 * 60_000)) return;
+  ipRefresh = Promise.race([resolvePublicIpv4(), new Promise<null>((r) => setTimeout(() => r(null), 8000))])
+    .then((ipv4) => {
+      if (ipv4) publicIpCache = { at: Date.now(), ipv4, ipv6: publicIpCache?.ipv6 ?? null, reverseDns: publicIpCache?.reverseDns ?? null };
+    })
+    .catch(() => undefined)
+    .finally(() => {
+      ipRefresh = null;
+    });
 }
 
 export async function panelRoutes(
@@ -118,17 +137,14 @@ export async function panelRoutes(
   });
   app.post('/api/update/packages/:id/install', async (req) => updates.install((req.params as { id: string }).id));
   app.get('/api/update/log', async () => ({ log: await updates.installLog() }));
+  /**
+   * Trạng thái ngay sau khi cập nhật: PHẢI trả lời tức thì (dashboard gọi với timeout ngắn để biết agent đã lên chưa).
+   * Không chờ tunnel, không tra IP qua mạng trong request: IP public được làm mới ở nền và lấy từ cache.
+   */
   app.get('/api/update/status', async () => {
-    let tunnel = ctx.tunnel?.getState() ?? null;
-    // Nếu tunnel đang khởi động và chưa có URL, đợi tối đa ~5 giây để bắt kịp URL mới
-    if (ctx.tunnel && !tunnel?.url && (tunnel?.status === 'idle' || tunnel?.status === 'starting')) {
-      for (let w = 0; w < 10; w++) {
-        await new Promise((r) => setTimeout(r, 500));
-        tunnel = ctx.tunnel.getState();
-        if (tunnel.url) break;
-      }
-    }
-    const ipv4 = publicIpCache?.ipv4 ?? (await resolvePublicIpv4().catch(() => null));
+    const tunnel = ctx.tunnel?.getState() ?? null;
+    refreshPublicIpInBackground();
+    const ipv4 = publicIpCache?.ipv4 ?? localPublicIpv4();
     const directUrl = ipv4 ? `http://${ipv4}:${ctx.port}` : null;
     return {
       version: updates.getState().current,
