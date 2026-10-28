@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router';
 import { ChevronDown, ChevronsLeft, ChevronsRight, Monitor, Pin, PinOff, Search, X } from 'lucide-react';
 import { get } from '../../lib/api';
-import { formatPercent } from '../../lib/format';
+import { formatBytes, formatDuration, formatPercent } from '../../lib/format';
 import { useLocalStorage } from '../../lib/hooks';
 import { usePanel } from '../../lib/panel';
 import type { Job } from '../../lib/types';
@@ -71,6 +71,21 @@ export function Sidebar({ onNavigate, compact = false, onToggleCompact }: { onNa
   const runningJobs = useRunningJobs();
   const memPct = latest ? (latest.memory.used / latest.memory.total) * 100 : 0;
   const diskPct = latest?.disks?.[0] ? (latest.disks[0].used / latest.disks[0].total) * 100 : 0;
+  const serverTip = info
+    ? [
+        `${info.os.hostname} · ${info.os.name}`,
+        `Kernel ${info.os.kernel} · ${info.os.arch}`,
+        `CPU: ${info.os.cpuModel} (${info.os.cpuCores} nhân)${latest ? ` · ${formatPercent(latest.cpu.usage, 1)}` : ''}`,
+        latest ? `RAM: ${formatBytes(latest.memory.used)} / ${formatBytes(latest.memory.total)} (${formatPercent(memPct, 0)})` : `RAM: ${formatBytes(info.os.totalMemory)}`,
+        ...(latest?.disks ?? []).slice(0, 3).map((d) => `Ổ ${d.mount}: ${formatBytes(d.used)} / ${formatBytes(d.total)} (${formatPercent((d.used / d.total) * 100, 0)})`),
+        latest?.load ? `Load: ${latest.load.map((x) => x.toFixed(2)).join(' · ')}` : '',
+        latest ? `Máy chủ bật: ${formatDuration(latest.uptime)}` : '',
+        `ZenPanel v${info.version} · chạy ${formatDuration(info.agentUptime)}`,
+        info.os.isAdmin ? 'Quyền: Administrator/root' : 'Quyền: người dùng thường',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    : undefined;
 
   // Ctrl/Cmd + K: nhảy vào ô tìm kiếm
   useEffect(() => {
@@ -248,12 +263,12 @@ export function Sidebar({ onNavigate, compact = false, onToggleCompact }: { onNa
       </nav>
 
       {compact ? (
-        <div className="mb-3 flex flex-col items-center gap-1 text-[10px] text-slate-500" data-tip={info?.os.hostname}>
+        <div className="mb-3 flex flex-col items-center gap-1 text-[10px] text-slate-500" data-tip={serverTip ?? info?.os.hostname}>
           <Monitor className="size-4 text-zen-blue" />
           {latest && <span className="mono">{formatPercent(latest.cpu.usage, 0)}</span>}
         </div>
       ) : (
-        <div className="m-3 rounded-2xl border border-slate-700/50 bg-ink-950/60 p-4">
+        <div className="m-3 rounded-2xl border border-slate-700/50 bg-ink-950/60 p-4" data-tip={serverTip}>
           <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-slate-300">
             <Monitor className="size-4 shrink-0 text-zen-blue" />
             <span className="truncate">{info?.os.hostname ?? '...'}</span>

@@ -79,7 +79,11 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
   const host = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [status, setStatus] = useState<'connecting' | 'online' | 'closed'>('connecting');
+  const [status, setStatus] = useState<'connecting' | 'online' | 'reconnecting' | 'closed'>('connecting');
+  // Đếm ngược tự nối lại khi mất kết nối
+  const [retry, setRetry] = useState<{ left: number; attempt: number } | null>(null);
+  const reconnectNowRef = useRef<() => void>(() => {});
+  const cancelRetryRef = useRef<() => void>(() => {});
   const [session, setSession] = useState(0);
   const [hint, setHint] = useState<SuggestState | null>(null);
   const hintRef = useRef<SuggestState | null>(null);
@@ -119,6 +123,12 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
     }
   }, []);
 
+  // Nạp lại thật sự: đọc lại danh sách alias VÀ ra lệnh cho shell đang chạy source lại file cấu hình
+  const reloadShell = useCallback(async () => {
+    await loadAliases();
+    sendRef.current(windowsRef.current ? '. $PROFILE\r' : 'source ~/.bashrc\r');
+  }, [loadAliases]);
+
   // Tự động nạp alias khi mở Web Terminal
   useEffect(() => {
     loadAliases();
@@ -142,21 +152,98 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
     term.open(host.current);
     fit.fit();
 
-    const socket = new WebSocket(wsUrl('/ws/terminal', { cols: term.cols, rows: term.rows }));
-    setStatus('connecting');
+    // ---- Kết nối WebSocket có giữ phiên (sid), heartbeat và tự nối lại có đếm ngược
+    let sid: string | null = null;
+    let disposed = false;
+    let initialSent = false;
+    let attempts = 0;
+    let socket: WebSocket | null = null;
+    let retryTimer: ReturnType<typeof setInterval> | null = null;
+    const RETRY_DELAYS = [3, 5, 8, 12, 20, 30, 30, 30];
 
-    socket.onopen = () => {
-      setStatus('online');
-      term.focus();
-      if (initialCommand) socket.send(JSON.stringify({ type: 'input', data: `${initialCommand}\r` }));
+    const clearRetry = () => {
+      if (retryTimer) clearInterval(retryTimer);
+      retryTimer = null;
+      setRetry(null);
     };
-    socket.onmessage = (event) => term.write(typeof event.data === 'string' ? event.data : '');
-    socket.onclose = (event) => {
+
+    const scheduleRetry = () => {
+      if (attempts >= RETRY_DELAYS.length) {
+        setStatus('closed');
+        term.write('\r\n\x1b[90m[Mất kết nối - đã thử nối lại nhiều lần không được]\x1b[0m\r\n');
+        return;
+      }
+      let left = RETRY_DELAYS[attempts++];
+      const attempt = attempts;
+      setStatus('reconnecting');
+      setRetry({ left, attempt });
+      retryTimer = setInterval(() => {
+        left -= 1;
+        if (left <= 0) connect();
+        else setRetry({ left, attempt });
+      }, 1000);
+    };
+
+    const connect = (first = false) => {
+      if (disposed) return;
+      clearRetry();
+      setStatus(first ? 'connecting' : 'reconnecting');
+      const ws = new WebSocket(wsUrl('/ws/terminal', { cols: term.cols, rows: term.rows, ...(sid ? { sid } : {}) }));
+      socket = ws;
+      ws.onopen = () => {
+        attempts = 0;
+        setStatus('online');
+        term.focus();
+      };
+      ws.onmessage = (event) => {
+        if (typeof event.data !== 'string') return;
+        // Tin điều khiển từ server: id phiên shell để nối lại
+        if (event.data.startsWith('\u0000zp:')) {
+          try {
+            const ctl = JSON.parse(event.data.slice(4)) as { sid: string; reattached: boolean };
+            sid = ctl.sid;
+            if (!ctl.reattached && initialCommand && !initialSent) {
+              initialSent = true;
+              ws.send(JSON.stringify({ type: 'input', data: `${initialCommand}\r` }));
+            }
+          } catch {
+            // bỏ qua
+          }
+          return;
+        }
+        term.write(event.data);
+      };
+      ws.onclose = (event) => {
+        if (disposed || socket !== ws) return;
+        if (event.code === 4401 || event.code === 4001) {
+          setStatus('closed');
+          term.write(`\r\n\x1b[90m[${event.code === 4401 ? 'Mất kết nối - phiên đăng nhập hết hạn' : 'Shell đã kết thúc'}]\x1b[0m\r\n`);
+          return;
+        }
+        if (attempts === 0) term.write('\r\n\x1b[33m[Mất kết nối, đang thử nối lại...]\x1b[0m\r\n');
+        scheduleRetry();
+      };
+    };
+    reconnectNowRef.current = () => {
+      attempts = 0;
+      connect();
+    };
+    cancelRetryRef.current = () => {
+      clearRetry();
       setStatus('closed');
-      term.write(`\r\n\x1b[90m[Mất kết nối${event.code === 4401 ? ' - phiên đăng nhập hết hạn' : ''}]\x1b[0m\r\n`);
     };
+    // Heartbeat: gửi dữ liệu định kỳ để Cloudflare / proxy không cắt kết nối rảnh
+    const heartbeat = setInterval(() => {
+      if (socket?.readyState === WebSocket.OPEN) socket.send('{"type":"ping"}');
+    }, 20_000);
+    // Có mạng lại hoặc quay lại tab thì nối ngay thay vì chờ đếm ngược
+    const onOnline = () => {
+      if (retryTimer) reconnectNowRef.current();
+    };
+    window.addEventListener('online', onOnline);
+    connect(true);
 
-    const send = (data: string) => socket.readyState === WebSocket.OPEN && socket.send(JSON.stringify({ type: 'input', data }));
+    const send = (data: string) => socket?.readyState === WebSocket.OPEN && socket.send(JSON.stringify({ type: 'input', data }));
     sendRef.current = send;
 
     // ---- Gợi ý lệnh: theo dõi dòng đang gõ
@@ -306,7 +393,7 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
     const el = host.current;
     el.addEventListener('paste', handleDomPaste);
 
-    const resize = term.onResize(({ cols, rows }) => socket.readyState === WebSocket.OPEN && socket.send(JSON.stringify({ type: 'resize', cols, rows })));
+    const resize = term.onResize(({ cols, rows }) => socket?.readyState === WebSocket.OPEN && socket.send(JSON.stringify({ type: 'resize', cols, rows })));
     const observer = new ResizeObserver(() => {
       try {
         fit.fit();
@@ -321,7 +408,11 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
       observer.disconnect();
       input.dispose();
       resize.dispose();
-      socket.close();
+      disposed = true;
+      clearInterval(heartbeat);
+      if (retryTimer) clearInterval(retryTimer);
+      window.removeEventListener('online', onOnline);
+      socket?.close();
       term.dispose();
       termRef.current = null;
     };
@@ -436,6 +527,35 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
     >
       {/* Vùng chứa xterm.js */}
       <div ref={host} className="absolute inset-0 cursor-text" />
+
+      {/* Popup mất kết nối: đếm ngược tự nối lại */}
+      {(status === 'reconnecting' || status === 'closed') && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-[2px]" onMouseDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm rounded-2xl border border-slate-600/60 bg-[#0f1626]/95 p-5 text-center shadow-2xl">
+            <div className={cn('mx-auto mb-3 flex size-12 items-center justify-center rounded-full', status === 'reconnecting' ? 'bg-amber-500/15 text-amber-300' : 'bg-rose-500/15 text-rose-300')}>
+              {status === 'reconnecting' ? <span className="mono text-xl font-black">{retry?.left ?? '…'}</span> : <RotateCcw className="size-5" />}
+            </div>
+            <div className="text-sm font-bold text-white">{status === 'reconnecting' ? 'Mất kết nối với máy chủ' : 'Phiên terminal đã ngắt'}</div>
+            <p className="mt-1 text-xs leading-relaxed text-slate-400">
+              {status === 'reconnecting'
+                ? retry
+                  ? `Tự động nối lại sau ${retry.left} giây (lần thử ${retry.attempt}/8). Phiên shell vẫn được giữ trên VPS tối đa 10 phút.`
+                  : 'Đang thử nối lại...'
+                : 'Không nối lại được. Bấm "Kết nối lại" để mở phiên mới.'}
+            </p>
+            <div className="mt-4 flex justify-center gap-2">
+              {status === 'reconnecting' ? (
+                <>
+                  <Button size="xs" variant="primary" icon={RotateCcw} onClick={() => reconnectNowRef.current()}>Nối lại ngay</Button>
+                  <Button size="xs" variant="ghost" onClick={() => cancelRetryRef.current()}>Dừng</Button>
+                </>
+              ) : (
+                <Button size="xs" variant="primary" icon={RotateCcw} onClick={() => setSession((n) => n + 1)}>Kết nối lại</Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Thông báo copy nhanh */}
       {copiedNotification && (
@@ -564,7 +684,7 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
           {/* Nạp lại Alias từ .bashrc */}
           <button
             onClick={() => {
-              loadAliases();
+              void reloadShell();
               setContextMenu(null);
             }}
             className="flex w-full items-center justify-between rounded-xl px-2.5 py-2 transition hover:bg-slate-800/80 hover:text-white"
@@ -693,7 +813,7 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
 
         {/* Nút nạp lại Alias */}
         <button
-          onClick={() => loadAliases()}
+          onClick={() => void reloadShell()}
           className={cn(
             'flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold transition',
             aliases.length > 0 ? 'text-cyan-300 hover:bg-cyan-950/50' : 'text-slate-400 hover:bg-slate-800',
@@ -706,9 +826,9 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
 
         <div className="h-3 w-px bg-slate-800" />
 
-        <StatusDot tone={status === 'online' ? 'green' : status === 'connecting' ? 'amber' : 'red'} pulse={status === 'online'} />
+        <StatusDot tone={status === 'online' ? 'green' : status === 'connecting' || status === 'reconnecting' ? 'amber' : 'red'} pulse={status === 'online'} />
         <span className="hidden sm:inline">
-          {status === 'online' ? 'Đã kết nối' : status === 'connecting' ? 'Đang kết nối' : 'Đã ngắt'}
+          {status === 'online' ? 'Đã kết nối' : status === 'connecting' ? 'Đang kết nối' : status === 'reconnecting' ? 'Đang nối lại' : 'Đã ngắt'}
         </span>
 
         {status === 'closed' && (
@@ -725,7 +845,7 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
         windows={Boolean(windows)}
         aliases={aliases}
         reloadingAliases={reloadingAliases}
-        onReloadAliases={loadAliases}
+        onReloadAliases={reloadShell}
         onInsert={(cmd) => {
           sendRef.current(cmd);
           appendLineRef.current(cmd);

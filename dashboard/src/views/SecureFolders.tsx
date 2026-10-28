@@ -2,14 +2,24 @@
 import { useState } from 'react';
 import { Lock, LockOpen, Plus, Trash2 } from 'lucide-react';
 import { useFeedback } from '../components/feedback';
-import { Badge, Button, Card, EmptyState, ErrorBox, IconButton, Spinner } from '../components/ui';
+import { Badge, Button, Card, EmptyState, ErrorBox, IconButton, Notice, Select, Spinner } from '../components/ui';
 import { del, post } from '../lib/api';
 import { formatRelative } from '../lib/format';
 import { useApi } from '../lib/hooks';
+import { PathInput } from '../components/PathInput';
+
+type LockMode = 'full' | 'content' | 'top';
+const MODES: Record<LockMode, { label: string; desc: string }> = {
+  full: { label: 'Khoá toàn bộ (khuyên dùng)', desc: 'Không sửa, xoá hay thêm bất kỳ file / thư mục nào bên trong' },
+  content: { label: 'Chỉ khoá file có sẵn', desc: 'File hiện có không sửa / xoá được; vẫn tạo được file mới (hợp với cache, log)' },
+  top: { label: 'Chỉ khoá thư mục gốc', desc: 'Chặn thêm / xoá file ở cấp ngoài cùng; file bên trong vẫn sửa được' },
+};
 
 interface Folder {
   id: string;
   path: string;
+  mode?: LockMode;
+  excludes?: string[];
   note: string;
   createdAt: string;
   lockedAt: string | null;
@@ -20,6 +30,8 @@ interface Folder {
 export function SecureFolders({ sites }: { sites: { path: string; site: string | null }[] }) {
   const folders = useApi<Folder[]>('/api/security/secure-folders');
   const [path, setPath] = useState('');
+  const [mode, setMode] = useState<LockMode>('full');
+  const [excludes, setExcludes] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const { run, confirm } = useFeedback();
 
@@ -28,14 +40,14 @@ export function SecureFolders({ sites }: { sites: { path: string; site: string |
       title: 'Khoá thư mục chống sửa',
       message: (
         <>
-          Mọi file trong <b className="mono">{target}</b> sẽ <b>không sửa, xoá hay thêm mới được</b> (kể cả bởi website bị hack hoặc chính bạn) cho tới khi mở khoá. Website cần ghi file (upload, cache, session) sẽ lỗi nếu khoá thư mục chứa các file đó.
+          Khoá <b className="mono">{target}</b> theo chế độ <b>{MODES[mode].label}</b>: {MODES[mode].desc}. Áp dụng cả với website bị hack lẫn chính bạn cho tới khi mở khoá.{excludes.trim() && <> Các thư mục vẫn cho ghi: <b className="mono">{excludes.split(/[\n,]/).map((x) => x.trim()).filter(Boolean).join(', ')}</b>.</>}
         </>
       ),
       confirmLabel: 'Khoá',
     });
     if (!ok) return;
     setBusy('add');
-    const res = await run(() => post('/api/security/secure-folders', { path: target }), 'Đã khoá thư mục');
+    const res = await run(() => post('/api/security/secure-folders', { path: target, mode, excludes: excludes.split(/[\n,]/).map((x) => x.trim()).filter(Boolean) }), 'Đã khoá thư mục');
     setBusy(null);
     if (res !== undefined) {
       setPath('');
@@ -59,11 +71,30 @@ export function SecureFolders({ sites }: { sites: { path: string; site: string |
           Khoá mã nguồn website ở chế độ chỉ đọc ngay tại hệ điều hành (Linux: <code className="mono">chattr +i</code>, Windows: luật DENY). Dù webshell chạy được, nó cũng không ghi hay sửa được file. Cần cập nhật code: <b>mở khoá → deploy → khoá lại</b>.
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <input className="input mono min-w-[260px] flex-1" value={path} onChange={(e) => setPath(e.target.value)} placeholder="Đường dẫn thư mục cần khoá, vd /var/www/example.com" />
+          <PathInput className="min-w-[260px] flex-1" value={path} onChange={setPath} onSubmit={() => path.trim() && void add(path.trim())} suggestions={sites.map((x) => x.path)} placeholder="Đường dẫn thư mục cần khoá (gõ để gợi ý hoặc bấm Duyệt)" />
           <Button variant="primary" icon={Plus} loading={busy === 'add'} disabled={!path.trim()} onClick={() => void add(path.trim())}>
             Khoá thư mục
           </Button>
         </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <div className="mb-1 text-xs font-semibold text-slate-300">Chế độ khoá</div>
+            <Select value={mode} onChange={(e) => setMode(e.target.value as LockMode)}>
+              {(Object.keys(MODES) as LockMode[]).map((m) => <option key={m} value={m}>{MODES[m].label}</option>)}
+            </Select>
+            <p className="mt-1 text-[11px] text-slate-500">{MODES[mode].desc}</p>
+          </div>
+          <div>
+            <div className="mb-1 text-xs font-semibold text-slate-300">Thư mục con vẫn cho ghi (tuỳ chọn)</div>
+            <input className="input mono" value={excludes} onChange={(e) => setExcludes(e.target.value)} placeholder="wp-content/uploads, wp-content/cache" />
+            <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
+              {['wp-content/uploads', 'wp-content/cache', 'storage', 'cache', 'tmp'].map((x) => (
+                <button key={x} type="button" className="rounded-md border border-slate-700 px-1.5 py-0.5 text-slate-400 hover:text-white" onClick={() => setExcludes((cur) => (cur.split(/[\n,]/).map((v) => v.trim()).includes(x) ? cur : cur ? `${cur}, ${x}` : x))}>+ {x}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {mode !== 'full' && <Notice tone="amber">Chế độ này để lại khe hở: kẻ tấn công vẫn có thể thêm hoặc sửa một phần. Chỉ chọn khi website cần ghi file.</Notice>}
         {free.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
             Chọn nhanh website:
@@ -91,7 +122,8 @@ export function SecureFolders({ sites }: { sites: { path: string; site: string |
               <div className="min-w-0 flex-1">
                 <div className="mono truncate text-slate-100">{f.path}</div>
                 <div className="text-xs text-slate-500">
-                  {f.exists ? (f.lockedAt ? `khoá ${formatRelative(f.lockedAt)}` : 'chưa khoá') : 'thư mục không còn tồn tại'}
+                  {MODES[f.mode ?? 'full'].label} · {f.exists ? (f.lockedAt ? `khoá ${formatRelative(f.lockedAt)}` : 'chưa khoá') : 'thư mục không còn tồn tại'}
+                  {f.excludes?.length ? ` · cho ghi: ${f.excludes.join(', ')}` : ''}
                   {f.note && ` · ${f.note}`}
                 </div>
               </div>

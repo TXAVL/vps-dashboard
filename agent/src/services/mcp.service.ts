@@ -5,6 +5,8 @@ import type { FastifyInstance } from 'fastify';
 import type { OSAdapter, ServiceAction } from '../adapters/base.adapter.js';
 import { verifyApiTokenForMcp, type TokenScope } from '../core/apitokens.js';
 import type { MetricsCollector } from '../core/metrics.js';
+import { clientIp } from '../core/auth.js';
+import { addMcpLog } from '../core/mcplog.js';
 import { isServiceName } from '../core/validate.js';
 import type { AuditService } from './audit.service.js';
 import type { BackupService } from './backup.service.js';
@@ -15,6 +17,7 @@ import type { SiteService } from './site.service.js';
 
 type Json = Record<string, unknown>;
 interface Caller {
+  client?: string;
   name: string;
   scope: TokenScope;
   ip: string;
@@ -183,12 +186,13 @@ export class McpService {
     const handler = async (req: { headers: Record<string, unknown>; ip: string; body: unknown }, reply: { code: (n: number) => { send: (b?: unknown) => unknown }; header: (k: string, v: string) => unknown }) => {
       const auth = String(req.headers.authorization ?? '');
       const token = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : String(req.headers['x-api-key'] ?? '');
-      const who = verifyApiTokenForMcp(token, req.ip);
+      const who = verifyApiTokenForMcp(token, clientIp(req as never));
       if ('error' in who) {
+        addMcpLog({ token: '(không hợp lệ)', ip: clientIp(req as never), client: String(req.headers['user-agent'] ?? '').slice(0, 80), method: 'auth', tool: null, args: null, ok: false, error: who.error, ms: 0 });
         reply.header('WWW-Authenticate', 'Bearer realm="zenpanel-mcp"');
         return reply.code(401).send({ jsonrpc: '2.0', id: null, error: { code: -32001, message: who.error } });
       }
-      const caller: Caller = { name: who.name, scope: who.scope, ip: req.ip };
+      const caller: Caller = { name: who.name, scope: who.scope, ip: clientIp(req as never), client: String(req.headers['user-agent'] ?? '').slice(0, 80) };
       const body = req.body as Json | Json[];
       // Batch hoặc 1 message
       if (Array.isArray(body)) {
@@ -206,6 +210,29 @@ export class McpService {
   }
 
   private async handle(msg: Json, caller: Caller): Promise<Json | null> {
+    const t0 = Date.now();
+    const res = await this.dispatch(msg, caller);
+    const method = String(msg.method ?? '');
+    if (method !== 'ping' && !method.startsWith('notifications/')) {
+      const params = (msg.params ?? {}) as { name?: string; arguments?: Json };
+      const r = res as { error?: { message?: string }; result?: { isError?: boolean; content?: { text?: string }[] } } | null;
+      const failed = Boolean(r?.error) || Boolean(r?.result?.isError);
+      addMcpLog({
+        token: caller.name,
+        ip: caller.ip,
+        client: caller.client ?? '',
+        method,
+        tool: method === 'tools/call' ? String(params.name ?? '') : null,
+        args: method === 'tools/call' ? JSON.stringify(params.arguments ?? {}).slice(0, 300) : null,
+        ok: !failed,
+        error: failed ? (r?.error?.message ?? r?.result?.content?.[0]?.text ?? 'Lỗi').slice(0, 300) : null,
+        ms: Date.now() - t0,
+      });
+    }
+    return res;
+  }
+
+  private async dispatch(msg: Json, caller: Caller): Promise<Json | null> {
     const id = (msg.id ?? null) as string | number | null;
     const method = String(msg.method ?? '');
     const ok = (result: unknown): Json => ({ jsonrpc: '2.0', id, result });

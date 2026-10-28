@@ -9,6 +9,52 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.9.0',
+    date: '2026-10-28',
+    highlights: [
+      {
+        title: '🤖 Kết Nối AI & MCP Linh Hoạt Hơn',
+        items: [
+          'Token API và key AI Gateway chọn được nhiều thời hạn: 1 giờ, 24 giờ, 3, 7, 14, 30, 60, 90, 180 ngày, 1 năm, không hết hạn, hoặc tự nhập số ngày / chọn ngày giờ cụ thể.',
+          'Nhật ký gọi MCP: xem mỗi lần AI gọi công cụ nào, bằng token nào, từ IP và client nào, thành công hay lỗi, mất bao nhiêu ms.',
+          'Có sẵn cấu hình và prompt cho Claude Code, Claude CLI, Claude Desktop, Codex, Antigravity (IDE và CLI), Zed, Cursor, VS Code, Windsurf, Gemini CLI, Cline, n8n. Dán prompt cho AI để nó tự cấu hình giúp bạn.',
+          'API Tester: sửa các đường dẫn mẫu sai (Anthropic, Ollama, tối ưu RAM) và tự sửa trong collection đã lưu. Gateway trả lời /api/version cho các client dò phiên bản.',
+        ],
+      },
+      {
+        title: '🛡️ Quét Mã Độc & Khoá File Chi Tiết Hơn',
+        items: [
+          'Tuỳ chọn quét: bật / tắt từng loại kiểm tra, mức tối thiểu được báo, chỉ file sửa gần đây, giới hạn dung lượng, thư mục bỏ qua.',
+          'Thêm 9 chữ ký mới (preg_replace /e, callback từ request, loader tải mã từ URL, iframe ẩn, miner chạy trên web...).',
+          'Chọn thư mục quét bằng ô gợi ý tự hoàn thành hoặc nút Duyệt, không cần gõ tay.',
+          'Khoá file có 3 chế độ (khoá toàn bộ, chỉ file có sẵn, chỉ thư mục gốc) và cho chừa thư mục con vẫn ghi được như uploads, cache.',
+        ],
+      },
+      {
+        title: '📂 File Manager Nâng Cấp',
+        items: [
+          'Menu chuột phải riêng cho file, thư mục, nhiều mục đang chọn và vùng trống.',
+          'Tải thư mục: VPS tự nén thành zip rồi xoá ngay sau khi tải, không để lại file zip. Link tải vẫn hạn 5 phút và chặn IDM.',
+        ],
+      },
+      {
+        title: '💻 Terminal Không Còn Tự Mất Kết Nối',
+        items: [
+          'Terminal web giữ kết nối khi rảnh (không bị Cloudflare cắt) và giữ phiên shell trên VPS tối đa 10 phút khi rớt mạng.',
+          'Mất kết nối thì hiện popup đếm ngược và tự nối lại đúng phiên cũ; nút Nạp lại alias giờ nạp thật vào shell đang chạy.',
+        ],
+      },
+      {
+        title: '🗓️ Cron, Sao Lưu & Giao Diện',
+        items: [
+          'Thêm 32 mẫu cron job mới: database, Docker, giám sát, bảo mật, dọn dẹp, web.',
+          'Trang Sao lưu có thẻ riêng cho cấu hình ZenPanel với nút Tải về; mỗi lịch tự động hiện luôn các bản gần nhất để tải.',
+          'Hiển thị đúng IPv4 thay vì ::ffff:..., phiên tạo từ CLI ghi IP máy chủ thật; log INFO không còn tô đỏ nhầm; thẻ máy chủ trên sidebar có tooltip chi tiết.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.8.2',
     date: '2026-10-29',
     highlights: [

@@ -114,7 +114,7 @@ export function TooltipLayer() {
   return createPortal(
     <div
       role="tooltip"
-      className="pointer-events-none fixed z-[100] w-max max-w-[calc(100vw-2rem)] sm:max-w-xs rounded-lg border border-slate-600/70 bg-ink-900/95 px-2.5 py-1.5 text-xs font-medium text-slate-100 shadow-xl shadow-black/60 backdrop-blur whitespace-nowrap transition-opacity duration-150 animate-in fade-in"
+      className="pointer-events-none fixed z-[100] w-max max-w-[calc(100vw-2rem)] sm:max-w-xs rounded-lg border border-slate-600/70 bg-ink-900/95 px-2.5 py-1.5 text-xs font-medium text-slate-100 shadow-xl shadow-black/60 backdrop-blur whitespace-pre text-left transition-opacity duration-150 animate-in fade-in"
       style={{
         ...(tip.align === 'right'
           ? { right: `${Math.max(12, window.innerWidth - tip.x)}px` }

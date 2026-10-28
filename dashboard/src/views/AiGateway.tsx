@@ -2585,7 +2585,8 @@ function ApiKeysTab({
 
   // Form state tạo key
   const [name, setName] = useState('');
-  const [expiryOption, setExpiryOption] = useState<'never' | '7' | '30' | '60' | '90' | 'custom'>('never');
+  const [expiryOption, setExpiryOption] = useState<'never' | '1' | '3' | '7' | '14' | '30' | '60' | '90' | '180' | '365' | 'days' | 'custom'>('never');
+  const [customDays, setCustomDays] = useState('14');
   const [customDate, setCustomDate] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -2600,12 +2601,20 @@ function ApiKeysTab({
       let customExpiresAt: string | null = null;
 
       if (expiryOption === 'custom') {
-        if (!customDate) {
-          toast('Vui lòng chọn ngày hết hạn tùy chọn', 'error');
+        if (!customDate || new Date(customDate).getTime() <= Date.now()) {
+          toast('Vui lòng chọn ngày giờ hết hạn ở tương lai', 'error');
           setSubmitting(false);
           return;
         }
         customExpiresAt = new Date(customDate).toISOString();
+      } else if (expiryOption === 'days') {
+        const d = Number(customDays);
+        if (!Number.isFinite(d) || d < 1 || d > 3650) {
+          toast('Số ngày phải từ 1 đến 3650', 'error');
+          setSubmitting(false);
+          return;
+        }
+        expiresInDays = d;
       } else if (expiryOption !== 'never') {
         expiresInDays = parseInt(expiryOption, 10);
       }
@@ -2946,11 +2955,17 @@ function ApiKeysTab({
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {[
                 { id: 'never', label: 'Vĩnh viễn', sub: 'Không bao giờ hết hạn' },
+                { id: '1', label: '24 giờ', sub: 'Dùng thử' },
+                { id: '3', label: '3 ngày', sub: 'Ngắn hạn' },
                 { id: '7', label: '7 ngày', sub: 'Thử nghiệm ngắn hạn' },
+                { id: '14', label: '14 ngày', sub: '2 tuần' },
                 { id: '30', label: '30 ngày', sub: 'Khuyên dùng' },
                 { id: '60', label: '60 ngày', sub: '2 tháng' },
                 { id: '90', label: '90 ngày', sub: '3 tháng' },
-                { id: 'custom', label: 'Tùy chỉnh...', sub: 'Chọn ngày cụ thể' },
+                { id: '180', label: '180 ngày', sub: '6 tháng' },
+                { id: '365', label: '1 năm', sub: '365 ngày' },
+                { id: 'days', label: 'Số ngày...', sub: 'Tự nhập 1 - 3650' },
+                { id: 'custom', label: 'Ngày giờ...', sub: 'Chọn thời điểm cụ thể' },
               ].map((opt) => (
                 <button
                   key={opt.id}
@@ -2971,12 +2986,25 @@ function ApiKeysTab({
               ))}
             </div>
 
+            {expiryOption === 'days' && (
+              <div className="mt-2.5 space-y-1">
+                <label className="text-[11px] text-slate-400">Số ngày sử dụng:</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={3650}
+                  value={customDays}
+                  onChange={(e) => setCustomDays(e.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
+                />
+              </div>
+            )}
+
             {expiryOption === 'custom' && (
               <div className="mt-2.5 space-y-1">
-                <label className="text-[11px] text-slate-400">Chọn ngày hết hạn:</label>
+                <label className="text-[11px] text-slate-400">Chọn ngày giờ hết hạn:</label>
                 <input
-                  type="date"
-                  min={new Date().toISOString().split('T')[0]}
+                  type="datetime-local"
                   value={customDate}
                   onChange={(e) => setCustomDate(e.target.value)}
                   className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"

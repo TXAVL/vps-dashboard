@@ -1,6 +1,6 @@
 {
   "name": "zenpanel-agent",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "description": "ZenPanel Agent - Core daemon chạy trên VPS (Windows & Linux, tự Auto-Detect OS)",
   "type": "module",
   "main": "dist/server.js",

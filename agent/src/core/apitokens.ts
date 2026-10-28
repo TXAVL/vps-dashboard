@@ -42,11 +42,17 @@ export function listApiTokens(): ApiTokenView[] {
   return all().map(({ hash: _h, ...rest }) => rest);
 }
 
-export function createApiToken(input: { name?: string; scope?: string; expiresInDays?: number | null }): { token: string; info: ApiTokenView } {
+export function createApiToken(input: { name?: string; scope?: string; expiresInDays?: number | null; customExpiresAt?: string | null }): { token: string; info: ApiTokenView } {
   const name = String(input.name ?? '').trim().slice(0, 60);
   if (!name) throw badRequest('Đặt tên cho token (vd "Claude Code", "n8n")');
   const scope: TokenScope = input.scope === 'full' ? 'full' : 'read';
   const days = Number(input.expiresInDays);
+  let expiresAt: string | null = Number.isFinite(days) && days > 0 ? new Date(Date.now() + Math.min(days, 3650) * 86_400_000).toISOString() : null;
+  if (input.customExpiresAt) {
+    const t = new Date(input.customExpiresAt).getTime();
+    if (!Number.isFinite(t) || t <= Date.now()) throw badRequest('Ngày hết hạn tuỳ chọn phải ở tương lai');
+    expiresAt = new Date(Math.min(t, Date.now() + 3650 * 86_400_000)).toISOString();
+  }
   const token = `${API_TOKEN_PREFIX}${randomBytes(30).toString('base64url')}`;
   const record: ApiTokenRecord = {
     id: `tok_${randomBytes(6).toString('hex')}`,
@@ -55,7 +61,7 @@ export function createApiToken(input: { name?: string; scope?: string; expiresIn
     hint: `${token.slice(0, 8)}…${token.slice(-4)}`,
     scope,
     createdAt: new Date().toISOString(),
-    expiresAt: Number.isFinite(days) && days > 0 ? new Date(Date.now() + Math.min(days, 3650) * 86_400_000).toISOString() : null,
+    expiresAt,
     lastUsedAt: null,
     lastIp: null,
     uses: 0,

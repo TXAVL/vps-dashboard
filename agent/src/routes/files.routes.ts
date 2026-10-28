@@ -1,6 +1,8 @@
 // ZenPanel - API File Manager
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { mkdir, rm, stat } from 'node:fs/promises';
+import os from 'node:os';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '../core/context.js';
@@ -26,6 +28,10 @@ function resolvePaths(input: unknown): string[] {
   if (!Array.isArray(input) || !input.length) throw badRequest('Chưa chọn file nào');
   return input.map(resolvePath);
 }
+
+const TMP_ZIP_DIR = path.join(os.tmpdir(), 'zenpanel-dl');
+const TTL_MS = 300_000;
+const isTmpZip = (file: string) => path.dirname(file) === TMP_ZIP_DIR;
 
 export async function fileRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   app.get('/api/files/roots', async () => ({ roots: await ctx.adapter.fileRoots(), separator: path.sep }));
@@ -84,7 +90,7 @@ export async function fileRoutes(app: FastifyInstance, ctx: AppContext): Promise
     return { saved };
   });
 
-  // Link tải dùng vé ngắn hạn (thời hạn 5 phút, gắn expires vào params, chặn IDM)
+  // Link tải dùng vé ngắn hạn (thời hạn 5 phút, gắn expires vào params)
   app.post('/api/files/download-ticket', async (req) => {
     const file = resolvePath((req.body as { path?: string } | undefined)?.path);
     const info = await stat(file);
@@ -93,6 +99,20 @@ export async function fileRoutes(app: FastifyInstance, ctx: AppContext): Promise
     const expires = Date.now() + ttlMs;
     const ticket = issueTicket(`download:${file}`, ttlMs);
     const params = new URLSearchParams({ path: file, ticket, expires: String(expires) });
+    return { url: `/api/files/download?${params}`, expires, ttl: 300 };
+  });
+
+  // Tải thư mục: nén zip tạm, vé 5 phút, zip tự xoá sau khi tải xong hoặc hết hạn (không để lại trên VPS)
+  app.post('/api/files/download-folder', async (req) => {
+    const dir = resolvePath((req.body as { path?: string } | undefined)?.path);
+    if (!(await stat(dir)).isDirectory()) throw badRequest('Đây không phải thư mục');
+    await mkdir(TMP_ZIP_DIR, { recursive: true });
+    const base = path.basename(dir) || 'root';
+    const zipPath = path.join(TMP_ZIP_DIR, `${randomBytes(6).toString('hex')}-${base}.zip`);
+    await compress([dir], zipPath, 'zip');
+    setTimeout(() => void rm(zipPath, { force: true }), TTL_MS + 30_000).unref();
+    const expires = Date.now() + TTL_MS;
+    const params = new URLSearchParams({ path: zipPath, ticket: issueTicket(`download:${zipPath}`, TTL_MS), expires: String(expires), name: `${base}.zip` });
     return { url: `/api/files/download?${params}`, expires, ttl: 300 };
   });
 
@@ -148,29 +168,19 @@ const MIME_MAP: Record<string, string> = {
 /** Route tải file & xem trực tiếp nằm ngoài vùng requireAuth: xác thực bằng vé ngắn hạn */
 export async function fileDownloadRoute(app: FastifyInstance): Promise<void> {
   app.get('/api/files/download', async (req, reply) => {
-    const query = req.query as { path?: string; ticket?: string; expires?: string };
+    const query = req.query as { path?: string; ticket?: string; expires?: string; name?: string };
     const file = resolvePath(query.path);
 
-    // 1. Chặn IDM (Internet Download Manager) và các trình bắt link tự động
-    const ua = (req.headers['user-agent'] ?? '').toLowerCase();
-    if (
-      ua.includes('idm') ||
-      ua.includes('internet download manager') ||
-      ua.includes('download accelerator') ||
-      ua.includes('fdm') ||
-      ua.includes('flashget') ||
-      ua.includes('getright') ||
-      ua.includes('go!zilla')
-    ) {
-      throw new HttpError(403, 'ZenPanel: Đã chặn tải qua IDM / Download Manager. Vui lòng tải trực tiếp qua trình duyệt web để đảm bảo an toàn.');
+    // Chặn IDM / trình bắt link tự động và tải đa luồng (Range nhiều phân đoạn)
+    const ua = String(req.headers['user-agent'] ?? '').toLowerCase();
+    if (/\b(idm|internet download manager|download accelerator|fdm|free download manager|flashget|getright|go!zilla|jdownloader|aria2)\b/.test(ua) || ua.includes('idman')) {
+      throw new HttpError(403, 'ZenPanel: Đã chặn tải qua IDM / Download Manager. Vui lòng tải trực tiếp bằng trình duyệt web.');
     }
-
-    // 2. Chặn chia luồng Range nhiều phần của IDM
-    if (req.headers['range'] && req.headers['range'].includes(',')) {
+    if (String(req.headers['range'] ?? '').includes(',')) {
       throw new HttpError(416, 'ZenPanel: Không hỗ trợ tải đa luồng phân đoạn.');
     }
 
-    // 3. Kiểm tra thời hạn 5 phút kể từ lúc tạo link (gán trong params expires & vé ticket)
+    // Kiểm tra thời hạn 5 phút kể từ lúc tạo link (gán trong params expires & vé ticket)
     if (query.expires && Number(query.expires) < Date.now()) {
       throw new HttpError(401, 'Link tải đã hết hạn (quá thời hạn 5 phút kể từ khi tạo link). Vui lòng tạo link tải mới.');
     }
@@ -180,7 +190,10 @@ export async function fileDownloadRoute(app: FastifyInstance): Promise<void> {
     }
 
     const info = await stat(file);
-    const name = encodeURIComponent(path.basename(file));
+    const tmp = isTmpZip(file);
+    const name = encodeURIComponent(tmp && query.name ? path.basename(query.name) : path.basename(file));
+    const stream = createReadStream(file);
+    if (tmp) stream.on('close', () => void rm(file, { force: true }));
     return reply
       .header('Content-Type', 'application/octet-stream')
       .header('Content-Length', info.size)
@@ -192,7 +205,7 @@ export async function fileDownloadRoute(app: FastifyInstance): Promise<void> {
       .header('X-Accel-Buffering', 'no')
       .header('X-Content-Type-Options', 'nosniff')
       .header('X-Download-Options', 'noopen')
-      .send(createReadStream(file));
+      .send(stream);
   });
 
   app.get('/api/files/raw', async (req, reply) => {

@@ -1,5 +1,6 @@
 // ZenPanel - API bảo mật truy cập (SSH, Fail2ban, hostname/DNS/múi giờ), cảnh báo, nhật ký thao tác, quét mã độc
 import type { FastifyInstance } from 'fastify';
+import { clearMcpLogs, listMcpLogs } from '../core/mcplog.js';
 import { createApiToken, listApiTokens, revokeApiToken } from '../core/apitokens.js';
 import { badRequest } from '../core/validate.js';
 import type { AccessService } from '../services/access.service.js';
@@ -70,9 +71,15 @@ export async function accessRoutes(app: FastifyInstance, deps: { access: AccessS
 
   // ---- API token (token API không tự quản lý được: bị chặn ở requireAuth)
   app.get('/api/tokens', async () => listApiTokens());
-  app.post('/api/tokens', async (req) => createApiToken(body(req) as { name?: string; scope?: string; expiresInDays?: number | null }));
+  app.post('/api/tokens', async (req) => createApiToken(body(req) as { name?: string; scope?: string; expiresInDays?: number | null; customExpiresAt?: string | null }));
   app.delete('/api/tokens/:id', async (req) => {
     revokeApiToken((req.params as { id: string }).id);
+    return { ok: true };
+  });
+
+  app.get('/api/mcp/logs', async (req) => listMcpLogs(Math.min(500, Number((req.query as { limit?: string }).limit) || 200)));
+  app.delete('/api/mcp/logs', async () => {
+    clearMcpLogs();
     return { ok: true };
   });
 
@@ -88,7 +95,7 @@ export async function accessRoutes(app: FastifyInstance, deps: { access: AccessS
 
   // ---- SecureFolder (khoá chống sửa)
   app.get('/api/security/secure-folders', async () => secure.list());
-  app.post('/api/security/secure-folders', async (req) => secure.add(body(req) as { path: string; note?: string }));
+  app.post('/api/security/secure-folders', async (req) => secure.add(body(req) as Parameters<SecureFolderService['add']>[0]));
   app.post('/api/security/secure-folders/:id/:action', async (req) => {
     const { id, action } = req.params as { id: string; action: string };
     if (action !== 'lock' && action !== 'unlock') throw badRequest('Thao tác không hợp lệ');
@@ -102,7 +109,7 @@ export async function accessRoutes(app: FastifyInstance, deps: { access: AccessS
 
   // ---- Quét mã độc
   app.get('/api/security/malware', async () => ({ last: malware.last(), quarantine: malware.quarantined(), roots: malware.roots(), ignored: malware.ignored() }));
-  app.post('/api/security/malware/scan', async (req) => malware.scan(body(req) as { paths?: string[] }));
+  app.post('/api/security/malware/scan', async (req) => malware.scan(body(req) as Parameters<MalwareService['scan']>[0]));
   app.post('/api/security/malware/preview', async (req) => malware.preview(String(body(req).file ?? '')));
   app.post('/api/security/malware/mark-safe', async (req) => ({ count: malware.markSafe(((body(req).files as string[]) ?? []).map(String)) }));
   app.delete('/api/security/malware/ignore/:id', async (req) => {

@@ -123,11 +123,22 @@ export function wsUrl(path: string, params: Record<string, string | number> = {}
   return url.toString();
 }
 
-/** Lấy vé tải file có thời hạn 5 phút (gắn expires vào params URL, chặn IDM) */
+/** Lấy vé tải file có thời hạn 5 phút (gắn expires vào params URL) */
 export async function getDownloadTicket(filePath: string): Promise<{ url: string; fullUrl: string; expires: number; ttl: number }> {
   const data = await post<{ url: string; expires: number; ttl: number }>('/api/files/download-ticket', { path: filePath });
   const fullUrl = new URL(data.url, window.location.origin).toString();
   return { ...data, fullUrl };
+}
+
+/** Tải thư mục: VPS tự nén zip tạm (xoá ngay sau khi tải), trình duyệt nhận file .zip */
+export async function downloadFolder(dirPath: string): Promise<void> {
+  const { url } = await post<{ url: string }>('/api/files/download-folder', { path: dirPath });
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = '';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 /** Tải file an toàn: xin vé ngắn hạn 5 phút rồi để trình duyệt tự tải (chặn IDM) */

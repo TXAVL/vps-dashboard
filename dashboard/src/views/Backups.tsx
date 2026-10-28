@@ -200,6 +200,50 @@ export default function Backups() {
             ))}
           </div>
 
+          {(() => {
+            const panelBackups = data.items.filter((b) => b.target.kind === 'panel').sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+            const panelSchedules = data.schedules.filter((x) => x.target.kind === 'panel');
+            return (
+              <Card
+                title="Sao lưu cấu hình ZenPanel"
+                icon={Archive}
+                actions={
+                  <div className="flex gap-2">
+                    <Button size="xs" variant="soft" icon={CalendarClock} onClick={() => setScheduling({ target: { kind: 'panel' }, name: 'Cấu hình ZenPanel', every: 'daily', time: '02:00', keep: 7, hours: 6, day: 0, enabled: true })}>
+                      {panelSchedules.length ? 'Thêm lịch' : 'Đặt lịch tự động'}
+                    </Button>
+                    <Button size="xs" variant="primary" icon={Plus} onClick={() => setCreating({ kind: 'panel', format: 'zip' })}>Sao lưu ngay</Button>
+                  </div>
+                }
+                bodyClassName="p-0"
+              >
+                <div className="border-b border-slate-800/80 px-4 py-3 text-xs text-slate-400">
+                  Gồm tài khoản, cấu hình app, website, AI key, lịch... Chứa dữ liệu nhạy cảm nên hãy giữ file ở nơi an toàn. Thư mục lưu trên VPS: <code className="mono text-slate-300">{data.sources.backupDir}</code>
+                  {panelSchedules.length > 0 && <> · Lịch đang chạy: {panelSchedules.map((x) => x.name).join(', ')}</>}
+                </div>
+                {panelBackups.length === 0 ? (
+                  <EmptyState icon={Archive} title="Chưa có bản sao lưu cấu hình" description="Bấm “Sao lưu ngay” hoặc đặt lịch tự động, file sẽ hiện ở đây để tải về." />
+                ) : (
+                  <div className="divide-y divide-slate-800/80">
+                    {panelBackups.slice(0, 6).map((b) => (
+                      <div key={b.id} className={cn('flex flex-wrap items-center gap-3 px-4 py-2.5 text-sm', !b.exists && 'opacity-50')}>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 font-semibold text-slate-100">
+                            {formatDate(b.createdAt)} {getFormatBadge(b.file)} {b.scheduleId && <Badge tone="blue">Tự động</Badge>} {!b.exists && <Badge tone="red">Mất file</Badge>}
+                          </div>
+                          <div className="mono truncate text-xs text-slate-500">{b.file}</div>
+                        </div>
+                        <span className="mono text-xs text-slate-400">{formatBytes(b.size)}</span>
+                        <Button size="xs" variant="primary" icon={Download} disabled={!b.exists} onClick={() => void download(b)}>Tải về</Button>
+                        <IconButton icon={RotateCcw} title="Khôi phục" disabled={!b.exists} onClick={() => setRestoring({ item: b, dest: '' })} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            );
+          })()}
+
           {data.schedules.length > 0 && (
             <Card title="Lịch sao lưu tự động" icon={CalendarClock} bodyClassName="p-0">
               <div className="divide-y divide-slate-800/80">
@@ -213,6 +257,28 @@ export default function Backups() {
                         {s.lastRunAt && <> · lần cuối {formatRelative(s.lastRunAt)}</>}
                       </div>
                       {s.lastStatus === 'error' && <div className="text-xs text-red-300">{s.lastError}</div>}
+                      {(() => {
+                        const files = data.items.filter((b) => b.scheduleId === s.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+                        if (!files.length) return <div className="mt-1 text-[11px] text-slate-600">Chưa có file nào từ lịch này. Bấm ▶ để chạy thử.</div>;
+                        return (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {files.slice(0, 5).map((b, i) => (
+                              <button
+                                key={b.id}
+                                type="button"
+                                disabled={!b.exists}
+                                onClick={() => void download(b)}
+                                data-tip={`${b.file}`}
+                                className="flex items-center gap-1.5 rounded-lg border border-slate-700/60 bg-ink-950/60 px-2 py-1 text-[11px] text-slate-300 transition hover:border-zen-blue hover:text-white disabled:opacity-40"
+                              >
+                                <Download className="size-3" />
+                                {i === 0 ? 'Mới nhất' : formatRelative(b.createdAt)} · {formatBytes(b.size)}
+                              </button>
+                            ))}
+                            {files.length > 5 && <span className="self-center text-[11px] text-slate-500">+{files.length - 5} bản khác ở bảng bên dưới</span>}
+                          </div>
+                        );
+                      })()}
                     </div>
                     {s.lastStatus && <Badge tone={s.lastStatus === 'success' ? 'green' : 'red'}>{s.lastStatus === 'success' ? 'OK' : 'Lỗi'}</Badge>}
                     <IconButton icon={Play} title="Chạy ngay" onClick={() => void runJob(() => post<Job>(`/api/backups/schedules/${s.id}/run`), () => void reload())} />

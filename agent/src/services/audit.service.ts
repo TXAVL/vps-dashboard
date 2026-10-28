@@ -1,6 +1,6 @@
 // ZenPanel - Nhật ký thao tác trên panel (audit): ai, lúc nào, từ IP nào, làm gì (mọi request ghi dữ liệu)
 import type { FastifyInstance } from 'fastify';
-import { decodeToken, tokenFromRequest } from '../core/auth.js';
+import { clientIp, decodeToken, tokenFromRequest } from '../core/auth.js';
 import { readJson, writeJson } from '../core/store.js';
 
 const FILE = 'audit.json';
@@ -75,7 +75,7 @@ export class AuditService {
       this.entries().unshift({
         at: new Date().toISOString(),
         user,
-        ip: req.ip,
+        ip: clientIp(req),
         method: req.method,
         path,
         status: reply.statusCode,

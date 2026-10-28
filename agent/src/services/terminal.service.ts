@@ -32,11 +32,11 @@ export async function listShellAliases(): Promise<TerminalAlias[]> {
       try {
         const text = await readFile(f, 'utf8');
         // Match: alias name='command' or alias name="command" or alias name=cmd
-        const aliasRegex = /^\s*alias\s+([a-zA-Z0-9_\-.:]+)=(?:['"]([^'"]+)['"]|([^\s#]+))/gm;
+        const aliasRegex = /^\s*alias\s+([a-zA-Z0-9_\-.:]+)=(?:'([^']*)'|"([^"]*)"|([^\s#]+))/gm;
         let match: RegExpExecArray | null;
         while ((match = aliasRegex.exec(text)) !== null) {
           const name = match[1];
-          const command = match[2] || match[3] || '';
+          const command = match[2] || match[3] || match[4] || '';
           if (name && !seen.has(name)) {
             seen.add(name);
             list.push({ name, command, source: path.basename(f) });

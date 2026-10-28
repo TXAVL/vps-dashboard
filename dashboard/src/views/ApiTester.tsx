@@ -540,6 +540,7 @@ export default function ApiTester() {
     () => [
       { key: 'baseUrl', value: `${tunnel?.status === 'online' && tunnel.url ? tunnel.url : window.location.origin}/zen/v1`, enabled: true },
       { key: 'apiKey', value: gatewayKey, enabled: true },
+      { key: 'model', value: 'auto', enabled: true },
       { key: 'panelUrl', value: window.location.origin, enabled: true },
       { key: 'panelToken', value: getToken() || '', enabled: true },
     ],

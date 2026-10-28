@@ -113,7 +113,7 @@ function defaultWorkspace(): Workspace {
         id: 'zen-gateway-anthropic-ollama',
         name: 'ZenPanel AI Gateway (Anthropic & Ollama)',
         requests: [
-          blankRequest('01. [Anthropic] Messages (Claude Code / Cline)', 'POST', '{{baseUrl}}/v1/messages', {
+          blankRequest('01. [Anthropic] Messages (Claude Code / Cline)', 'POST', '{{baseUrl}}/messages', {
             auth: { type: 'none' },
             headers: [
               { key: 'x-api-key', value: '{{apiKey}}', enabled: true },
@@ -126,7 +126,7 @@ function defaultWorkspace(): Workspace {
               messages: [{ role: 'user', content: 'Xin chào Claude! Bạn hỗ trợ những gì?' }],
             }),
           }),
-          blankRequest('02. [Anthropic] Messages Streaming (SSE)', 'POST', '{{baseUrl}}/v1/messages', {
+          blankRequest('02. [Anthropic] Messages Streaming (SSE)', 'POST', '{{baseUrl}}/messages', {
             auth: { type: 'none' },
             headers: [
               { key: 'x-api-key', value: '{{apiKey}}', enabled: true },
@@ -140,10 +140,10 @@ function defaultWorkspace(): Workspace {
               messages: [{ role: 'user', content: 'Viết 1 đoạn code Python ngắn tính giai thừa.' }],
             }),
           }),
-          blankRequest('03. [Ollama] Danh sách Models (Tags)', 'GET', '{{baseUrl}}/api/tags', { auth: { type: 'none' } }),
-          blankRequest('04. [Ollama] Kiểm tra Version', 'GET', '{{baseUrl}}/api/version', { auth: { type: 'none' } }),
-          blankRequest('05. [Ollama] Chat Completions', 'POST', '{{baseUrl}}/api/chat', {
-            auth: { type: 'none' },
+          blankRequest('03. [Ollama] Danh sách Models (Tags)', 'GET', '{{panelUrl}}/ollama/api/tags', { auth: { type: 'bearer', token: '{{apiKey}}' } }),
+          blankRequest('04. [Ollama] Kiểm tra Version', 'GET', '{{panelUrl}}/ollama/api/version', { auth: { type: 'none' } }),
+          blankRequest('05. [Ollama] Chat Completions', 'POST', '{{panelUrl}}/ollama/api/chat', {
+            auth: { type: 'bearer', token: '{{apiKey}}' },
             headers: [{ key: 'Content-Type', value: 'application/json', enabled: true }],
             body: json({
               model: '{{model}}',
@@ -151,8 +151,8 @@ function defaultWorkspace(): Workspace {
               stream: false,
             }),
           }),
-          blankRequest('06. [Ollama] Chat Streaming (NDJSON)', 'POST', '{{baseUrl}}/api/chat', {
-            auth: { type: 'none' },
+          blankRequest('06. [Ollama] Chat Streaming (NDJSON)', 'POST', '{{panelUrl}}/ollama/api/chat', {
+            auth: { type: 'bearer', token: '{{apiKey}}' },
             headers: [{ key: 'Content-Type', value: 'application/json', enabled: true }],
             body: json({
               model: '{{model}}',
@@ -160,8 +160,8 @@ function defaultWorkspace(): Workspace {
               stream: true,
             }),
           }),
-          blankRequest('07. [Ollama] Generate (Prompt)', 'POST', '{{baseUrl}}/api/generate', {
-            auth: { type: 'none' },
+          blankRequest('07. [Ollama] Generate (Prompt)', 'POST', '{{panelUrl}}/ollama/api/generate', {
+            auth: { type: 'bearer', token: '{{apiKey}}' },
             headers: [{ key: 'Content-Type', value: 'application/json', enabled: true }],
             body: json({
               model: '{{model}}',
@@ -169,7 +169,7 @@ function defaultWorkspace(): Workspace {
               stream: false,
             }),
           }),
-          blankRequest('08. [Ollama] Models Đang Chạy (ps)', 'GET', '{{baseUrl}}/api/ps', { auth: { type: 'none' } }),
+          blankRequest('08. [Ollama] Models Đang Chạy (ps)', 'GET', '{{panelUrl}}/ollama/api/ps', { auth: { type: 'bearer', token: '{{apiKey}}' } }),
         ],
       },
       {
@@ -197,7 +197,7 @@ function defaultWorkspace(): Workspace {
           blankRequest('07. [Clean] Quét rác hệ thống & Logs', 'GET', '{{panelUrl}}/api/system/clean/scan', {
             auth: { type: 'bearer', token: '{{panelToken}}' },
           }),
-          blankRequest('08. [Clean] Tối ưu giải phóng RAM tức thì', 'POST', '{{panelUrl}}/api/system/clean/ram', {
+          blankRequest('08. [Clean] Tối ưu giải phóng RAM tức thì', 'POST', '{{panelUrl}}/api/system/memory/optimize', {
             auth: { type: 'bearer', token: '{{panelToken}}' },
           }),
           blankRequest('09. [Backups] Danh sách bản sao lưu VPS', 'GET', '{{panelUrl}}/api/backups', {
@@ -253,6 +253,26 @@ export class HttpClientService {
     if (legacyIdx >= 0) {
       saved.collections.splice(legacyIdx, 1);
       modified = true;
+    }
+
+    // Sửa các đường dẫn mẫu sai của phiên bản cũ trong collection đã lưu (chỉ đổi khi khớp đúng URL cũ)
+    const FIXED_URLS: Record<string, string> = {
+      '{{baseUrl}}/v1/messages': '{{baseUrl}}/messages',
+      '{{baseUrl}}/api/tags': '{{panelUrl}}/ollama/api/tags',
+      '{{baseUrl}}/api/version': '{{panelUrl}}/ollama/api/version',
+      '{{baseUrl}}/api/chat': '{{panelUrl}}/ollama/api/chat',
+      '{{baseUrl}}/api/generate': '{{panelUrl}}/ollama/api/generate',
+      '{{baseUrl}}/api/ps': '{{panelUrl}}/ollama/api/ps',
+      '{{panelUrl}}/api/system/clean/ram': '{{panelUrl}}/api/system/memory/optimize',
+    };
+    for (const col of saved.collections) {
+      for (const r of col.requests ?? []) {
+        const fixed = FIXED_URLS[r.url];
+        if (!fixed) continue;
+        r.url = fixed;
+        if (fixed.includes('/ollama/api/') && !fixed.endsWith('/version') && r.auth?.type === 'none') r.auth = { type: 'bearer', token: '{{apiKey}}' };
+        modified = true;
+      }
     }
 
     for (const d of defaults) {

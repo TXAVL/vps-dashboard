@@ -53,7 +53,7 @@ import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButto
 import { WindowMockup } from '../components/layout/WindowMockup';
 import { Highlight } from '../components/Highlight';
 import { txaformat } from '../lib/txaformat';
-import { api, downloadFile, getDownloadTicket, get, post, put } from '../lib/api';
+import { api, downloadFile, downloadFolder, getDownloadTicket, get, post, put } from '../lib/api';
 import { formatBytes, formatDate } from '../lib/format';
 import { useApi } from '../lib/hooks';
 import { usePanel } from '../lib/panel';
@@ -240,7 +240,7 @@ function MediaPreviewModal({ file, onClose, onShare }: { file: FileEntry; onClos
             <CopyButton value={file.path} />
             {onShare && (
               <Button size="xs" variant="soft" icon={Link2} onClick={() => onShare(file)}>
-                Link 5 phút (Chặn IDM)
+                Link 5 phút
               </Button>
             )}
             <Button size="xs" variant="primary" icon={Download} onClick={() => void downloadFile(file.path)}>
@@ -324,11 +324,11 @@ function RemoteDownloadModal({
   };
 
   return (
-    <Modal open={true} title="Remote Download an toàn & Chặn IDM (Tải về VPS)" onClose={onClose} size="md">
+    <Modal open={true} title="Remote Download an toàn (Tải về VPS)" onClose={onClose} size="md">
       <form onSubmit={handleDownload} className="space-y-4">
         <Notice>
           Máy chủ sẽ kết nối trực tiếp để tải file từ liên kết vào: <code className="mono">{currentPath}</code>.
-          Được bảo vệ bằng cơ chế <strong>Anti-SSRF</strong> và tải độc lập trên VPS <strong>chống bắt link IDM</strong>.
+          Được bảo vệ bằng cơ chế <strong>Anti-SSRF</strong> và tải độc lập trên VPS.
         </Notice>
 
         <Field label="URL file tải về" hint="Hỗ trợ link trực tiếp HTTP/HTTPS, link có gắn params expires (5 phút) hoặc link mã hóa Base64">
@@ -447,7 +447,6 @@ function ShareDownloadModal({
           {secondsLeft > 0 ? (
             <div>
               Liên kết tải này được bảo vệ bằng vé điện tử có <strong>thời hạn 5 phút</strong> (gắn trực tiếp tham số <code className="mono">expires</code> vào URL).
-              Đồng thời hệ thống tự động <strong>chặn các trình bắt link IDM/Download Manager</strong> để bảo đảm an toàn máy chủ.
             </div>
           ) : (
             <div>Liên kết tải đã hết hạn (quá 5 phút). Vui lòng đóng và tạo lại liên kết mới.</div>
@@ -1085,6 +1084,7 @@ export default function FileManager() {
   const [uploading, setUploading] = useState(false);
   const [compressing, setCompressing] = useState(false);
   const [viewMode, setViewMode] = useState<'standard' | 'ultra' | 'pro'>('standard');
+  const [menu, setMenu] = useState<{ x: number; y: number; entry: FileEntry | null } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const { confirm, prompt, run, toast } = useFeedback();
   const { runJob } = useJobs();
@@ -1291,13 +1291,13 @@ export default function FileManager() {
     await load();
   };
 
-  const compress = async (format: 'zip' | 'tar.gz') => {
-    if (!listing || !selectedEntries.length) return;
-    const base = selectedEntries.length === 1 ? selectedEntries[0].name : 'archive';
+  const compress = async (format: 'zip' | 'tar.gz', targets: FileEntry[] = selectedEntries) => {
+    if (!listing || !targets.length) return;
+    const base = targets.length === 1 ? targets[0].name : 'archive';
     const name = await prompt({ title: 'Nén file', label: 'Tên file nén', defaultValue: `${base}.${format}`, confirmLabel: 'Nén' });
     if (!name) return;
     setCompressing(true);
-    await run(() => post('/api/files/compress', { paths: selectedEntries.map((e) => e.path), destination: joinPath(listing.path, name, sep), format }), `Đã nén thành ${name}`);
+    await run(() => post('/api/files/compress', { paths: targets.map((e) => e.path), destination: joinPath(listing.path, name, sep), format }), `Đã nén thành ${name}`);
     setCompressing(false);
     await load();
   };
@@ -1311,6 +1311,34 @@ export default function FileManager() {
     await run(() => post('/api/files/extract', { path: entry.path, destination: joinPath(listing.path, name, sep) }), `Đã giải nén vào ${name}`);
     setCompressing(false);
     await load();
+  };
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    window.addEventListener('click', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
+
+  const openMenu = (event: React.MouseEvent, entry: FileEntry | null) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (entry && !selected.has(entry.path)) setSelected(new Set([entry.path]));
+    setMenu({ x: Math.min(event.clientX, window.innerWidth - 230), y: Math.min(event.clientY, window.innerHeight - 380), entry });
+  };
+
+  const downloadDir = async (entry: FileEntry) => {
+    toast(`Đang nén thư mục ${entry.name} thành zip...`, 'info');
+    await run(() => downloadFolder(entry.path), `Đang tải ${entry.name}.zip (file zip trên VPS sẽ tự xoá)`);
   };
 
   const upload = async (files: FileList | File[]) => {
@@ -2099,6 +2127,7 @@ export default function FileManager() {
               }}
               onDragLeave={() => setDragging(false)}
               onDrop={onDrop}
+              onContextMenu={(e) => openMenu(e, null)}
             >
               {dragging && (
                 <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -2172,6 +2201,7 @@ export default function FileManager() {
                               selected.has(entry.path) && 'bg-zen-blue/15 hover:bg-zen-blue/20',
                             )}
                             onDoubleClick={() => openEntry(entry)}
+                            onContextMenu={(e) => openMenu(e, entry)}
                           >
                             <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                               <input
@@ -2237,6 +2267,7 @@ export default function FileManager() {
                                   !isDir && <IconButton icon={Pencil} title="Sửa code" onClick={() => setEditing(entry)} />
                                 )}
                                 {isArchive(entry.name) && <IconButton icon={PackageOpen} title="Giải nén" onClick={() => void extract(entry)} />}
+                                {isDir && <IconButton icon={Download} title="Tải thư mục (tự nén zip)" onClick={() => void downloadDir(entry)} />}
                                 {!isDir && (
                                   <>
                                     <IconButton icon={Download} title="Tải về" onClick={() => void run(() => downloadFile(entry.path))} />
@@ -2305,6 +2336,69 @@ export default function FileManager() {
           </div>
         </div>
       )}
+
+
+      {menu && (() => {
+        const e = menu.entry;
+        const targets = e ? (selected.has(e.path) && selectedEntries.length > 1 ? selectedEntries : [e]) : [];
+        const multi = targets.length > 1;
+        const Item = ({ icon: I, label, onClick, danger, disabled }: { icon: typeof Copy; label: string; onClick: () => void; danger?: boolean; disabled?: boolean }) => (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              setMenu(null);
+              onClick();
+            }}
+            className={cn('flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs transition disabled:opacity-40', danger ? 'text-rose-300 hover:bg-rose-500/15' : 'text-slate-200 hover:bg-zen-blue/20')}
+          >
+            <I className="size-3.5 shrink-0 text-slate-400" /> {label}
+          </button>
+        );
+        const Sep = () => <div className="my-1 h-px bg-slate-700/60" />;
+        return (
+          <div
+            className="fixed z-[100] w-56 rounded-xl border border-slate-700/70 bg-[#0f1626]/95 p-1.5 shadow-2xl backdrop-blur"
+            style={{ left: menu.x, top: menu.y }}
+            onClick={(ev) => ev.stopPropagation()}
+            onContextMenu={(ev) => ev.preventDefault()}
+          >
+            {e ? (
+              <>
+                {!multi && <Item icon={e.type === 'directory' ? FolderOpen : Eye} label={e.type === 'directory' ? 'Mở thư mục' : 'Mở'} onClick={() => openEntry(e)} />}
+                {!multi && e.type !== 'directory' && <Item icon={Pencil} label="Sửa bằng Code Editor" onClick={() => setEditing(e)} />}
+                {!multi && e.type === 'directory' && <Item icon={Download} label="Tải xuống (tự nén zip)" onClick={() => void downloadDir(e)} />}
+                {!multi && e.type !== 'directory' && <Item icon={Download} label="Tải xuống" onClick={() => void run(() => downloadFile(e.path))} />}
+                {!multi && e.type !== 'directory' && <Item icon={Link2} label="Link tải 5 phút" onClick={() => setShareFile(e)} />}
+                {!multi && isArchive(e.name) && <Item icon={PackageOpen} label="Giải nén tại đây" onClick={() => void extract(e)} />}
+                <Sep />
+                <Item icon={Copy} label="Sao chép" onClick={() => { setClipboard({ paths: targets.map((t) => t.path), mode: 'copy' }); toast(`Đã sao chép ${targets.length} mục`); }} />
+                <Item icon={Scissors} label="Cắt" onClick={() => { setClipboard({ paths: targets.map((t) => t.path), mode: 'move' }); toast(`Đã cắt ${targets.length} mục`); }} />
+                <Item icon={ClipboardPaste} label="Dán vào thư mục này" disabled={!clipboard} onClick={() => void paste()} />
+                <Sep />
+                <Item icon={FileArchive} label="Nén thành .zip" onClick={() => void compress('zip', targets)} />
+                <Item icon={FileArchive} label="Nén thành .tar.gz" onClick={() => void compress('tar.gz', targets)} />
+                <Sep />
+                {!multi && <Item icon={TextCursorInput} label="Đổi tên" onClick={() => void rename(e)} />}
+                <Item icon={SlidersHorizontal} label="Phân quyền (chmod)" onClick={() => setChmodEntries(targets)} />
+                <Item icon={Copy} label="Sao chép đường dẫn" onClick={() => { void navigator.clipboard.writeText(targets.map((t) => t.path).join('\n')); toast('Đã sao chép đường dẫn'); }} />
+                <Sep />
+                <Item icon={Trash2} danger label={multi ? `Xoá ${targets.length} mục` : 'Xoá'} onClick={() => void remove(targets)} />
+              </>
+            ) : (
+              <>
+                <Item icon={FilePlus} label="Tạo file mới" onClick={() => void create('file')} />
+                <Item icon={FolderPlus} label="Tạo thư mục mới" onClick={() => void create('directory')} />
+                <Item icon={ClipboardPaste} label="Dán" disabled={!clipboard} onClick={() => void paste()} />
+                <Sep />
+                <Item icon={Upload} label="Tải lên file" onClick={() => fileInput.current?.click()} />
+                <Item icon={RefreshCw} label="Làm mới" onClick={() => void load()} />
+                {listing && <Item icon={Copy} label="Sao chép đường dẫn thư mục" onClick={() => { void navigator.clipboard.writeText(listing.path); toast('Đã sao chép đường dẫn'); }} />}
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {editing && <CodeEditorModal file={editing} onClose={() => setEditing(null)} />}
       {previewFile && <MediaPreviewModal file={previewFile} onClose={() => setPreviewFile(null)} onShare={(f) => setShareFile(f)} />}

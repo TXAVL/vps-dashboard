@@ -434,6 +434,8 @@ export async function aiGatewayRoutes(app: FastifyInstance, deps: { gateway: AiG
   app.get('/postman', postmanHandler);
 
   // /health công khai để kiểm tra gateway sống, mọi endpoint khác cần API key tzp_
+  // Một số client (Ollama/Open WebUI, Continue...) dò /api/version trên base URL: trả lời để khỏi báo 404
+  app.get('/api/version', async () => ({ version: '0.6.8', name: 'TXAZENPANEL AI Gateway' }));
   app.get('/health', async () => ({ status: gateway.getSettings().enabled ? 'ok' : 'disabled', name: 'TXAZENPANEL AI Gateway', time: new Date().toISOString() }));
 
   app.register(async (secured) => {

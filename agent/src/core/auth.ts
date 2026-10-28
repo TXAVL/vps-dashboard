@@ -1,4 +1,5 @@
 // ZenPanel - Xác thực: mật khẩu băm scrypt + token ký HMAC (không cần database)
+import { networkInterfaces } from 'node:os';
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { config } from '../config.js';
@@ -287,7 +288,7 @@ function sign(payload: string, secret: string): string {
 
 /** Tạo session mới khi đăng nhập. Không có request (CLI) thì gắn nhãn "Link đăng nhập nhanh" để vẫn hiện trong danh sách phiên */
 export function createSession(req: FastifyRequest | null, username: string, expiresAt: number, label = 'Link đăng nhập nhanh (CLI)'): UserSession {
-  const ip = req ? clientIp(req) : 'máy chủ';
+  const ip = req ? clientIp(req) : serverIp();
   const country = req ? clientCountry(req) : undefined;
   const ua = req ? ((req.headers['user-agent'] as string) || '') : 'zenpanel-cli';
   const parsed: ParsedClientInfo = req ? parseUserAgent(ua) : { browser: 'ZenPanel CLI', os: 'Dòng lệnh', device: label, deviceType: 'other' };
@@ -431,18 +432,35 @@ export function clientCountry(req: FastifyRequest): string | undefined {
   return undefined;
 }
 
+/** Bỏ tiền tố IPv4-mapped (::ffff:1.2.3.4 -> 1.2.3.4) để hiển thị IPv4 đúng dạng */
+export function normalizeIp(ip: string): string {
+  const v = ip.trim().replace(/^\[|\]$/g, '');
+  const m = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(v);
+  return m ? m[1] : v === '::1' ? '127.0.0.1' : v;
+}
+
+/** IPv4 LAN/public đầu tiên của máy chủ, dùng cho phiên tạo từ CLI (không có request) */
+function serverIp(): string {
+  for (const list of Object.values(networkInterfaces())) {
+    for (const i of list ?? []) if (i.family === 'IPv4' && !i.internal) return i.address;
+  }
+  return '127.0.0.1';
+}
+
 /** IP thật của client: hỗ trợ Cloudflare Tunnel, reverse proxy x-forwarded-for, x-real-ip */
 export function clientIp(req: FastifyRequest): string {
   const cfIp = req.headers['cf-connecting-ip'];
-  if (typeof cfIp === 'string' && cfIp.trim()) return cfIp.trim();
+  if (typeof cfIp === 'string' && cfIp.trim()) return normalizeIp(cfIp);
   const xForwardedFor = req.headers['x-forwarded-for'];
   if (typeof xForwardedFor === 'string' && xForwardedFor.trim()) {
-    const first = xForwardedFor.split(',')[0].trim();
+    const list = xForwardedFor.split(',').map((x) => normalizeIp(x)).filter(Boolean);
+    // Ưu tiên IPv4 nếu chuỗi proxy có cả hai loại
+    const first = list.find((x) => !x.includes(':')) ?? list[0];
     if (first) return first;
   }
   const xRealIp = req.headers['x-real-ip'];
-  if (typeof xRealIp === 'string' && xRealIp.trim()) return xRealIp.trim();
-  return req.ip;
+  if (typeof xRealIp === 'string' && xRealIp.trim()) return normalizeIp(xRealIp);
+  return normalizeIp(req.ip);
 }
 
 const failures = new Map<string, { count: number; until: number }>();

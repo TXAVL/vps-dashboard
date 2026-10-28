@@ -5,9 +5,45 @@ import { useFeedback } from '../components/feedback';
 import { Badge, Button, Card, CopyButton, EmptyState, ErrorBox, Field, IconButton, Modal, PageHeader, Select, Spinner, cn, td, th, tr } from '../components/ui';
 import { del, post } from '../lib/api';
 import { formatDate, formatRelative } from '../lib/format';
+import { McpClients, McpLogs } from './McpClients';
 import { useApi } from '../lib/hooks';
 
 interface Token { id: string; name: string; hint: string; scope: 'read' | 'full'; createdAt: string; expiresAt: string | null; lastUsedAt: string | null; lastIp: string | null; uses: number }
+
+const EXPIRY_OPTIONS = [
+  { id: 'never', label: 'Không hết hạn' },
+  { id: 'h1', label: '1 giờ' },
+  { id: 'h6', label: '6 giờ' },
+  { id: 'd1', label: '24 giờ' },
+  { id: 'd3', label: '3 ngày' },
+  { id: 'd7', label: '7 ngày' },
+  { id: 'd14', label: '14 ngày' },
+  { id: 'd30', label: '30 ngày' },
+  { id: 'd60', label: '60 ngày' },
+  { id: 'd90', label: '90 ngày' },
+  { id: 'd180', label: '180 ngày' },
+  { id: 'd365', label: '1 năm' },
+  { id: 'days', label: 'Tuỳ chỉnh: số ngày...' },
+  { id: 'date', label: 'Tuỳ chỉnh: chọn ngày giờ...' },
+];
+
+/** Đổi lựa chọn thời hạn thành tham số gửi API */
+function expiryPayload(creating: { expiry: string; customDays: string; customDate: string }): { expiresInDays: number | null; customExpiresAt: string | null } | string {
+  const e = creating.expiry;
+  if (e === 'never') return { expiresInDays: null, customExpiresAt: null };
+  if (e === 'date') {
+    const t = new Date(creating.customDate).getTime();
+    if (!creating.customDate || !Number.isFinite(t) || t <= Date.now()) return 'Chọn ngày giờ hết hạn ở tương lai';
+    return { expiresInDays: null, customExpiresAt: new Date(t).toISOString() };
+  }
+  if (e === 'days') {
+    const d = Number(creating.customDays);
+    if (!Number.isFinite(d) || d <= 0 || d > 3650) return 'Số ngày phải từ 1 đến 3650';
+    return { expiresInDays: d, customExpiresAt: null };
+  }
+  if (e.startsWith('h')) return { expiresInDays: null, customExpiresAt: new Date(Date.now() + Number(e.slice(1)) * 3_600_000).toISOString() };
+  return { expiresInDays: Number(e.slice(1)), customExpiresAt: null };
+}
 
 function Snippet({ label, code }: { label: string; code: string }) {
   return (
@@ -23,16 +59,21 @@ function Snippet({ label, code }: { label: string; code: string }) {
 
 export default function ApiAccess() {
   const tokens = useApi<Token[]>('/api/tokens');
-  const [creating, setCreating] = useState<{ name: string; scope: 'read' | 'full'; days: string } | null>(null);
+  const [creating, setCreating] = useState<{ name: string; scope: 'read' | 'full'; expiry: string; customDays: string; customDate: string } | null>(null);
   const [created, setCreated] = useState<{ token: string; info: Token } | null>(null);
   const [copied, setCopied] = useState(false);
-  const { run, confirm } = useFeedback();
+  const { run, confirm, toast } = useFeedback();
   const origin = window.location.origin;
   const sample = created?.token ?? 'zpt_<TOKEN_CỦA_BẠN>';
 
   const create = async () => {
     if (!creating) return;
-    const res = await run(() => post<{ token: string; info: Token }>('/api/tokens', { name: creating.name, scope: creating.scope, expiresInDays: creating.days ? Number(creating.days) : null }));
+    const exp = expiryPayload(creating);
+    if (typeof exp === 'string') {
+      toast(exp, 'error');
+      return;
+    }
+    const res = await run(() => post<{ token: string; info: Token }>('/api/tokens', { name: creating.name, scope: creating.scope, ...exp }));
     if (res) {
       setCreated(res);
       setCreating(null);
@@ -46,7 +87,7 @@ export default function ApiAccess() {
         title="Kết nối API & MCP"
         description="Điều khiển VPS từ Claude, Cursor, n8n hoặc script của bạn bằng API token, không cần đưa mật khẩu panel"
         icon={BrainCircuit}
-        actions={<Button variant="primary" icon={Plus} onClick={() => setCreating({ name: '', scope: 'read', days: '' })}>Tạo token</Button>}
+        actions={<Button variant="primary" icon={Plus} onClick={() => setCreating({ name: '', scope: 'read', expiry: 'd30', customDays: '14', customDate: '' })}>Tạo token</Button>}
       />
 
       <div className="space-y-4">
@@ -86,6 +127,8 @@ export default function ApiAccess() {
           )}
         </Card>
 
+        <McpClients origin={origin} token={sample} />
+
         <div className="grid gap-4 xl:grid-cols-2">
           <Card title="Kết nối AI qua MCP" icon={BrainCircuit}>
             <div className="space-y-4">
@@ -96,8 +139,6 @@ export default function ApiAccess() {
                 <code className="mono min-w-0 flex-1 truncate text-sm text-emerald-300">{origin}/mcp</code>
                 <CopyButton value={`${origin}/mcp`} />
               </div>
-              <Snippet label="Claude Code" code={`claude mcp add --transport http zenpanel ${origin}/mcp \\\n  --header "Authorization: Bearer ${sample}"`} />
-              <Snippet label="Cursor / Claude Desktop / VS Code (file mcp.json)" code={JSON.stringify({ mcpServers: { zenpanel: { type: 'http', url: `${origin}/mcp`, headers: { Authorization: `Bearer ${sample}` } } } }, null, 2)} />
               <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-200">
                 Nếu bạn truy cập panel qua link <b>trycloudflare.com</b>, link này đổi mỗi lần máy chủ khởi động lại — nên dùng IP hoặc domain cố định cho MCP.
               </div>
@@ -122,6 +163,8 @@ export default function ApiAccess() {
             </div>
           </Card>
         </div>
+
+        <McpLogs />
       </div>
 
       {creating && (
@@ -134,15 +177,21 @@ export default function ApiAccess() {
                 <option value="full">Đầy đủ (có thể thay đổi hệ thống)</option>
               </Select>
             </Field>
-            <Field label="Hết hạn">
-              <Select value={creating.days} onChange={(e) => setCreating({ ...creating, days: e.target.value })}>
-                <option value="">Không hết hạn</option>
-                <option value="7">7 ngày</option>
-                <option value="30">30 ngày</option>
-                <option value="90">90 ngày</option>
-                <option value="365">1 năm</option>
+            <Field label="Thời hạn" hint={creating.expiry === 'never' ? 'Token sống mãi tới khi bạn thu hồi. Chỉ nên dùng cho thiết bị tin cậy.' : 'Hết hạn là tự mất hiệu lực, AI sẽ bị từ chối.'}>
+              <Select value={creating.expiry} onChange={(e) => setCreating({ ...creating, expiry: e.target.value })}>
+                {EXPIRY_OPTIONS.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
               </Select>
             </Field>
+            {creating.expiry === 'days' && (
+              <Field label="Số ngày (1 – 3650)">
+                <input type="number" min={1} max={3650} className="input" value={creating.customDays} onChange={(e) => setCreating({ ...creating, customDays: e.target.value })} />
+              </Field>
+            )}
+            {creating.expiry === 'date' && (
+              <Field label="Hết hạn vào lúc">
+                <input type="datetime-local" className="input" value={creating.customDate} onChange={(e) => setCreating({ ...creating, customDate: e.target.value })} />
+              </Field>
+            )}
           </div>
         </Modal>
       )}

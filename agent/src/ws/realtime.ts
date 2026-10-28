@@ -1,5 +1,6 @@
 // ZenPanel - WebSocket: đẩy metrics realtime và Web Terminal (PowerShell / Bash)
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import os from 'node:os';
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
@@ -63,6 +64,21 @@ async function openShell(ctx: AppContext, cols: number, rows: number): Promise<{
   };
 }
 
+/** Tiền tố tin nhắn điều khiển gửi cho client (không in ra terminal) */
+const CONTROL = '\u0000zp:';
+/** Giữ shell sống sau khi mất kết nối để client nối lại được */
+const TERMINAL_GRACE_MS = 10 * 60_000;
+
+interface TerminalSession {
+  id: string;
+  shell: PtyLike;
+  socket: WebSocket | null;
+  /** Output phát sinh khi chưa có socket, phát lại khi nối lại */
+  missed: string;
+  killTimer: NodeJS.Timeout | null;
+}
+const terminals = new Map<string, TerminalSession>();
+
 function authorize(socket: WebSocket, token: string | undefined): boolean {
   if (verifyToken(token)) return true;
   socket.close(4401, 'Unauthorized');
@@ -89,41 +105,84 @@ export async function realtimeRoutes(app: FastifyInstance, ctx: AppContext): Pro
 
   app.get('/ws/terminal', { websocket: true }, async (socket, req) => {
     if (!authorize(socket, tokenFromRequest(req, true))) return;
-    const query = req.query as { cols?: string; rows?: string };
+    const query = req.query as { cols?: string; rows?: string; sid?: string };
     const cols = Math.min(500, Math.max(20, Number(query.cols) || 120));
     const rows = Math.min(200, Math.max(5, Number(query.rows) || 30));
 
-    let session: Awaited<ReturnType<typeof openShell>>;
-    try {
-      session = await openShell(ctx, cols, rows);
-    } catch (err) {
-      socket.send(`\r\n\x1b[31mKhông mở được shell: ${(err as Error).message}\x1b[0m\r\n`);
-      socket.close();
-      return;
-    }
-    const { shell, mode } = session;
-    const label = ctx.adapter.defaultShell().label;
-    socket.send(`\x1b[32m● ZenPanel Terminal\x1b[0m — ${label} trên ${ctx.osInfo.hostname}${mode === 'pipe' ? ' \x1b[33m(chế độ đơn giản, không có PTY)\x1b[0m' : ''}\r\n`);
-    req.log.info({ mode }, 'ZenPanel: mở web terminal');
+    // Ping định kỳ để proxy / Cloudflare không cắt kết nối rảnh
+    const pinger = setInterval(() => {
+      if (socket.readyState === socket.OPEN) socket.ping();
+    }, 25_000);
+    socket.on('close', () => clearInterval(pinger));
 
-    shell.onData((data) => {
-      if (socket.readyState === socket.OPEN) socket.send(data);
-    });
-    shell.onExit((code) => {
-      if (socket.readyState === socket.OPEN) {
-        socket.send(`\r\n\x1b[33mShell đã thoát (code ${code})\x1b[0m\r\n`);
+    let term = query.sid ? terminals.get(query.sid) : undefined;
+    if (term) {
+      // Nối lại phiên shell cũ còn sống: gỡ socket cũ (nếu còn), hủy hẹn giờ kill, phát lại phần output đã bỏ lỡ
+      if (term.killTimer) clearTimeout(term.killTimer);
+      term.killTimer = null;
+      if (term.socket && term.socket !== socket) term.socket.close(4002, 'Replaced');
+      term.socket = socket;
+      socket.send(`${CONTROL}${JSON.stringify({ sid: term.id, reattached: true })}`);
+      socket.send('\r\n\x1b[32m● Đã kết nối lại phiên terminal\x1b[0m\r\n');
+      if (term.missed) socket.send(term.missed);
+      term.missed = '';
+      term.shell.resize(cols, rows);
+    } else {
+      let session: Awaited<ReturnType<typeof openShell>>;
+      try {
+        session = await openShell(ctx, cols, rows);
+      } catch (err) {
+        socket.send(`\r\n\x1b[31mKhông mở được shell: ${(err as Error).message}\x1b[0m\r\n`);
         socket.close();
+        return;
       }
-    });
+      const id = randomBytes(12).toString('hex');
+      const created: TerminalSession = { id, shell: session.shell, socket, missed: '', killTimer: null };
+      terminals.set(id, created);
+      term = created;
+      const label = ctx.adapter.defaultShell().label;
+      socket.send(`${CONTROL}${JSON.stringify({ sid: id, reattached: false })}`);
+      if (query.sid) socket.send('\r\n\x1b[33mPhiên cũ đã hết hạn, đã mở shell mới.\x1b[0m\r\n');
+      socket.send(`\x1b[32m● ZenPanel Terminal\x1b[0m — ${label} trên ${ctx.osInfo.hostname}${session.mode === 'pipe' ? ' \x1b[33m(chế độ đơn giản, không có PTY)\x1b[0m' : ''}\r\n`);
+      req.log.info({ mode: session.mode }, 'ZenPanel: mở web terminal');
+
+      session.shell.onData((data) => {
+        const t = terminals.get(id);
+        if (!t) return;
+        if (t.socket && t.socket.readyState === t.socket.OPEN) t.socket.send(data);
+        else t.missed = (t.missed + data).slice(-200_000);
+      });
+      session.shell.onExit((code) => {
+        const t = terminals.get(id);
+        terminals.delete(id);
+        if (t?.killTimer) clearTimeout(t.killTimer);
+        if (t?.socket && t.socket.readyState === t.socket.OPEN) {
+          t.socket.send(`\r\n\x1b[33mShell đã thoát (code ${code})\x1b[0m\r\n`);
+          t.socket.close(4001, 'Shell exited');
+        }
+      });
+    }
+
+    const current = term;
     socket.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw.toString()) as { type: string; data?: string; cols?: number; rows?: number };
-        if (msg.type === 'input' && typeof msg.data === 'string') shell.write(msg.data);
-        else if (msg.type === 'resize' && msg.cols && msg.rows) shell.resize(Math.min(500, msg.cols), Math.min(200, msg.rows));
+        if (msg.type === 'input' && typeof msg.data === 'string') current.shell.write(msg.data);
+        else if (msg.type === 'resize' && msg.cols && msg.rows) current.shell.resize(Math.min(500, msg.cols), Math.min(200, msg.rows));
+        // type "ping" từ client chỉ để giữ kết nối, không cần xử lý
       } catch {
         // bỏ qua message không hợp lệ
       }
     });
-    socket.on('close', () => shell.kill());
+    socket.on('close', () => {
+      // Socket này không còn là socket hiện tại (đã bị nối lại): không làm gì
+      if (current.socket !== socket) return;
+      current.socket = null;
+      // Giữ shell sống một lúc để client kịp nối lại sau khi rớt mạng
+      current.killTimer = setTimeout(() => {
+        terminals.delete(current.id);
+        current.shell.kill();
+      }, TERMINAL_GRACE_MS);
+    });
   });
 }

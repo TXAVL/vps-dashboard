@@ -8,9 +8,15 @@ import { config } from '../config.js';
 import { JsonCollection } from '../core/store.js';
 import { badRequest, HttpError } from '../core/validate.js';
 
+/** full: khoá cả thư mục lẫn file (không sửa/xoá/thêm) · content: chỉ khoá file có sẵn, vẫn thêm file mới được · top: chỉ khoá thư mục gốc (không thêm/xoá ở cấp ngoài cùng) */
+export type LockMode = 'full' | 'content' | 'top';
+
 export interface SecureFolder {
   id: string;
   path: string;
+  mode?: LockMode;
+  /** Thư mục con (tương đối) được để mở ghi: uploads, cache, session... */
+  excludes?: string[];
   note: string;
   createdAt: string;
   /** Lần chuyển trạng thái cuối do người dùng yêu cầu */
@@ -59,11 +65,32 @@ export class SecureFolderService {
     return dir;
   }
 
-  private async status(dir: string): Promise<boolean | null> {
+  private cleanExcludes(dir: string, list: unknown): string[] {
+    if (!Array.isArray(list)) return [];
+    const out: string[] = [];
+    for (const raw of list) {
+      const rel = String(raw ?? '').trim().replace(/^[\\/]+|[\\/]+$/g, '');
+      if (!rel) continue;
+      const abs = path.resolve(dir, rel);
+      if (abs === dir || !abs.toLowerCase().startsWith(dir.toLowerCase() + path.sep)) throw badRequest(`Thư mục loại trừ "${rel}" phải nằm bên trong thư mục được khoá`);
+      out.push(rel);
+    }
+    return [...new Set(out)].slice(0, 30);
+  }
+
+  private async status(dir: string, mode: LockMode = 'full'): Promise<boolean | null> {
     if (!existsSync(dir)) return null;
     if (this.windows) {
       const r = await this.run(`icacls ${ps(dir)}`, 30_000);
-      return /Everyone:\(OI\)\(CI\)\(DENY\)/i.test(r.out) || /S-1-1-0:\(OI\)\(CI\)\(DENY\)/i.test(r.out);
+      return /(?:Everyone|S-1-1-0):(?:\(OI\))?(?:\(CI\))?(?:\(IO\))?\(DENY\)/i.test(r.out);
+    }
+    if (mode === 'content') {
+      // Thư mục gốc không bị khoá: kiểm tra 1 file bên trong
+      const f = await this.run(`find ${sh(dir)} -type f -print -quit 2>/dev/null`, 15_000);
+      const file = f.out.trim().split('\n')[0];
+      if (!file) return null;
+      const r = await this.run(`lsattr ${sh(file)} 2>/dev/null`, 15_000);
+      return r.code === 0 ? /^[^\s]*i[^\s]*\s/.test(r.out.trim()) : null;
     }
     const r = await this.run(`lsattr -d ${sh(dir)} 2>/dev/null`, 15_000);
     if (r.code !== 0) return null;
@@ -72,14 +99,15 @@ export class SecureFolderService {
 
   async list(): Promise<SecureFolderView[]> {
     const items = store.all().sort((a, b) => a.path.localeCompare(b.path));
-    return Promise.all(items.map(async (f) => ({ ...f, exists: existsSync(f.path), locked: await this.status(f.path) })));
+    return Promise.all(items.map(async (f) => ({ ...f, exists: existsSync(f.path), locked: await this.status(f.path, f.mode ?? 'full') })));
   }
 
   /** Thêm thư mục vào danh sách bảo vệ và khoá ngay */
-  async add(input: { path: string; note?: string }): Promise<SecureFolderView> {
+  async add(input: { path: string; note?: string; mode?: string; excludes?: string[] }): Promise<SecureFolderView> {
     const dir = this.validate(input.path);
     if (store.all().some((f) => f.path === dir)) throw badRequest('Thư mục này đã có trong danh sách');
-    const folder: SecureFolder = { id: randomUUID().slice(0, 8), path: dir, note: String(input.note ?? '').slice(0, 120), createdAt: new Date().toISOString(), lockedAt: null };
+    const mode: LockMode = input.mode === 'content' || input.mode === 'top' ? input.mode : 'full';
+    const folder: SecureFolder = { id: randomUUID().slice(0, 8), path: dir, mode, excludes: this.cleanExcludes(dir, input.excludes), note: String(input.note ?? '').slice(0, 120), createdAt: new Date().toISOString(), lockedAt: null };
     store.upsert(folder);
     await this.setLocked(folder.id, true);
     return (await this.list()).find((f) => f.id === folder.id)!;
@@ -89,17 +117,29 @@ export class SecureFolderService {
     const folder = store.get(id);
     if (!folder) throw new HttpError(404, 'Không tìm thấy thư mục');
     this.validate(folder.path);
+    const mode = folder.mode ?? 'full';
+    const excl = (folder.excludes ?? []).map((r) => path.resolve(folder.path, r)).filter((r) => existsSync(r));
     let result: { out: string; code: number };
     if (this.windows) {
-      result = locked
-        ? await this.run(`icacls ${ps(folder.path)} /deny '*S-1-1-0:(OI)(CI)(W,D,DC)' /T /C`)
-        : await this.run(`icacls ${ps(folder.path)} /remove:d '*S-1-1-0' /T /C`);
+      if (!locked) {
+        result = await this.run(`icacls ${ps(folder.path)} /remove:d '*S-1-1-0' /T /C`);
+      } else if (mode === 'top') {
+        result = await this.run(`icacls ${ps(folder.path)} /deny '*S-1-1-0:(W,D,DC)' /C`);
+      } else {
+        // content: chỉ file (OI)(IO) · full: thư mục + file
+        result = await this.run(`icacls ${ps(folder.path)} /deny '*S-1-1-0:${mode === 'content' ? '(OI)(IO)' : '(OI)(CI)'}(W,D,DC)' /T /C`);
+        for (const e of excl) await this.run(`icacls ${ps(e)} /remove:d '*S-1-1-0' /T /C`);
+      }
     } else {
       if (!(await this.adapter.findExecutable('chattr'))) throw badRequest('Máy chủ thiếu lệnh chattr (gói e2fsprogs)');
-      result = await this.run(`chattr -R ${locked ? '+i' : '-i'} ${sh(folder.path)}`);
+      const flag = locked ? '+i' : '-i';
+      if (!locked || mode === 'full') result = await this.run(`chattr -R ${flag} ${sh(folder.path)}`);
+      else if (mode === 'top') result = await this.run(`chattr ${flag} ${sh(folder.path)}`);
+      else result = await this.run(`find ${sh(folder.path)} -type f -exec chattr ${flag} {} +`);
+      if (locked) for (const e of excl) await this.run(`chattr -R -i ${sh(e)}`);
     }
     // Đọc lại thật sự thay vì tin vào mã thoát
-    const now = await this.status(folder.path);
+    const now = await this.status(folder.path, mode);
     if (now !== locked) {
       throw badRequest(
         `Không ${locked ? 'khoá' : 'mở khoá'} được${this.windows ? '' : ' (hệ thống file hỗ trợ chattr? cần chạy bằng root)'}: ${result.out.split('\n').slice(-2).join(' ').slice(0, 200)}`,
@@ -112,7 +152,7 @@ export class SecureFolderService {
   async remove(id: string): Promise<void> {
     const folder = store.get(id);
     if (!folder) throw new HttpError(404, 'Không tìm thấy thư mục');
-    if (existsSync(folder.path) && (await this.status(folder.path))) await this.setLocked(id, false);
+    if (existsSync(folder.path) && (await this.status(folder.path, folder.mode ?? 'full'))) await this.setLocked(id, false);
     store.remove(id);
   }
 }

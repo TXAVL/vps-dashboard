@@ -734,6 +734,13 @@ export class AiGatewayService {
 
   async modelInfo(id: string) {
     const model = (await this.allModels()).find((m) => m.id === id);
+    if (!model) {
+      // Tên ảo của gateway: auto / tier1-3 / combo
+      const combo = this.getSettings().combos.find((c) => c.name === id);
+      if (/^(auto|tier[123])$/.test(id) || combo) {
+        return { id, object: 'model', owned_by: 'zenpanel', name: id, context_length: null, pricing: null, description: combo ? `Combo ${combo.strategy}: ${combo.models.join(' → ')}` : 'Model ảo: ZenPanel tự định tuyến tới model phù hợp theo cấu hình tier' };
+      }
+    }
     if (!model) throw new HttpError(404, `Không tìm thấy model "${id}"`);
     return { id: model.id, object: 'model', owned_by: model.provider, name: model.name, context_length: model.contextLength, pricing: model.pricing, description: model.description };
   }

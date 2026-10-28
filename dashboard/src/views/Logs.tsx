@@ -16,7 +16,9 @@ const isNegativeError = (line: string): boolean =>
   /"(errors?|errs?|failed|fail)":\s*(null|false|0|""|\[\]|\{\})/i.test(line) ||
   /\bstatus\s*[:=]\s*(ok|success|true)\b/i.test(line);
 
-const tone = (line: string): string => {
+const tone = (rawLine: string): string => {
+  // Bỏ nhãn luồng "[out]/[err]/[sys]" (chỉ cho biết stdout hay stderr, không phải mức log) để không bị tô đỏ nhầm
+  const line = rawLine.replace(/^(\S+\s+)?\[(?:out|err|sys)\]\s/, '$1');
   if (!line || !line.trim()) return 'text-slate-300';
 
   // 1. Web server access logs (Nginx / Apache / Caddy / Traefik / Node.js)
@@ -50,7 +52,7 @@ const tone = (line: string): string => {
 
   // 3. Explicit error log levels
   if (
-    /\[(ERROR|CRITICAL|FATAL|EMERG|EMERGENCY)\]/i.test(line) ||
+    /\[\s*(ERROR|CRITICAL|FATAL|EMERG|EMERGENCY)\s*\]/i.test(line) ||
     /\b(?:level|lvl)=(?:error|fatal|crit|emerg)\b/i.test(line) ||
     /"(?:level|lvl)":\s*"(?:error|fatal|crit|emerg)"/i.test(line)
   ) {
@@ -59,7 +61,7 @@ const tone = (line: string): string => {
 
   // 4. Explicit warning log levels
   if (
-    /\[(WARN|WARNING)\]/i.test(line) ||
+    /\[\s*(WARN|WARNING)\s*\]/i.test(line) ||
     /\b(?:level|lvl)=(?:warn|warning)\b/i.test(line) ||
     /"(?:level|lvl)":\s*"(?:warn|warning)"/i.test(line)
   ) {
@@ -68,7 +70,7 @@ const tone = (line: string): string => {
 
   // 5. Explicit informational / debug log levels (bot logs, daemons, workers, stdout)
   const isExplicitInfo =
-    /\[(INFO|DEBUG|TRACE|NOTICE|VERBOSE)\]/i.test(line) ||
+    /\[\s*(INFO|DEBUG|TRACE|NOTICE|VERBOSE)\s*\]/i.test(line) ||
     /\b(?:level|lvl)=(?:info|debug|trace|notice|verbose)\b/i.test(line) ||
     /"(?:level|lvl)":\s*"(?:info|debug|trace|notice|verbose)"/i.test(line);
 
