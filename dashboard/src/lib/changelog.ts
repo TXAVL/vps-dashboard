@@ -9,6 +9,27 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.8.2',
+    date: '2026-10-29',
+    highlights: [
+      {
+        title: '🔕 Hết Spam Cảnh Báo Ổ Cứng, CPU, RAM',
+        items: [
+          'Mỗi sự cố chỉ báo ngay 1 lần. Nếu chưa hết, tin nhắc lại thưa dần (6 giờ, 12 giờ, 24 giờ...) thay vì cứ 30 phút một tin như trước. Có ô chọn "Nhắc lại sau" (1 / 6 / 12 / 24 giờ hoặc không nhắc lại).',
+          'ZenPanel nhớ trạng thái cảnh báo kể cả khi khởi động lại (ví dụ lúc cập nhật), không báo lại từ đầu nữa.',
+          'Số liệu dao động quanh ngưỡng (ổ 89% rồi 91%) không còn gây "cảnh báo / đã phục hồi" liên tục: chỉ báo phục hồi khi đã xuống hẳn dưới ngưỡng.',
+          'Nhiều ổ đĩa cùng đầy được gộp vào 1 tin; cảnh báo VPS sắp hết hạn tối đa 1 tin mỗi ngày.',
+        ],
+      },
+      {
+        title: '📖 Hướng Dẫn Kênh Webhook (Slack, Google Chat, n8n, Make...)',
+        items: [
+          'Kênh thông báo thứ 3 giờ có hướng dẫn từng bước như Telegram và Discord, kèm mẫu dữ liệu ZenPanel gửi đi để nối với Slack, Google Chat, Mattermost, n8n, Make hay server của bạn.',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.8.1',
     date: '2026-10-28',
     highlights: [

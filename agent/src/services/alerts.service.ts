@@ -8,6 +8,17 @@ import { badRequest } from '../core/validate.js';
 
 const FILE = 'alerts.json';
 const HISTORY_FILE = 'alerts-history.json';
+const STATE_FILE = 'alerts-state.json';
+const DAY_MS = 86_400_000;
+
+interface RuleState {
+  /** Đang trong sự cố */
+  active: boolean;
+  lastSent: number;
+  /** Số tin đã gửi cho sự cố này (lần đầu + các lần nhắc) */
+  sent: number;
+  since: number;
+}
 
 export interface AlertConfig {
   telegram: { enabled: boolean; botToken: string; chatId: string; /** Địa chỉ API (để trống = https://api.telegram.org), dùng relay khi VPS bị chặn Telegram */ apiBase: string };
@@ -20,7 +31,9 @@ export interface AlertConfig {
     services: { enabled: boolean; names: string[] };
     vpsExpiry: { enabled: boolean };
   };
+  /** Nhắc lại nếu sự cố chưa hết: khoảng cách giữa 2 lần nhắc đầu tiên (phút), sau đó tăng gấp đôi, tối đa 24 giờ. 0 = chỉ báo 1 lần */
   cooldownMinutes: number;
+  cooldownSchema?: number;
 }
 
 export interface AlertEvent {
@@ -43,7 +56,8 @@ export const DEFAULT_ALERTS: AlertConfig = {
     services: { enabled: false, names: [] },
     vpsExpiry: { enabled: true },
   },
-  cooldownMinutes: 30,
+  cooldownMinutes: 360,
+  cooldownSchema: 2,
 };
 
 const TELEGRAM_TOKEN = /^\d{6,14}:[\w-]{30,60}$/;
@@ -84,8 +98,8 @@ export class AlertService {
   private timer: NodeJS.Timeout | null = null;
   /** Số mẫu liên tiếp vượt ngưỡng */
   private streak = new Map<string, number>();
-  private lastSent = new Map<string, number>();
-  private active = new Set<string>();
+  /** Trạng thái từng cảnh báo, lưu ra đĩa để khởi động lại (vd khi cập nhật) KHÔNG báo lại từ đầu */
+  private state = new Map<string, RuleState>(Object.entries(readJson<Record<string, RuleState>>(STATE_FILE, {})));
   private hostname = '';
 
   constructor(
@@ -95,9 +109,13 @@ export class AlertService {
 
   private load(): AlertConfig {
     const saved = readJson<Partial<AlertConfig>>(FILE, {});
+    // Mặc định cũ (30 phút) gây spam: nâng lên 6 giờ cho cấu hình đã lưu bằng bản cũ
+    const migrated = saved.cooldownSchema === 2 ? saved.cooldownMinutes : saved.cooldownMinutes === undefined || saved.cooldownMinutes === 30 ? DEFAULT_ALERTS.cooldownMinutes : saved.cooldownMinutes;
     return {
       ...DEFAULT_ALERTS,
       ...saved,
+      cooldownMinutes: migrated ?? DEFAULT_ALERTS.cooldownMinutes,
+      cooldownSchema: 2,
       telegram: { ...DEFAULT_ALERTS.telegram, ...saved.telegram },
       discord: { ...DEFAULT_ALERTS.discord, ...saved.discord },
       webhook: { ...DEFAULT_ALERTS.webhook, ...saved.webhook },
@@ -136,7 +154,8 @@ export class AlertService {
       discord: { enabled: input.discord?.enabled ?? cur.discord.enabled, webhookUrl: keepSecret(input.discord?.webhookUrl, cur.discord.webhookUrl) },
       webhook: { enabled: input.webhook?.enabled ?? cur.webhook.enabled, url: keepSecret(input.webhook?.url, cur.webhook.url) },
       rules: { ...cur.rules, ...(input.rules ?? {}) } as AlertConfig['rules'],
-      cooldownMinutes: Math.min(1440, Math.max(1, Math.round(Number(input.cooldownMinutes ?? cur.cooldownMinutes) || 30))),
+      cooldownMinutes: Math.min(1440, Math.max(0, Math.round(Number(input.cooldownMinutes ?? cur.cooldownMinutes)))) || 0,
+      cooldownSchema: 2,
     };
     for (const url of [next.discord.webhookUrl, next.webhook.url, next.telegram.apiBase]) {
       if (url && !/^https:\/\//i.test(url)) throw badRequest('URL phải bắt đầu bằng https://');
@@ -282,20 +301,44 @@ export class AlertService {
     return [...chats.values()];
   }
 
-  private async fire(rule: string, level: 'warn' | 'recovered', message: string): Promise<void> {
+  private saveState(): void {
+    writeJson(STATE_FILE, Object.fromEntries(this.state));
+  }
+
+  private static duration(ms: number): string {
+    const m = Math.round(ms / 60_000);
+    return m < 60 ? `${m} phút` : m < 2880 ? `${(m / 60).toFixed(m % 60 ? 1 : 0)} giờ` : `${Math.round(m / 1440)} ngày`;
+  }
+
+  /**
+   * Gửi cảnh báo có kiểm soát spam:
+   * - Lần đầu: gửi ngay. Các lần sau chỉ NHẮC LẠI khi sự cố chưa hết, thưa dần: N, 2N, 4N... tối đa 24 giờ (N = cấu hình "nhắc lại", 0 = không nhắc)
+   * - Phục hồi: chỉ gửi nếu trước đó đã báo sự cố
+   * - Trạng thái được lưu ra đĩa nên khởi động lại không báo lại từ đầu
+   */
+  private async fire(rule: string, level: 'warn' | 'recovered', message: string, opts: { minRepeatMin?: number } = {}): Promise<void> {
     const c = this.load();
     const now = Date.now();
+    const st = this.state.get(rule);
+    let text = message;
     if (level === 'warn') {
-      if (now - (this.lastSent.get(rule) ?? 0) < c.cooldownMinutes * 60_000) return;
-      this.lastSent.set(rule, now);
-      this.active.add(rule);
+      if (st?.active) {
+        if (c.cooldownMinutes === 0) return;
+        const interval = Math.min(DAY_MS, Math.max(c.cooldownMinutes * 60_000 * 2 ** (st.sent - 1), (opts.minRepeatMin ?? 0) * 60_000));
+        if (now - st.lastSent < interval) return;
+        text = `🔁 Nhắc lại (lần ${st.sent}, sự cố đã kéo dài ${AlertService.duration(now - st.since)}): ${message}`;
+        this.state.set(rule, { ...st, lastSent: now, sent: st.sent + 1 });
+      } else {
+        this.state.set(rule, { active: true, lastSent: now, sent: 1, since: now });
+      }
     } else {
-      if (!this.active.delete(rule)) return;
-      this.lastSent.delete(rule);
+      if (!st?.active) return;
+      text = `${message} (sự cố kéo dài ${AlertService.duration(now - st.since)})`;
+      this.state.delete(rule);
     }
-    const text = `${level === 'warn' ? '⚠️' : '✅'} ZenPanel · ${this.hostname}\n${message}`;
-    const { sent, errors } = await this.dispatch(text);
-    this.record({ at: new Date().toISOString(), rule, level, message, sent, errors });
+    this.saveState();
+    const { sent, errors } = await this.dispatch(`${level === 'warn' ? '⚠️' : '✅'} ZenPanel · ${this.hostname}\n${text}`);
+    this.record({ at: new Date().toISOString(), rule, level, message: text, sent, errors });
   }
 
   /** Trạng thái vượt ngưỡng phải kéo dài đủ số phút mới báo (tránh đỉnh CPU thoáng qua) */
@@ -311,24 +354,34 @@ export class AlertService {
       return n * 30 >= minutes * 60;
     };
 
+    /** Đang trong sự cố thì chỉ coi là hết khi xuống dưới (ngưỡng - biên), tránh báo ra/vào liên tục khi số liệu dao động quanh ngưỡng */
+    const bad = (key: string, value: number, threshold: number, margin: number) => (this.state.get(key)?.active ? value >= threshold - margin : value >= threshold);
+
     if (c.rules.cpu.enabled) {
-      const over = snap.cpu.usage >= c.rules.cpu.threshold;
-      if (sustained('cpu', over, c.rules.cpu.minutes)) await this.fire('cpu', 'warn', `CPU ${snap.cpu.usage.toFixed(0)}% (ngưỡng ${c.rules.cpu.threshold}%) kéo dài ≥ ${c.rules.cpu.minutes} phút.`);
-      else if (!over) await this.fire('cpu', 'recovered', `CPU đã về ${snap.cpu.usage.toFixed(0)}%.`);
+      const r = c.rules.cpu;
+      const isBad = bad('cpu', snap.cpu.usage, r.threshold, 5);
+      if (this.state.get('cpu')?.active) {
+        await this.fire('cpu', isBad ? 'warn' : 'recovered', isBad ? `CPU vẫn ${snap.cpu.usage.toFixed(0)}% (ngưỡng ${r.threshold}%).` : `CPU đã về ${snap.cpu.usage.toFixed(0)}%.`);
+      } else if (sustained('cpu', isBad, r.minutes)) {
+        await this.fire('cpu', 'warn', `CPU ${snap.cpu.usage.toFixed(0)}% (ngưỡng ${r.threshold}%) kéo dài ≥ ${r.minutes} phút.`);
+      }
     }
     if (c.rules.ram.enabled) {
+      const r = c.rules.ram;
       const pct = (snap.memory.used / snap.memory.total) * 100;
-      const over = pct >= c.rules.ram.threshold;
-      if (sustained('ram', over, c.rules.ram.minutes)) await this.fire('ram', 'warn', `RAM ${pct.toFixed(0)}% (ngưỡng ${c.rules.ram.threshold}%) kéo dài ≥ ${c.rules.ram.minutes} phút. Vào "Dọn dẹp & RAM" để tối ưu.`);
-      else if (!over) await this.fire('ram', 'recovered', `RAM đã về ${pct.toFixed(0)}%.`);
+      const isBad = bad('ram', pct, r.threshold, 5);
+      if (this.state.get('ram')?.active) {
+        await this.fire('ram', isBad ? 'warn' : 'recovered', isBad ? `RAM vẫn ${pct.toFixed(0)}% (ngưỡng ${r.threshold}%).` : `RAM đã về ${pct.toFixed(0)}%.`);
+      } else if (sustained('ram', isBad, r.minutes)) {
+        await this.fire('ram', 'warn', `RAM ${pct.toFixed(0)}% (ngưỡng ${r.threshold}%) kéo dài ≥ ${r.minutes} phút. Vào "Dọn dẹp & RAM" để tối ưu.`);
+      }
     }
     if (c.rules.disk.enabled) {
-      for (const d of snap.disks) {
-        const pct = d.total ? (d.used / d.total) * 100 : 0;
-        const key = `disk:${d.mount}`;
-        if (pct >= c.rules.disk.threshold) await this.fire(key, 'warn', `Ổ đĩa ${d.mount} đầy ${pct.toFixed(0)}% (còn ${((d.total - d.used) / 1073741824).toFixed(1)} GB).`);
-        else await this.fire(key, 'recovered', `Ổ đĩa ${d.mount} đã còn ${pct.toFixed(0)}%.`);
-      }
+      // Gộp mọi ổ đầy vào MỘT tin (trước đây mỗi ổ một tin riêng nên ổ nào đầy cũng spam)
+      const full = snap.disks.filter((d) => d.total && bad('disk', (d.used / d.total) * 100, c.rules.disk.threshold, 3));
+      const detail = full.map((d) => `${d.mount} ${((d.used / d.total) * 100).toFixed(0)}% (còn ${((d.total - d.used) / 1073741824).toFixed(1)} GB)`).join(', ');
+      if (full.length) await this.fire('disk', 'warn', `Ổ đĩa gần đầy (ngưỡng ${c.rules.disk.threshold}%): ${detail}. Vào "Dọn dẹp & RAM" để giải phóng dung lượng.`);
+      else await this.fire('disk', 'recovered', 'Ổ đĩa đã xuống dưới ngưỡng cảnh báo.');
     }
     if (c.rules.services.enabled) {
       for (const name of c.rules.services.names) {
@@ -343,7 +396,10 @@ export class AlertService {
       const prefs = getPrefs();
       if (prefs.vpsExpiry) {
         const days = Math.ceil((new Date(`${prefs.vpsExpiry}T23:59:59`).getTime() - now()) / 86_400_000);
-        if (days <= prefs.expiryWarnDays) await this.fire('vps-expiry', 'warn', days < 0 ? `VPS đã hết hạn ${-days} ngày.` : `VPS hết hạn sau ${days} ngày${prefs.vpsRenewUrl ? ` — gia hạn: ${prefs.vpsRenewUrl}` : ''}.`);
+        if (days <= prefs.expiryWarnDays) {
+          // Hạn VPS nhắc tối đa 1 lần / ngày, không theo khoảng nhắc ngắn của sự cố kỹ thuật
+          await this.fire('vps-expiry', 'warn', days < 0 ? `VPS đã hết hạn ${-days} ngày.` : `VPS hết hạn sau ${days} ngày${prefs.vpsRenewUrl ? ` — gia hạn: ${prefs.vpsRenewUrl}` : ''}.`, { minRepeatMin: 1440 });
+        } else if (this.state.delete('vps-expiry')) this.saveState();
       }
     }
   }

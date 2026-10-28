@@ -243,7 +243,34 @@ function AlertsTab() {
         </Card>
         <Card title="Webhook tuỳ ý" icon={Send} actions={<Toggle checked={cfg.webhook.enabled} onChange={(v) => setCfg({ ...cfg, webhook: { ...cfg.webhook, enabled: v } })} />}>
           <div className="space-y-3">
-            <Field label="URL nhận POST JSON" hint="Slack, Zalo bot, n8n, Make...; body: {text, source, host, at}"><input className="input mono" value={cfg.webhook.url} onChange={(e) => setCfg({ ...cfg, webhook: { ...cfg.webhook, url: e.target.value } })} placeholder="https://..." /></Field>
+            <Steps
+              title="Hướng dẫn cấu hình (Slack, Google Chat, n8n, Make, server của bạn)"
+              steps={[
+                <>Tạo một <b className="text-slate-200">URL nhận tin (Incoming Webhook)</b> ở nơi bạn muốn nhận cảnh báo, URL phải bắt đầu bằng <code className="mono">https://</code>:
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                    <li><b className="text-slate-300">Slack</b>: api.slack.com/apps → Incoming Webhooks → Add New Webhook to Workspace.</li>
+                    <li><b className="text-slate-300">Google Chat</b>: vào Space → Apps &amp; integrations → Webhooks → Add webhook.</li>
+                    <li><b className="text-slate-300">Mattermost / Rocket.Chat</b>: Integrations → Incoming Webhook.</li>
+                    <li><b className="text-slate-300">n8n / Make / Zapier</b>: thêm node/module <i>Webhook</i> (phương thức POST), sao chép URL, rồi nối tiếp sang Zalo, email, SMS...</li>
+                  </ul></>,
+                <>Dán URL vào ô bên dưới, bấm <b className="text-slate-200">"Gửi thử"</b>. Cấu hình tự lưu, gửi OK thì kênh tự bật.</>,
+                <>ZenPanel gửi <b className="text-slate-200">POST JSON</b> như mẫu dưới đây. Slack / Google Chat / Mattermost hiển thị luôn nội dung trường <code className="mono">text</code>; n8n / Make đọc được mọi trường. Máy chủ của bạn cần trả về mã 2xx.</>,
+              ]}
+            />
+            <details className="text-xs text-slate-500">
+              <summary className="cursor-pointer font-semibold text-slate-400">Xem mẫu dữ liệu gửi đi</summary>
+              <pre className="mono mt-1.5 overflow-x-auto rounded-lg bg-black/40 p-2.5 text-[11px] leading-relaxed text-emerald-200">{`POST <URL của bạn>
+Content-Type: application/json
+
+{
+  "text": "⚠️ ZenPanel · vps-01\nỔ đĩa gần đầy (ngưỡng 90%): / 94% (còn 6.0 GB)...",
+  "source": "zenpanel",
+  "host": "vps-01",
+  "at": "2026-10-28T09:30:00.000Z"
+}`}</pre>
+              <p className="mt-1.5">Microsoft Teams yêu cầu định dạng riêng (Adaptive Card) nên chưa nhận trực tiếp được: hãy đi qua n8n / Make để chuyển đổi.</p>
+            </details>
+            <Field label="URL nhận POST JSON" hint="Bắt buộc https://"><input className="input mono" value={cfg.webhook.url} onChange={(e) => setCfg({ ...cfg, webhook: { ...cfg.webhook, url: e.target.value } })} placeholder="https://..." /></Field>
             <Button size="sm" variant="soft" icon={Send} onClick={() => void test('webhook')}>Gửi thử</Button>
           </div>
         </Card>
@@ -274,8 +301,18 @@ function AlertsTab() {
             ))}
           </div>
         </div>
-        <div className="mt-4 flex items-center gap-2 text-sm text-slate-400">
-          Không lặp lại cùng 1 cảnh báo trong {num(cfg.cooldownMinutes, (n) => setCfg({ ...cfg, cooldownMinutes: n }), 'w-20')} phút · tự báo "đã phục hồi" khi hết sự cố
+        <div className="mt-4 space-y-1.5 rounded-xl border border-slate-700/50 bg-ink-950/40 p-3 text-sm text-slate-400">
+          <div className="flex flex-wrap items-center gap-2">
+            Nếu sự cố chưa hết, nhắc lại sau
+            <Select className="h-9 w-44 py-0 text-xs" value={cfg.cooldownMinutes} onChange={(e) => setCfg({ ...cfg, cooldownMinutes: Number(e.target.value) })}>
+              <option value={0}>Không nhắc lại (báo 1 lần)</option>
+              {[[60, '1 giờ'], [360, '6 giờ (khuyên dùng)'], [720, '12 giờ'], [1440, '24 giờ']].map(([m, l]) => <option key={m} value={m}>{l}</option>)}
+              {![0, 60, 360, 720, 1440].includes(cfg.cooldownMinutes) && <option value={cfg.cooldownMinutes}>{cfg.cooldownMinutes} phút</option>}
+            </Select>
+          </div>
+          <p className="text-xs text-slate-500">
+            Mỗi sự cố chỉ báo ngay <b>1 lần</b>. Nếu chưa hết, tin nhắc lại thưa dần (gấp đôi mỗi lần, tối đa 24 giờ, VPS hết hạn tối đa 1 tin/ngày) nên không bị spam. Báo "đã phục hồi" khi đã xuống hẳn dưới ngưỡng (thấp hơn ngưỡng 3–5%), và nhớ trạng thái kể cả khi ZenPanel khởi động lại.
+          </p>
         </div>
       </Card>
 
