@@ -41,7 +41,7 @@ export const CHANGELOG: ChangelogEntry[] = [
         title: '💻 Terminal Không Còn Tự Mất Kết Nối',
         items: [
           'Terminal web giữ kết nối khi rảnh (không bị Cloudflare cắt) và giữ phiên shell trên VPS tối đa 10 phút khi rớt mạng.',
-          'Mất kết nối thì hiện popup đếm ngược và tự nối lại đúng phiên cũ; nút Nạp lại alias giờ nạp thật vào shell đang chạy.',
+          'Rớt mạng thì tự nối lại đúng phiên cũ (có thanh báo nhỏ). Không tương tác một lúc (chọn 2 - 60 phút) sẽ hiện popup đếm ngược 60 giây; hết giờ không bấm "Tiếp tục" thì shell tự ngắt và mở shell mới, có thông báo. Nút Nạp lại alias giờ nạp thật vào shell đang chạy.',
         ],
       },
       {

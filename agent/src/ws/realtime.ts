@@ -169,6 +169,12 @@ export async function realtimeRoutes(app: FastifyInstance, ctx: AppContext): Pro
         const msg = JSON.parse(raw.toString()) as { type: string; data?: string; cols?: number; rows?: number };
         if (msg.type === 'input' && typeof msg.data === 'string') current.shell.write(msg.data);
         else if (msg.type === 'resize' && msg.cols && msg.rows) current.shell.resize(Math.min(500, msg.cols), Math.min(200, msg.rows));
+        else if (msg.type === 'terminate') {
+          // Client yêu cầu ngắt hẳn shell (hết thời gian không tương tác): xoá phiên ngay, không giữ chờ nối lại
+          terminals.delete(current.id);
+          if (current.killTimer) clearTimeout(current.killTimer);
+          current.shell.kill();
+        }
         // type "ping" từ client chỉ để giữ kết nối, không cần xử lý
       } catch {
         // bỏ qua message không hợp lệ

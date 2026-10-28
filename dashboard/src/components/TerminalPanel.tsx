@@ -28,6 +28,8 @@ import {
   type CustomAlias,
   type SuggestResult,
 } from '../lib/shellSuggest';
+import { useFeedback } from './feedback';
+import { useLocalStorage } from '../lib/hooks';
 import { Badge, Button, Modal, SearchInput, StatusDot, cn } from './ui';
 
 interface SuggestState {
@@ -85,6 +87,18 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
   const reconnectNowRef = useRef<() => void>(() => {});
   const cancelRetryRef = useRef<() => void>(() => {});
   const [session, setSession] = useState(0);
+  const { toast } = useFeedback();
+
+  // ---- Phát hiện không tương tác: hết N phút thì hiện popup đếm ngược, hết giờ mà không bấm "Tiếp tục" thì ngắt shell và mở shell mới
+  const [idleMinutes, setIdleMinutes] = useLocalStorage<number>('zenpanel.terminal.idleMinutes', 5);
+  const [idleLeft, setIdleLeft] = useState<number | null>(null);
+  const lastActive = useRef(Date.now());
+  const terminateRef = useRef<() => void>(() => {});
+  const noticeRef = useRef<string | null>(null);
+  const touch = useCallback(() => {
+    lastActive.current = Date.now();
+  }, []);
+  const IDLE_COUNTDOWN_S = 60;
   const [hint, setHint] = useState<SuggestState | null>(null);
   const hintRef = useRef<SuggestState | null>(null);
 
@@ -224,6 +238,13 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
         scheduleRetry();
       };
     };
+    terminateRef.current = () => {
+      if (socket?.readyState === WebSocket.OPEN) socket.send('{"type":"terminate"}');
+    };
+    if (noticeRef.current) {
+      term.write(`\r\n\x1b[33m${noticeRef.current}\x1b[0m\r\n`);
+      noticeRef.current = null;
+    }
     reconnectNowRef.current = () => {
       attempts = 0;
       connect();
@@ -346,6 +367,7 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
     });
 
     const input = term.onData((data) => {
+      lastActive.current = Date.now();
       send(data);
       if (data === '\r') {
         if (line) {
@@ -417,6 +439,46 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
       termRef.current = null;
     };
   }, [session, initialCommand]);
+
+  // Theo dõi tương tác (gõ phím, bấm chuột, cuộn, chạm) trong khung terminal
+  useEffect(() => {
+    const el = host.current?.parentElement;
+    if (!el) return;
+    const events = ['keydown', 'mousedown', 'wheel', 'touchstart'] as const;
+    for (const ev of events) el.addEventListener(ev, touch, { passive: true });
+    lastActive.current = Date.now();
+    return () => {
+      for (const ev of events) el.removeEventListener(ev, touch);
+    };
+  }, [session, touch]);
+
+  useEffect(() => {
+    if (status !== 'online' || !idleMinutes) {
+      setIdleLeft(null);
+      return;
+    }
+    const limit = idleMinutes * 60_000;
+    const timer = setInterval(() => {
+      const idle = Date.now() - lastActive.current;
+      if (idle < limit) {
+        setIdleLeft(null);
+        return;
+      }
+      const left = Math.ceil((limit + IDLE_COUNTDOWN_S * 1000 - idle) / 1000);
+      if (left > 0) {
+        setIdleLeft(left);
+        return;
+      }
+      // Hết giờ không tương tác: ngắt shell cũ và mở shell mới
+      setIdleLeft(null);
+      terminateRef.current();
+      noticeRef.current = `Phiên terminal đã tự ngắt vì không tương tác trong ${idleMinutes} phút. Đây là shell mới.`;
+      toast(`Phiên terminal đã tự ngắt do không tương tác ${idleMinutes} phút, đã mở shell mới`, 'info');
+      lastActive.current = Date.now();
+      setSession((n) => n + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [status, idleMinutes, toast]);
 
   // Xử lý dán trực tiếp từ clipboard vào shell
   const handlePasteClipboard = async () => {
@@ -528,30 +590,42 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
       {/* Vùng chứa xterm.js */}
       <div ref={host} className="absolute inset-0 cursor-text" />
 
-      {/* Popup mất kết nối: đếm ngược tự nối lại */}
-      {(status === 'reconnecting' || status === 'closed') && (
+      {/* Đang tự nối lại (không chặn thao tác) */}
+      {status === 'reconnecting' && (
+        <div className="absolute left-1/2 top-3 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full border border-amber-500/40 bg-amber-950/90 px-3.5 py-1.5 text-xs font-semibold text-amber-200 shadow-xl backdrop-blur" onMouseDown={(e) => e.stopPropagation()}>
+          <RefreshCw className="size-3.5 animate-spin" />
+          {retry ? `Mất kết nối, nối lại sau ${retry.left}s (lần ${retry.attempt}/8)` : 'Đang nối lại...'}
+          <button type="button" className="rounded-md bg-amber-500/20 px-2 py-0.5 hover:bg-amber-500/35" onClick={() => reconnectNowRef.current()}>Nối ngay</button>
+        </div>
+      )}
+
+      {/* Phiên đã ngắt hẳn */}
+      {status === 'closed' && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-[2px]" onMouseDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
           <div className="w-full max-w-sm rounded-2xl border border-slate-600/60 bg-[#0f1626]/95 p-5 text-center shadow-2xl">
-            <div className={cn('mx-auto mb-3 flex size-12 items-center justify-center rounded-full', status === 'reconnecting' ? 'bg-amber-500/15 text-amber-300' : 'bg-rose-500/15 text-rose-300')}>
-              {status === 'reconnecting' ? <span className="mono text-xl font-black">{retry?.left ?? '…'}</span> : <RotateCcw className="size-5" />}
+            <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-rose-500/15 text-rose-300"><RotateCcw className="size-5" /></div>
+            <div className="text-sm font-bold text-white">Phiên terminal đã ngắt</div>
+            <p className="mt-1 text-xs leading-relaxed text-slate-400">Không nối lại được phiên cũ. Bấm "Kết nối lại" để mở shell mới.</p>
+            <div className="mt-4 flex justify-center">
+              <Button size="xs" variant="primary" icon={RotateCcw} onClick={() => setSession((n) => n + 1)}>Kết nối lại</Button>
             </div>
-            <div className="text-sm font-bold text-white">{status === 'reconnecting' ? 'Mất kết nối với máy chủ' : 'Phiên terminal đã ngắt'}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup không tương tác: đếm ngược, bấm Tiếp tục để giữ phiên */}
+      {idleLeft !== null && status === 'online' && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]" onMouseDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm rounded-2xl border border-amber-500/40 bg-[#0f1626]/95 p-5 text-center shadow-2xl">
+            <div className="mx-auto mb-3 flex size-14 items-center justify-center rounded-full bg-amber-500/15 text-amber-300">
+              <span className="mono text-2xl font-black">{idleLeft}</span>
+            </div>
+            <div className="text-sm font-bold text-white">Bạn còn ở đó không?</div>
             <p className="mt-1 text-xs leading-relaxed text-slate-400">
-              {status === 'reconnecting'
-                ? retry
-                  ? `Tự động nối lại sau ${retry.left} giây (lần thử ${retry.attempt}/8). Phiên shell vẫn được giữ trên VPS tối đa 10 phút.`
-                  : 'Đang thử nối lại...'
-                : 'Không nối lại được. Bấm "Kết nối lại" để mở phiên mới.'}
+              Đã {idleMinutes} phút không tương tác. Sau <b className="text-amber-300">{idleLeft} giây</b> nữa phiên terminal sẽ tự ngắt (lệnh đang chạy bị dừng) và mở shell mới.
             </p>
-            <div className="mt-4 flex justify-center gap-2">
-              {status === 'reconnecting' ? (
-                <>
-                  <Button size="xs" variant="primary" icon={RotateCcw} onClick={() => reconnectNowRef.current()}>Nối lại ngay</Button>
-                  <Button size="xs" variant="ghost" onClick={() => cancelRetryRef.current()}>Dừng</Button>
-                </>
-              ) : (
-                <Button size="xs" variant="primary" icon={RotateCcw} onClick={() => setSession((n) => n + 1)}>Kết nối lại</Button>
-              )}
+            <div className="mt-4 flex justify-center">
+              <Button size="xs" variant="primary" icon={Play} onClick={() => touch()}>Tiếp tục dùng phiên này</Button>
             </div>
           </div>
         </div>
@@ -830,6 +904,16 @@ export function TerminalPanel({ className, initialCommand }: { className?: strin
         <span className="hidden sm:inline">
           {status === 'online' ? 'Đã kết nối' : status === 'connecting' ? 'Đang kết nối' : status === 'reconnecting' ? 'Đang nối lại' : 'Đã ngắt'}
         </span>
+
+        <select
+          value={idleMinutes}
+          onChange={(e) => setIdleMinutes(Number(e.target.value))}
+          className="rounded-lg border border-slate-700/70 bg-slate-900 px-1.5 py-0.5 text-[11px] text-slate-300 focus:outline-none"
+          data-tip="Tự ngắt phiên khi không tương tác (hỏi lại trước 60 giây)"
+        >
+          <option value={0}>Không tự ngắt</option>
+          {[2, 5, 10, 15, 30, 60].map((m) => <option key={m} value={m}>Ngắt sau {m} phút</option>)}
+        </select>
 
         {status === 'closed' && (
           <Button size="xs" variant="soft" icon={RotateCcw} onClick={() => setSession((s) => s + 1)}>
